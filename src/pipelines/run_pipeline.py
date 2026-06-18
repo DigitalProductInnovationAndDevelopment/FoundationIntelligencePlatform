@@ -3,12 +3,14 @@ import sys
 import argparse
 import logging
 
-# Ensure project root is in sys.path so imports work regardless of working directory
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# Ensure src directory is in sys.path so imports work regardless of working directory
+PIPELINES_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(PIPELINES_DIR)
+PROJECT_ROOT = SRC_DIR
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
-from scraper.philea import scrape, save_data as save_raw_data
+from scrapers.philea import scrape, save_data as save_raw_data
 from preprocessing.extract_geo_topic import extract_tags, extract_geo, save_data as save_preprocessed_data, load_data
 
 # Configure logger
