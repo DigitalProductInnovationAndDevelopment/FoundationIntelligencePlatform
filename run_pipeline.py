@@ -28,8 +28,9 @@ def run_pipeline(args):
     # Dynamically import scraper for selected source
     if source == "philea":
         from scraper.philea import scrape, save_data as save_raw_data
+        load_existing_data = lambda path: []
     elif source == "hinchilla":
-        from scraper.hinchilla import scrape, save_data as save_raw_data
+        from scraper.hinchilla import scrape, save_data as save_raw_data, load_existing_data
     else:
         logging.error(f"Unknown source: {source}")
         sys.exit(1)
@@ -55,11 +56,44 @@ def run_pipeline(args):
             sys.exit(1)
     else:
         logging.info(f"Step 1: Scraping organization details from {source.title()} directory...")
-        members = scrape(limit=args.limit, sleep_time=args.sleep, timeout=args.timeout)
-        if not members:
+        
+        # Load existing data to support resuming
+        existing_members = load_existing_data(raw_output)
+        completed_slugs = set()
+        for m in existing_members:
+            link = m.get("link", "")
+            slug = link.split("/")[-1].strip()
+            if slug and "Error" not in m.get("philea_info", {}):
+                completed_slugs.add(slug)
+                
+        if completed_slugs:
+            logging.info(f"Resuming: skipping {len(completed_slugs)} already successfully scraped members.")
+            
+        try:
+            new_members = scrape(
+                limit=args.limit, 
+                sleep_time=args.sleep, 
+                timeout=args.timeout, 
+                completed_slugs=completed_slugs
+            )
+        except TypeError:
+            # Fallback if scraper doesn't support completed_slugs
+            new_members = scrape(
+                limit=args.limit, 
+                sleep_time=args.sleep, 
+                timeout=args.timeout
+            )
+            
+        if not new_members and not completed_slugs:
             logging.error("Scraping failed or returned no data. Terminating pipeline.")
             sys.exit(1)
             
+        # Merge new members with existing ones, overwriting on overlap
+        merged_dict = {m["link"]: m for m in existing_members}
+        for m in new_members:
+            merged_dict[m["link"]] = m
+            
+        members = list(merged_dict.values())
         save_raw_data(members, raw_output)
         logging.info(f"Step 1 Complete. Raw data stored in: {raw_output}")
         

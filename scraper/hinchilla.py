@@ -179,7 +179,7 @@ def get_case_insensitive(d, key_options):
                 return v
     return ""
 
-def scrape(limit=None, sleep_time=1.0, timeout=10.0):
+def scrape(limit=None, sleep_time=1.0, timeout=10.0, completed_slugs=None):
     url_directory = "https://www.hinchilla.com/funder-directory"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -210,8 +210,12 @@ def scrape(limit=None, sleep_time=1.0, timeout=10.0):
                 seen.add(slug)
                 funder_slugs.append(slug)
                 
+    # Filter completed slugs before counting or applying limit
+    if completed_slugs:
+        funder_slugs = [s for s in funder_slugs if s not in completed_slugs]
+                
     todo = len(funder_slugs)
-    logging.info(f"Successfully identified {todo} funder pages in directory.")
+    logging.info(f"Successfully identified {todo} remaining funder pages to scrape.")
     
     if limit:
         funder_slugs = funder_slugs[:limit]
@@ -330,7 +334,26 @@ def scrape(limit=None, sleep_time=1.0, timeout=10.0):
     logging.info(f"Finished Hinchilla scraping. Success rate: {scraped_successfully}/{counter}")
     return members
 
+def load_existing_data(path):
+    """
+    Loads existing raw data from the output path.
+    On AWS, this function can be modified to fetch the JSON from an S3 bucket instead.
+    """
+    if not path or not os.path.exists(path):
+        return []
+    logging.info(f"Loading existing data from {path}...")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.warning(f"Could not load existing data: {e}")
+        return []
+
 def save_data(members, path):
+    """
+    Saves the list of members to the output path.
+    On AWS, this function can be modified to write the JSON back to an S3 bucket instead.
+    """
     logging.info(f"Saving scraped data to {path}...")
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -368,8 +391,34 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    members = scrape(limit=args.limit, sleep_time=args.sleep, timeout=args.timeout)
-    if members:
-        save_data(members, args.output)
+    # Load existing data to support resuming
+    existing_members = load_existing_data(args.output)
+    completed_slugs = set()
+    for m in existing_members:
+        link = m.get("link", "")
+        slug = link.split("/")[-1].strip()
+        # Only count as completed if it succeeded without errors
+        if slug and "Error" not in m.get("philea_info", {}):
+            completed_slugs.add(slug)
+            
+    if completed_slugs:
+        logging.info(f"Resuming: skipping {len(completed_slugs)} already successfully scraped members.")
+
+    new_members = scrape(
+        limit=args.limit, 
+        sleep_time=args.sleep, 
+        timeout=args.timeout, 
+        completed_slugs=completed_slugs
+    )
+    
+    # Merge new members with existing ones, overwriting on overlap
+    merged_dict = {m["link"]: m for m in existing_members}
+    for m in new_members:
+        merged_dict[m["link"]] = m
+        
+    merged_members = list(merged_dict.values())
+    
+    if new_members or completed_slugs:
+        save_data(merged_members, args.output)
     else:
-        logging.error("No data scraped. File was not saved.")
+        logging.error("No data scraped and no existing data. File was not saved.")
