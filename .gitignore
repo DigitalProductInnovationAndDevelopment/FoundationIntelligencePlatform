@@ -164,3 +164,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Project custom ignores
+response.html
+detail_response.txt
