@@ -10,6 +10,25 @@ PROJECT_ROOT = SRC_DIR
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
+# Load environment variables from .env file if it exists
+def load_env():
+    workspace_root = os.path.dirname(PROJECT_ROOT)
+    env_path = os.path.join(workspace_root, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip("'\"")
+                    if key:
+                        os.environ[key] = val
+
+load_env()
+
 from scrapers.philea import scrape, save_data as save_raw_data
 from preprocessing.extract_geo_topic import extract_tags, extract_geo, save_data as save_preprocessed_data, load_data
 
@@ -47,6 +66,23 @@ def run_pipeline(args):
         save_raw_data(members, args.raw_output)
         logging.info(f"Step 1 Complete. Raw data stored in: {args.raw_output}")
         
+    # Step 1.5: Optional Gemini Enrichment
+    if args.enrich:
+        logging.info("Step 1.5: Enriching organization data using Gemini and Google Search...")
+        try:
+            from preprocessing.enrich_gemini import enrich_organizations
+            members = enrich_organizations(
+                members,
+                save_path=args.raw_output,
+                save_fn=save_raw_data,
+                sleep_time=args.sleep
+            )
+            save_raw_data(members, args.raw_output)
+            logging.info(f"Step 1.5 Complete. Enriched data stored in: {args.raw_output}")
+        except Exception as e:
+            logging.error(f"Enrichment stage failed: {e}")
+            sys.exit(1)
+            
     # Step 2: Preprocess
     logging.info("Step 2: Processing content to extract thematic focus tags and geographic locations...")
     try:
@@ -98,6 +134,11 @@ if __name__ == "__main__":
         "--skip-scrape",
         action="store_true",
         help="Skip the web scraping phase and run preprocessing on the existing raw data file."
+    )
+    parser.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Enrich scraped organization data using Gemini and Google Search grounding."
     )
     
     args = parser.parse_args()
