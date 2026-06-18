@@ -6,7 +6,7 @@ import sys
 # Add project root to sys.path so we can import scraper and preprocessing
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from scraper.hinchilla import (
+from scrapers.hinchilla import (
     parse_rsc_payload,
     resolve_rsc_references,
     parse_quick_stats,
@@ -101,7 +101,7 @@ class TestHinchillaScraper(unittest.TestCase):
         self.assertEqual(stats.get("Application Method"), "No Public Process")
         self.assertEqual(stats.get("Geographic Focus"), "Dorset, Purbeck, Swanage")
 
-    @patch("scraper.hinchilla.make_request")
+    @patch("scrapers.hinchilla.make_request")
     def test_scrape_limited(self, mock_make_request):
         # Mock responses
         # 1. Main Directory HTML response

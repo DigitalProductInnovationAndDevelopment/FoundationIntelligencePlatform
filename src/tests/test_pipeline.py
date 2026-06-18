@@ -7,12 +7,12 @@ import requests
 # Add project root to sys.path so we can import scraper and preprocessing
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from scraper.philea import make_request, scrape
+from scrapers.philea import make_request, scrape
 from preprocessing.extract_geo_topic import extract_tags, extract_geo
 
 class TestPhileaScraper(unittest.TestCase):
     
-    @patch("scraper.philea.requests.request")
+    @patch("scrapers.philea.requests.request")
     def test_make_request_success(self, mock_request):
         # Setup mock response
         mock_resp = MagicMock()
@@ -23,8 +23,8 @@ class TestPhileaScraper(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         mock_request.assert_called_once_with("GET", "https://example.com", timeout=10)
         
-    @patch("scraper.philea.requests.request")
-    @patch("scraper.philea.time.sleep") # Mock sleep to speed up test run
+    @patch("scrapers.philea.requests.request")
+    @patch("scrapers.philea.time.sleep") # Mock sleep to speed up test run
     def test_make_request_retry_on_transient_error(self, mock_sleep, mock_request):
         # Setup mock responses: first two attempts return 500, third returns 200
         mock_resp_fail = MagicMock()
@@ -40,8 +40,8 @@ class TestPhileaScraper(unittest.TestCase):
         self.assertEqual(mock_request.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
         
-    @patch("scraper.philea.requests.request")
-    @patch("scraper.philea.time.sleep")
+    @patch("scrapers.philea.requests.request")
+    @patch("scrapers.philea.time.sleep")
     def test_make_request_persistent_failure(self, mock_sleep, mock_request):
         # All requests fail with ConnectionError
         mock_request.side_effect = requests.exceptions.ConnectionError("Connection failed")
@@ -50,8 +50,8 @@ class TestPhileaScraper(unittest.TestCase):
             make_request("GET", "https://example.com", max_retries=3, backoff_factor=0.1)
         self.assertEqual(mock_request.call_count, 3)
 
-    @patch("scraper.philea.make_request")
-    @patch("scraper.philea.BeautifulSoup")
+    @patch("scrapers.philea.make_request")
+    @patch("scrapers.philea.BeautifulSoup")
     def test_scrape_limit(self, mock_bs, mock_make_request):
         # Mock members list call
         mock_list_resp = MagicMock()
