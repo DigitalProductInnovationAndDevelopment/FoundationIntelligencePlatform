@@ -134,7 +134,7 @@ GEO_TAXONOMY = {
     "Europe (Western / General)": {
         "Europe": r"europ\w+",
         "European Union": r"european union|\beu\b",
-        "United Kingdom": r"\buk\b|united kingdom|great britain|london|scotland|west midlands|english|cornwall|dorset|somerset|wiltshire|devon|hampshire",
+        "United Kingdom": r"\buk\b|united kingdom|great britain|england|wales|scotland|northern ireland|london|english|scottish|welsh|irish|bedfordshire|berkshire|buckinghamshire|cambridgeshire|cheshire|cornwall|cumbria|derbyshire|devon|dorset|durham|essex|gloucestershire|hampshire|herefordshire|hertfordshire|huntingdonshire|kent|lancashire|leicestershire|lincolnshire|middlesex|norfolk|northamptonshire|northumberland|nottinghamshire|oxfordshire|rutland|shropshire|somerset|staffordshire|suffolk|surrey|sussex|warwickshire|westmorland|wiltshire|worcestershire|yorkshire|aberdeenshire|angus|argyll|ayrshire|banffshire|berwickshire|bute|caithness|clackmannanshire|dumfriesshire|dunbartonshire|east lothian|fife|inverness|kincardineshire|kinross|kirkcudbrightshire|lanarkshire|midlothian|moray|nairnshire|orkney|peeblesshire|perthshire|renfrewshire|ross|cromarty|roxburghshire|selkirkshire|shetland|stirlingshire|sutherland|west lothian|wigtownshire|anglesey|brecknockshire|caernarfonshire|cardiganshire|carmarthenshire|denbighshire|flintshire|glamorgan|merionethshire|monmouthshire|montgomeryshire|pembrokeshire|radnorshire|antrim|armagh|down|fermanagh|londonderry|tyrone|manchester|birmingham|leeds|glasgow|sheffield|liverpool|bristol|cardiff|edinburgh|belfast|newcastle|nottingham|southampton|swanage|purbeck",
         "Ireland": r"ireland|irish",
         "France": r"franc\w+",
         "Germany": r"german\w+",
