@@ -278,7 +278,7 @@ GEO_TAXONOMY = {
         "Equatorial Guinea": r"equatorial guinea",
         "Sao Tome and Principe": r"sao tome",
         "Cabo Verde": r"cabo verde|cape verde",
-        "Guinea": r"\bguinea\b",
+        "Guinea": r"\bguinea\b(?!-bissau)",
         "Guinea-Bissau": r"guinea-bissau",
         "Liberia": r"liberia\w*",
         "Mauritania": r"mauritania\w*",
