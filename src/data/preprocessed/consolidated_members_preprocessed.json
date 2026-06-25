@@ -1,5 +1,1392 @@
 [
     {
+        "id": 24788,
+        "name": "Women Win",
+        "address": "Rapenburgerstraat 173, Amsterdam, Netherlands",
+        "country": "",
+        "email": "",
+        "website": "http://www.womenwin.org",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Rapenburgerstraat 173, Amsterdam, Netherlands",
+            "lat": 52.368106,
+            "lng": 4.9061522,
+            "zoom": 14,
+            "place_id": "ChIJe7GIF70JxkcRidx5mdy_5lo",
+            "name": "Rapenburgerstraat 173",
+            "street_number": "173",
+            "street_name": "Rapenburgerstraat",
+            "city": "Amsterdam",
+            "state": "Noord-Holland",
+            "state_short": "NH",
+            "post_code": "1011 VM",
+            "country": "Netherlands",
+            "country_short": "NL"
+        },
+        "link": "https://philea.eu/members/women-win/",
+        "philea_info": {
+            "About": "Women Win operates as a multidimensional global women’s fund with expertise across three interconnected areas:",
+            "Mission": "Women Win is a global multidimensional women’s fund guided by the vision of a future where every girl and woman exercises their rights. We work towards our vision through the independent missions of our three sister brands: GRLS advance the playing field that progresses gender equity in and through sport and play.\nWin-Win Strategies build bridges to advance girls’ and women’s economic resilience through impactful partnerships and innovative approaches.\nIGNITA provide a safe and responsive infrastructure to resource feminist initiatives, activists and movements to drive change.",
+            "Geographic Focus": "Women Win is operates globally, but with a majority focus on Global South and East."
+        },
+        "tags_focus": [
+            "Health",
+            "Human/Civil Rights"
+        ],
+        "geo_locations": {
+            "Global South / Majority World": [
+                "Global South"
+            ],
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24787,
+        "name": "Toni Piëch Foundation",
+        "address": "Untermüli 7, Zug, Switzerland",
+        "country": "",
+        "email": "",
+        "website": "https://www.tonipiechfoundation.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Untermüli 7, Zug, Switzerland",
+            "lat": 47.1804502,
+            "lng": 8.517739599999999,
+            "zoom": 14,
+            "place_id": "ChIJ3aGnIFuqmkcRI2DbBPUXHU4",
+            "name": "Untermüli 7",
+            "street_number": "7",
+            "street_name": "Untermüli",
+            "city": "Zug",
+            "state": "Zug",
+            "state_short": "ZG",
+            "post_code": "6302",
+            "country": "Switzerland",
+            "country_short": "CH"
+        },
+        "link": "https://philea.eu/members/toni-piech-foundation/",
+        "philea_info": {
+            "About": "TPF has strong expertise in the built‑environment transition, covering renewable‑energy integration in districts and buildings, energy‑efficiency measures, bio‑based building materials, and life‑cycle analysis, and urban planning. In addition, we bring expertise in philanthropic network building, technology‑innovation management, strategic communications, AI risk, and Chinese culture, society, and development. We are distinguished by our fast and explorative grantmaking, and, when useful or needed, hands‑on involvement in projects where we can provide expertise and assistance. Our key contribution is putting the built environment in the spotlight: Currently, only a tiny fraction of philanthropic funding reaches the built environment, and public awareness of its pivotal role in climate change, resource use, and social equity remains low. With strategic communication formats like campaigns and initiatives, we can highlight the issues and solutions, engage a diverse range of stakeholders, and increase public and philanthropic agency. Supporting tools like the one mentioned above directly empowers change‑agents like urban planners, community movements, and energy‑transition networks to drive tangible, sustainable transformation.",
+            "Mission": "The purpose of the foundation is to strengthen and accelerate social, economic and other endeavours and developments that have as their object a sustainable way of life for society, a future worth living for humanity, good and healthy living spaces and conditions, and an increase in the resilience of society. The focus is on the positive and sustainable development of cities, in particular through the development, visualisation and design of projects and developments in the areas of mobility, energy, public spaces and urban development, the promotion and acceleration of energy system transformation and of renewable and sustainable energy sources, sustainable and efficient energy use, the improvement of living conditions, living environments and spaces in cities, in particular by promoting the participation of the population and the use of data-driven and citizen-centred data management, as well as by promoting sustainable finance and building a platform for people who want to invest in promoting the foundation’s purpose and in related projects. In order to achieve its purpose, the foundation may use its assets to support and advise organisations, groups, institutions and individuals working in the field of the foundation’s purpose; it may accompany or promote certain projects; it may also initiate and implement projects itself; it may acquire real estate; it may award prizes within the scope of the foundation’s purpose and it may support companies, in particular start-ups, by means of loans and participations. The foundation is a non-profit organisation and does not pursue any commercial or profit-oriented purpose.",
+            "Geographic Focus": "Global",
+            "Programme Areas": "Future of Cities & Construction: Dealing with Climate Change nowadays means to stop greenhouse gas emissions but at the same time finding ways to adapt to unavoidable impacts. Both is important to make societies more resilient – which first and foremost requires a better understanding of practical and implementable solutions. The Climate Change programme of the Toni Piëch Foundation therefore keeps its focus on projects that have an immediate impact with regard to its overall mission. Climate Change: Cities can host billions of people while still providing space for an enriching urban life. Or they can be an ecological human disaster – ‘the triumph or the tragedy’ of cities it is. Projects of the Toni Piëch Foundation will be looking at the climate footprint of cities e.g. that of buildings as they are among the biggest single sources of emissions in the world. The global construction sector is on the brink of a huge transformation towards using carbon absorbing materials. We seek to accelerate this shift and to help clean construction to thrive. Energy Transition: Our day to day life is attached to electricity or thermal energy use for heating and cooling, transport and electricity uses. It’s important to maintain and expand these services of energy but to better interlink the different sectors (sector coupling) and switch to modern green sources. The socio-economic benefits of renewable energy deployment are widely known. And global welfare gains could also increase – the Toni Piëch Foundation will help to accelerate the transformation. Communications & Storytelling: “If you can’t describe it in one sentence you simply don’t understand it well enough”. A quote attributed to Albert Einstein nails it: complex subjects such as Climate Change need to be explained. Not so much the technical or physical dynamics but rather what they mean to us and our day to day lives. And it needs to be communicated in a way that offerspositive outlooks. By deploying an explicit sensitivity to the storytelling, we seek to ensure a compassionate but forward-looking approach in our projects."
+        },
+        "tags_focus": [
+            "Environment/Climate"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24786,
+        "name": "Thomson Reuters Foundation",
+        "address": "5 Canada Square, Canary Wharf, London, UK",
+        "country": "",
+        "email": "",
+        "website": "http://www.trust.org/",
+        "type": {
+            "value": "member",
+            "label": "Associate member"
+        },
+        "position": {
+            "address": "5 Canada Square, Canary Wharf, London, UK",
+            "lat": 51.5053031,
+            "lng": -0.0184089,
+            "zoom": 14,
+            "place_id": "ChIJVVVVZLcCdkgR_3T82OOWo4g",
+            "name": "5 Canada Square",
+            "street_number": "5",
+            "street_name": "Canada Square",
+            "city": "London",
+            "state": "England",
+            "post_code": "E14 5AQ",
+            "country": "United Kingdom",
+            "country_short": "GB"
+        },
+        "link": "https://philea.eu/members/thomson-reuters-foundation/",
+        "philea_info": {
+            "About": "We are the corporate foundation of Thomson Reuters. First established as the Reuters Foundation in 1982, today we are a global professional services organisation working in international development and registered as an independent charity in the UK, Europeand USA. We believe that societies around the world should be free, fair and informed, as underpinned by the Universal Declaration of Human Rights. We use the combined power of journalism and the law, together with data intelligence, to build global awareness of critical issues faced by humanity, inspire collective leadership and help shape a prosperous world where no one is left behind.",
+            "Mission": "Free and independent media is critical to informing citizens and to holding power to account but is increasingly under threat. The law upholds human rights and freedoms, but is often abused or inaccessible, undermining its purpose. Corporations can actively contribute to social progress, but only when they are able to balance the short-term needs of their shareholders with the long-term impact on their stakeholders communities.Through our media, legal and data-driven expertise we offer a range of initiatives and services that bolster the resilience of independent media, strengthen access to the law and foster responsible business practices, fundamental pillars that are integral to free, fair and informed societies.",
+            "Geographic Focus": "Global",
+            "Programme Areas": "A free, independent media is the cornerstone of democracy. It holds power to account and empowers civil society to make informed decisions. We provide a range of support to journalists, news outlets and civil society organisations dedicated to defending and advancing press freedom globally. A fair legal ecosystem is critical to upholding human rights. Increasingly though, the law is being undermined or abused to seize power or is simply inaccessible for those who need it most. We work to scale the practice of pro bono across the profession, and we provide free legal support and resources to empower at-risk and marginalised communities. Corporations can contribute to social progress when they balance the short-term needs of their shareholders with the long-term impact on their stakeholders’ communities. We leverage our networks and data intelligence to encourage responsible business practices and corporate transparency, enabling businesses to thrive whilst doing no harm."
+        },
+        "tags_focus": [
+            "Citizenship, Social Justice & Public Affairs",
+            "Human/Civil Rights"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24785,
+        "name": "The Social Change Nest",
+        "address": "C/O Sedulo Office 605, Albert House 256-260 OldStreet",
+        "country": "",
+        "email": "",
+        "website": "https://thesocialchangenest.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "C/O Sedulo Office 605, Albert House 256-260 OldStreet",
+            "lat": 51.52586489999999,
+            "lng": -0.0851961,
+            "zoom": 14,
+            "place_id": "EjY2MDUsIEFsYmVydCBIb3VzZSwgMjU2LTI2MCBPbGQgU3QsIExvbmRvbiBFQzFWIDlERCwgVUsiHxodChYKFAoSCZ0SA4KlHHZIEYPcSixfvSwKEgM2MDU",
+            "street_number": "256-260",
+            "street_name": "Old Street",
+            "street_name_short": "Old St",
+            "city": "London",
+            "state": "England",
+            "post_code": "EC1V 9DD",
+            "country": "United Kingdom",
+            "country_short": "GB"
+        },
+        "link": "https://philea.eu/members/the-social-change-nest/",
+        "philea_info": {
+            "About": "We tear down the barriers that prevent communities from creating change. We take care of the finance and administration, freeing groups to focus on their core mission, and work closely with funders to enable them to support social impact with confidence and transparency.",
+            "Mission": "We tear down the barriers that prevent communities from creating change. We take care of the finance and administration, freeing groups to focus on their core mission, and work closely with funders to enable them to support social impact with confidence and transparency.",
+            "Geographic Focus": "We tear down the barriers that prevent communities from creating change. We take care of the finance and administration, freeing groups to focus on their core mission, and work closely with funders to enable them to support social impact with confidence and transparency."
+        },
+        "tags_focus": [],
+        "geo_locations": {
+            "Europe (Western / General)": [
+                "United Kingdom"
+            ]
+        }
+    },
+    {
+        "id": 24784,
+        "name": "The Global Fund for Children",
+        "address": "1411 K Street Northwest suite 1200, Washington, DC, USA",
+        "country": "",
+        "email": "",
+        "website": "http://www.globalfundforchildren.org",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "1411 K Street Northwest suite 1200, Washington, DC, USA",
+            "lat": 38.9028791,
+            "lng": -77.0325632,
+            "zoom": 14,
+            "place_id": "EjIxNDExIEsgU3QgTlcgc3VpdGUgMTIwMCwgV2FzaGluZ3RvbiwgREMgMjAwMDUsIFVTQSImGiQKFgoUChIJuzc5m5W3t4kRCvjD-YXHC70SCnN1aXRlIDEyMDA",
+            "name": "1411 K St NW suite 1200",
+            "street_number": "1411",
+            "street_name": "K Street Northwest",
+            "street_name_short": "K St NW",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "state_short": "DC",
+            "post_code": "20005",
+            "country": "United States",
+            "country_short": "US"
+        },
+        "link": "https://philea.eu/members/the-global-fund-for-children/",
+        "philea_info": {
+            "About": "GFC’s model is to build long-term partnerships with community-based organizations who support the safety, wellbeing and achievement of children and young people. Partnerships include the provision of unrestricted annual grants along with tailored capacity development support and network building. GFC operates around 5 thematic issues including education, gender justice, youth power, climate and safety and wellbeing.",
+            "Mission": "Global Fund for Children envisions a future where all children and youth are safe, strong, and valued. We boldly pursue this vision by partnering with community-based organizations around the world to help children and youth reach their full potential and advance their rights.",
+            "Geographic Focus": "Global",
+            "Programme Areas": "Our major areas of expertise include the general development theme of Children and Youth, and more specifically, GFC is a leader in Community-led Development, Global Grantmaking, Trust-based Philanthropy, Participatory Grantmaking, healthy masculinities, well-being, and gender justice."
+        },
+        "tags_focus": [
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Health",
+            "Human/Civil Rights",
+            "Youth/Children Development"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24783,
+        "name": "Suna and İnan Kıraç Foundation",
+        "address": "Meşrutiyet Caddesi No.47 Tepebaşı - Beyoğlu - İstanbul",
+        "country": "",
+        "email": "",
+        "website": "http://www.sunaveinankiracvakfi.org.tr/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Meşrutiyet Caddesi No.47 Tepebaşı - Beyoğlu - İstanbul",
+            "lat": 41.0328293,
+            "lng": 28.9752418,
+            "zoom": 14,
+            "place_id": "ChIJV6w28F-3yhQRQoOqAcLxHTg",
+            "street_number": "No:47",
+            "street_name": "Meşrutiyet Caddesi",
+            "street_name_short": "Meşrutiyet Cd.",
+            "state": "İstanbul",
+            "post_code": "34430",
+            "country": "Türkiye",
+            "country_short": "TR"
+        },
+        "link": "https://philea.eu/members/suna-and-inan-kirac-foundation/",
+        "philea_info": {
+            "About": "The Suna and İnan Kıraç Foundation advances societal development through its institutions of excellence in education, culture, and scientific research:",
+            "Mission": "The Suna and İnan Kıraç Foundation was established by Suna Kıraç, İnan Kıraç and İpek Kıraç on 27 October, 2003. With the goal of supporting the cultivation of empowered citizens that will contribute to Türkiye and its people, the Foundation supports activities in the areas of education, culture, arts and health.",
+            "Geographic Focus": "Currently, we are exclusively in Turkiye, though our long-term vision is to extend to neighboring countries, particularly with our education work.",
+            "Programme Areas": "Arts & Culture\nEducation\nHealth\nSciences & Research\nYouth/Children Development The Suna and İnan Kıraç Foundation operates across three main programme areas:Education and Educational Equity: Designing and implementing evidence-based models that strengthen early childhood development, support girls’ educational participation and empowerment, and contribute to teacher development and systemic improvement.Cultural Heritage and Public Access to Culture: Preserving, researching, and sharing Türkiye’s cultural heritage through museums, research institutes, exhibitions, publications, and public learning programmes.Scientific Research: Advancing high-quality research in neurodegenerative diseases through the Foundation’s Neurodegeneration Research Laboratory (NDAL), contributing to international scientific knowledge and capacity building.Across all areas, the Foundation combines research, institutional excellence, and long-term engagement to generate sustainable societal impact."
+        },
+        "tags_focus": [
+            "Arts & Culture",
+            "Education",
+            "Health",
+            "Sciences & Research",
+            "Youth/Children Development"
+        ],
+        "geo_locations": {
+            "Europe (Southern / Mediterranean)": [
+                "Turkey"
+            ]
+        }
+    },
+    {
+        "id": 24781,
+        "name": "Hidden Universe: Biodiversity Foundation (HUB)",
+        "address": "Grimmereds by 5, Västra Frölunda, Sweden",
+        "country": "",
+        "email": "",
+        "website": "https://www.hu-b.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Grimmereds by 5, Västra Frölunda, Sweden",
+            "lat": 57.6651926,
+            "lng": 11.8938683,
+            "zoom": 14,
+            "place_id": "ChIJs0Ih5C2NT0YR-dceWQWRP78",
+            "name": "Grimmereds by 5",
+            "street_number": "5",
+            "street_name": "Grimmereds by",
+            "city": "Västra Frölunda",
+            "state": "Västra Götalands län",
+            "post_code": "426 70",
+            "country": "Sweden",
+            "country_short": "SE"
+        },
+        "link": "https://philea.eu/members/hidden-universe-biodiversity-foundation-hub/",
+        "philea_info": {
+            "About": "Biodiversity research, conservation and restoration. At its core, the Foundation is about advancing and communicating scientific knowledge and using such knowledge to better conserve and restore diverse ecosystems. Much of the diversity of life on Earth remains unknown, and without better knowledge, we cannot hope to restore or conserve it effectively. In its initial phase, the Foundation is focusing on the Atlantic Forest in Brazil, one of the most biodiverse and threatened regions on the planet. Here, it supports field-based research and promotes ecological restoration in ways that are informed by science and grounded in collaboration, including local communities.",
+            "Mission": "HUB’s mission is advanced through an integrated approach that combines scientific research, conservation initiatives, and community engagement.",
+            "Geographic Focus": "Brazil (initial focus).",
+            "Programme Areas": "Animal-Related\nEducation\nEnvironment/Climate\nFood, Agriculture & Nutrition\nSciences & Research\nSocio-economic Development, Poverty 1. Explore and document: HUB uncovers the planet’s hidden life. We partner with scientists to explore and document species, interactions and ecosystems—many still unknown to science—revealing the richness of nature so it can be understood and protected. 2. Protect and restore: HUB turns science into action. Working with local communities, we protect endangered species and restore vital ecosystems, starting in Brazil’s Atlantic rainforest and expanding to other biodiversity hotspots in the future. 3. Share knowledge: HUB connects people with nature. Through training, education, storytelling, and collaboration, we share discoveries that inspire curiosity, awareness, and action for a thriving planet."
+        },
+        "tags_focus": [
+            "Education",
+            "Environment/Climate",
+            "Food, Agriculture & Nutrition",
+            "Sciences & Research",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Latin America & Caribbean": [
+                "Brazil"
+            ]
+        }
+    },
+    {
+        "id": 24780,
+        "name": "Andrea von Braun Stiftung",
+        "address": "Mauerkircherstraße 12, Munich-Bogenhausen, Germany",
+        "country": "",
+        "email": "",
+        "website": "https://www.avbstiftung.de/en/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Mauerkircherstraße 12, Munich-Bogenhausen, Germany",
+            "lat": 48.1497328,
+            "lng": 11.6012926,
+            "zoom": 14,
+            "place_id": "ChIJW8XsIJ91nkcRKrCt_VJpuAk",
+            "name": "Mauerkircherstraße 12",
+            "street_number": "12",
+            "street_name": "Mauerkircherstraße",
+            "city": "München",
+            "state": "Bayern",
+            "state_short": "BY",
+            "post_code": "81679",
+            "country": "Germany",
+            "country_short": "DE"
+        },
+        "link": "https://philea.eu/members/andrea-von-braun-stiftung/",
+        "philea_info": {
+            "About": "Our core mission is to promote projects in ecological border areas. By this we mean:",
+            "Mission": "Our core mission is to promote projects in ecological border areas. By this we mean: Nature-based environmental and climate protection in underfunded ecosystems with image problems.\nConcrete projects that are locally rooted and have both regional and international impact.\nHolistic projects that systematically interlink multiple technical and social perspectives (interdisciplinarity).",
+            "Geographic Focus": "Europe and Germany, but also worldwide",
+            "Programme Areas": "Arts & Culture\nCivil society, Voluntarism & Non-Profit Sector\nEducation\nEnvironment/Climate\nPeace & Conflict Resolution\nSciences & Research"
+        },
+        "tags_focus": [
+            "Arts & Culture",
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Education",
+            "Environment/Climate",
+            "Peace & Conflict Resolution",
+            "Sciences & Research"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Worldwide"
+            ],
+            "Europe (Western / General)": [
+                "Europe",
+                "Germany"
+            ]
+        }
+    },
+    {
+        "id": 24510,
+        "name": "Philanthropy in Ukraine",
+        "address": "Salyutna St. 5, office 49 Kyiv, 04111 Ukraine",
+        "country": "",
+        "email": "",
+        "website": "http://philanthropy.in.ua",
+        "type": {
+            "value": "member",
+            "label": "Associate member"
+        },
+        "position": {
+            "address": "Salyutna St. 5, office 49 Kyiv, 04111 Ukraine",
+            "lat": 50.4503596,
+            "lng": 30.5245025,
+            "zoom": 14,
+            "place_id": "ChIJBUVa4U7P1EAR_kYBF9IxSXY",
+            "city": "Kyiv",
+            "state": "Kyiv city",
+            "post_code": "02000",
+            "country": "Ukraine",
+            "country_short": "UA"
+        },
+        "link": "https://philea.eu/members/philanthropy-in-ukraine/",
+        "philea_info": {
+            "About": "A platform of ecosystem solutions to strengthen trust in NGOs through verification and open data",
+            "Mission": "Our major areas of expertise are: verification and due diligence as we’re operating PhilinUA digital platform to vet NGOs against international standards; capacity strengthening as we’re delivering educational programs on governance, finance, and strategic planning for civil society professionals; sectoral analytics as we’re providing research and consultative data to guide systemic improvements in philanthropy. We employ a systemic approach to align Ukrainian philanthropy with global standards. Our primary distinction is the innovative PhilinUA platform, which provides a scalable, technology-driven solution for donor trust and due diligence. Our values are: strategic thinking, co-creation and impact. Our core strength is building trust and transparency. By simplifying the verification process, we directly facilitate the attraction of essential international funding and enhance the long-term resilience of Ukrainian civil society.",
+            "Geographic Focus": "Currently, we operate in Ukraine for Ukrainian organizations, but we also provide services and have partnerships with international donors who support Ukraine or need our services for their grantees in Ukraine."
+        },
+        "tags_focus": [
+            "Citizenship, Social Justice & Public Affairs",
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Sciences & Research"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "International"
+            ],
+            "Europe (Central & Eastern / Balkans)": [
+                "Ukraine"
+            ]
+        }
+    },
+    {
+        "id": 24509,
+        "name": "Confederación Española de Cajas de Ahorros",
+        "address": "Calle de Alcalá, 27, Madrid, Spain",
+        "country": "",
+        "email": "",
+        "website": "http://www.ceca.es",
+        "type": {
+            "value": "affiliate",
+            "label": "Philanthropy infrastructure organisation"
+        },
+        "position": {
+            "address": "Calle de Alcalá, 27, Madrid, Spain",
+            "lat": 40.41845850000001,
+            "lng": -3.6986681,
+            "zoom": 14,
+            "place_id": "ChIJA_9ksYYoQg0RAu5gh9in4Tw",
+            "name": "C. Alcalá, 27",
+            "street_number": "27",
+            "street_name": "Calle Alcalá",
+            "street_name_short": "C. Alcalá",
+            "city": "Madrid",
+            "state": "Comunidad de Madrid",
+            "state_short": "MD",
+            "post_code": "28014",
+            "country": "Spain",
+            "country_short": "ES"
+        },
+        "link": "https://philea.eu/members/confederacion-espanola-de-cajas-de-ahorros/",
+        "philea_info": {
+            "About": "CECA is a banking association committed to representing, defending and promoting its member entities’ interests. It provides them with advice and supports them in their endeavour to offer services that promote financial inclusion and access to credit. This work is undertaken with a sustainable approach, notably featuring Obra Social and financial education.",
+            "Geographic Focus": "Spain",
+            "Programme Areas": "Our activity is divided into four main areas: Institutional representation: Defense of our member entities’ interests in national and international forums.\nEconomic and regulatory analysis: Exhaustive follow-up regulatory of the national and international agendas and economic studies ad-hoc.\nSustainability and Obra Social: Dissemination and promotion of the Obra Social, financial education and sustainability.\nWorker representation: Defense of member entities that are bound by the sector’s Collective Bargaining Agreement. The Obra Social of CECA’s member entities constitutes Spain’s leading source of private social investment, reflecting a firm commitment to building a more equitable and inclusive society. CECA represents banking institutions and more than thirty banking and ordinary foundations. In 2024, CECA Foundations and associated entities collectively invested over €906 million in social initiatives, positioning them as the country’s largest private social investor. This significant level of investment enables the development of programs that directly address societal needs across a wide range of areas. The social programs implemented by CECA’s entities and foundations encompass fields such as social assistance, financial education, job creation, cultural development, research, and environmental protection, among others. Another major strength of CECA’s contribution to society lies in the extensive territorial presence of its member entities. Thanks to the wide presence of its foundations and banks throughout the country, CECA is able to reach diverse population groups – including those in vulnerable or remote areas – ensuring that its impact is both far-reaching and deeply rooted in local communities. Furthermore, CECA and its associated entities demonstrate a strong commitment to Financial Education and Sustainability. In the field of financial education, CECA, its member entities continue to work on their social vocation with the conviction that financial education is more necessary than ever, as it is vital to have financially responsible citizens, who manage their resources in the most efficient way, and to enhance digitalization when it comes to disseminating knowledge and skills. Also, in terms of sustainability, CECA and its member entities are aware that the financial sector can promote changes that will bring it closer to achieving the 2030 Agenda, which sets out the 17 Sustainable Development Goals to implement actions aimed to social and environmental improvement throughout the world. Furthermore, CECA adheres to the WSBI-ESBG Charter for Responsible and Sustainable Business."
+        },
+        "tags_focus": [
+            "Education"
+        ],
+        "geo_locations": {
+            "Europe (Southern / Mediterranean)": [
+                "Spain"
+            ]
+        }
+    },
+    {
+        "id": 24508,
+        "name": "We Are Purposeful",
+        "address": "Blue House Yard, River Park Road, London, UK",
+        "country": "",
+        "email": "",
+        "website": "https://wearepurposeful.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Blue House Yard, River Park Road, London, UK",
+            "lat": 51.5972015,
+            "lng": -0.1116638,
+            "zoom": 14,
+            "place_id": "ChIJ0zqdKOIbdkgR0qSLHN8y2Pk",
+            "name": "Blue House Yard",
+            "street_number": "5",
+            "street_name": "River Park Road",
+            "street_name_short": "River Park Rd",
+            "city": "London",
+            "state": "England",
+            "post_code": "N22 7TB",
+            "country": "United Kingdom",
+            "country_short": "GB"
+        },
+        "link": "https://philea.eu/members/we-are-purposeful/",
+        "philea_info": {
+            "About": "Purposeful is an Africa-rooted global hub for girls’ and young feminists organising and leadership. We believe that another world is not only possible, it is already being built right here and now, in the ways that girls and young feminists are organising with each other, imagining with each other, pushing us all a little further towards liberation.",
+            "Mission": "We resource girls and young feminists priorities in nearly every region of the world. Their priorities are our priorities. This is often a combination of gender-based violence, education, economic opportunity, climate crisis, and ensuring civic spaces stay open.",
+            "Programme Areas": "Two of our most innovative and distinguishing characteristics are 1) our highly participatory grant-making model that ensures resources reach those most impacted and 2) our inclusive accompaniment model which ensure our grantee partners, who have multiple intersecting vulnerabilities, have with wrap around support."
+        },
+        "tags_focus": [
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Europe (Western / General)": [
+                "United Kingdom"
+            ],
+            "Worldwide": [
+                "Global",
+                "World"
+            ],
+            "Africa / Sub-Saharan Africa": [
+                "Africa"
+            ],
+            "North America": [
+                "United States"
+            ]
+        }
+    },
+    {
+        "id": 24507,
+        "name": "SOLIDARNA Foundation",
+        "address": "Jurkovićeva ulica 3, Zagreb, Croatia",
+        "country": "",
+        "email": "",
+        "website": "http://www.solidarna.hr",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Jurkovićeva ulica 3, Zagreb, Croatia",
+            "lat": 45.81490180000001,
+            "lng": 15.9903851,
+            "zoom": 14,
+            "place_id": "ChIJ61VlCKvXZUcR8czyDuySB1g",
+            "name": "Jurkovićeva ul. 3",
+            "street_number": "3",
+            "street_name": "Jurkovićeva ulica",
+            "street_name_short": "Jurkovićeva ul.",
+            "city": "Zagreb",
+            "state": "Grad Zagreb",
+            "post_code": "10000",
+            "country": "Croatia",
+            "country_short": "HR"
+        },
+        "link": "https://philea.eu/members/solidarna-foundation/",
+        "philea_info": {
+            "About": "The SOLIDARNA Foundation is a philanthropic organization dedicated to protecting and advancing human rights through community-driven support, strategic partnerships, and systemic change.",
+            "Mission": "We work to transform solidarity into concrete action by providing direct support to individuals and communities, strengthening civil society, and advocating for policies that promote equality, dignity, and social justice.",
+            "Geographic Focus": "Croatia and Slovenia",
+            "Programme Areas": "The SOLIDARNA Foundation works at the intersection of human rights, gender equality, and democratic participation, with a strongfocus on translating values into tangible social impact. Our key areas of expertise include: Human rights and social justice – protecting and advancing the rights of women, minorities, migrants, and other marginalized groups through direct support and systemic advocacy.\nGender equality and women’s empowerment – supporting women-led initiatives, addressing gender-based violence, economic inequality, and structural discrimination.\nCivil society strengthening – providing financial support, capacity building, and strategic guidance to grassroots organizations and informal initiatives.\nCivic engagement and democratic participation – fostering active citizenship, community organizing, and protection of democratic values.Strategic philanthropy and grantmaking – designing and managing transparent, impact-oriented funding mechanisms that respond to real needs on the ground.\nPolicy advocacy and cross-sector collaboration – contributing expertise to policy development and building bridges between civil society, institutions, and responsible businesses. What sets SOLIDARNA apart is how we work and where we position ourselves: Community-rooted and trust-based: We do not impose solutions. We create space for solutions to emerge from communities themselves, grounded in lived experience and local knowledge.\nFrom solidarity to systems change: Alongside direct support, we invest in long-term structural change through advocacy, research, and partnerships.\nBridge-builder across sectors: SOLIDARNA connects civil society, public institutions, donors, and the private sector, translating shared values into concrete, measurable action.\nEvidence-based and dignified approach: Our work is informed by data, expertise, and practice, and communicated with respect—never sensationalist or patronizing.\nAgile and responsive: We are able to respond quickly to emerging social challenges while maintaining strategic focus and accountability.\n\nSOLIDARNA’s key strength lies in its ability to combine empathy with expertise, and immediacy with sustainability. We turn solidarity into a reliable social infrastructure—one that provides timely support where it is most needed, while also shaping conditions for a more just, equal, and resilient society. Our contribution is not only in the resources we mobilize, but in the trust we build, the voices we amplify, and the systemic changes we help make possible—in Croatia, the region, and across Europe"
+        },
+        "tags_focus": [
+            "Citizenship, Social Justice & Public Affairs",
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Human/Civil Rights",
+            "Sciences & Research",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Europe (Central & Eastern / Balkans)": [
+                "Balkans",
+                "Croatia",
+                "Slovenia"
+            ]
+        }
+    },
+    {
+        "id": 24506,
+        "name": "Segal Family Foundation",
+        "address": "67 Mountain Blvd suite 201, Warren, NJ, USA",
+        "country": "",
+        "email": "",
+        "website": "http://www.segalfamilyfoundation.org",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "67 Mountain Blvd suite 201, Warren, NJ, USA",
+            "lat": 40.6161249,
+            "lng": -74.49897480000001,
+            "zoom": 14,
+            "place_id": "EjE2NyBNb3VudGFpbiBCbHZkIHN1aXRlIDIwMSwgV2FycmVuLCBOSiAwNzA1OSwgVVNBIiUaIwoWChQKEgk7T-HRTLnDiRH69HeOmheIEBIJc3VpdGUgMjAx",
+            "name": "67 Mountain Blvd suite 201",
+            "street_number": "67",
+            "street_name": "Mountain Boulevard",
+            "street_name_short": "Mountain Blvd",
+            "city": "Warren",
+            "state": "New Jersey",
+            "state_short": "NJ",
+            "post_code": "07059",
+            "country": "United States",
+            "country_short": "US"
+        },
+        "link": "https://philea.eu/members/segal-family-foundation/",
+        "philea_info": {
+            "About": "Segal Family Foundation is a social impact funder and advisor championing African visionaries.",
+            "Mission": "Segal Family Foundation is a social impact funder and advisor championing African visionaries.",
+            "Geographic Focus": "Sub Saharan Africa",
+            "Programme Areas": "Invest: We find, vet, and invest in early-stage social leaders and organizations with huge potential to transform society. Connect: We bring together a rich community of African visionaries and global funders to foster transformative collaboration. Advise: We advance big visions by equipping partners and donors with the resources and advice they need to succeed."
+        },
+        "tags_focus": [
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Africa / Sub-Saharan Africa": [
+                "Africa"
+            ]
+        }
+    },
+    {
+        "id": 24505,
+        "name": "Partners for a New Economy",
+        "address": "Place de Cornavin 2, Geneva, Switzerland",
+        "country": "",
+        "email": "",
+        "website": "https://p4ne.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Place de Cornavin 2, Geneva, Switzerland",
+            "lat": 46.2084926,
+            "lng": 6.1428645,
+            "zoom": 14,
+            "place_id": "ChIJk1z4kidljEcRgdv-BG4Y7wc",
+            "name": "Pl. de Cornavin 2",
+            "street_number": "2",
+            "street_name": "Place de Cornavin",
+            "street_name_short": "Pl. de Cornavin",
+            "city": "Genève",
+            "state": "Genève",
+            "state_short": "GE",
+            "post_code": "1201",
+            "country": "Switzerland",
+            "country_short": "CH"
+        },
+        "link": "https://philea.eu/members/partners-for-a-new-economy/",
+        "philea_info": {
+            "About": "Partners for a New Economy is an international philanthropic collaboration, hosted by the Swiss Philanthropy Foundation. We were founded in 2015 by the MAVA, Oak, Marisla and KR Foundations, to address the root causes of environmental degradation that lie within our economic system. In 2025 we were joined by Seedling Foundation and Regenerative Foundation, and continue to have further support from Laudes and Ford Foundations. Our truly international collaborative funds initiatives that show a deep understanding of planetary boundaries and an urgency to transform our economy to live within them. We are a trusted partner for funders navigating the new economy space, offering insights, connections and pathways that help make economic systems change for the benefit of the planet and its people more tangible and fundable. Whilst our main geographic focus is Europe, we are keen to see a breadth of perspective and global outlook.",
+            "Mission": "An economy that serves people and nature, now and for future generations.",
+            "Geographic Focus": "European focus with an established role in the global new economy ecosystem.",
+            "Programme Areas": "Grant Making: which aims to cultivate the conditions for economic systems change in Europe, to nurture economies in service of people and nature\nField Building: to grow and strengthen the new economy ecosystem, supporting people and organisations to find greater alignment, understanding, deepening their interdependence and building collective power. P4NE hosts an annual New Economies global gathering.\nPartnerships & Learning: P4NE is an international funder collaborative. We are committed to deepening understanding of new economic thinking in order to encourage support of real world solutions."
+        },
+        "tags_focus": [
+            "Environment/Climate"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ],
+            "Europe (Western / General)": [
+                "Europe"
+            ]
+        }
+    },
+    {
+        "id": 24504,
+        "name": "KR Foundation",
+        "address": "Læderstræde 20, Copenhagen, Denmark",
+        "country": "",
+        "email": "",
+        "website": "http://www.krfnd.org",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Læderstræde 20, Copenhagen, Denmark",
+            "lat": 55.67819679999999,
+            "lng": 12.5780295,
+            "zoom": 14,
+            "place_id": "ChIJ6_tpKRFTUkYRT5AVaL66Ess",
+            "name": "Læderstræde 20",
+            "street_number": "20",
+            "street_name": "Læderstræde",
+            "city": "København",
+            "post_code": "1201",
+            "country": "Denmark",
+            "country_short": "DK"
+        },
+        "link": "https://philea.eu/members/kr-foundation/",
+        "philea_info": {
+            "About": "The mission of KR Foundation is to address the root causes of climate change and biological degradation by pushing for a rapid phase-out of fossil fuels at a global level.",
+            "Mission": "The mission of KR Foundation is to address the root causes of climate change and biological degradation by pushing for a rapid phase-out of fossil fuels at a global level.",
+            "Geographic Focus": "The mission of KR Foundation is to address the root causes of climate change and biological degradation by pushing for a rapid phase-out of fossil fuels at a global level.",
+            "Programme Areas": "Challenge Finance Mission: aligning financial policies and regulation enabling an energy transition away from fossil fuels.\nChallenge Influence mission: Addressing the political influence and social license of fossil fuel actors obstructing climate action\nEconomic Transformation mission: Exploring post-growth economic paradigms that can operate within planetary boundaries."
+        },
+        "tags_focus": [
+            "Environment/Climate"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24503,
+        "name": "Fundación AVINA",
+        "address": "Evelio Lara, Casa N°131-B Ciudad del Saber, Clayton, Ciudad de Panamá ",
+        "country": "",
+        "email": "",
+        "website": "http://www.avina.net",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Evelio Lara, Casa N°131-B Ciudad del Saber, Clayton, Ciudad de Panamá ",
+            "lat": 8.9971189,
+            "lng": -79.5823125,
+            "zoom": 15,
+            "place_id": "ChIJLfCbTzWmrI8Rsl2lERV3mXk",
+            "street_name": "Calle Evelio Lara",
+            "street_name_short": "C. Evelio Lara",
+            "city": "Panamá",
+            "state": "Provincia de Panamá",
+            "country": "Panama",
+            "country_short": "PA"
+        },
+        "link": "https://philea.eu/members/fundacion-avina/",
+        "philea_info": {
+            "About": "Fundación Avina is a Latin American philanthropic foundation with over 30 years of experience advancing systemic change in Latin America. We work across three interconnected areas: climate action; just and regenerative economies; and democratic innovation. We act as a grantmaker and strategic intermediary connecting civil society, philanthropy, the private sector, and public institutions. Avina’s distinguishing strength is its role as a bridge between locally led solutions in the Global South and global philanthropic, corporate, and policy agendas. We focus on ecosystem-building, multi-stakeholder collaboration, and long-term systems change rather than isolated projects. Our key contribution is enabling locally led systemic change at scale, ensuring communities most affected by inequality and climate change are co-creators and decision-makers in shaping solutions.",
+            "Mission": "Rooted in the global South, Fundación Avina works to drive collaborative processes that bring about systemic changes in favor of human dignity and care for the planet.",
+            "Geographic Focus": "Latin America and the Global South",
+            "Programme Areas": "Biomes, Water, Climate, Inclusive and Circular Economy, Labor Innovation, Democracies"
+        },
+        "tags_focus": [
+            "Environment/Climate"
+        ],
+        "geo_locations": {
+            "Latin America & Caribbean": [
+                "Latin America"
+            ],
+            "Global South / Majority World": [
+                "Global South"
+            ],
+            "Worldwide": [
+                "Global"
+            ],
+            "North America": [
+                "United States"
+            ]
+        }
+    },
+    {
+        "id": 24502,
+        "name": "Fondazione MeSSInA",
+        "address": "Forte Petrazza, Località Forte Petrazza, Camaro Superiore, Metropolitan City of Messina, Italy",
+        "country": "",
+        "email": "",
+        "website": "https://fdcmessina.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Forte Petrazza, Località Forte Petrazza, Camaro Superiore, Metropolitan City of Messina, Italy",
+            "lat": 38.1814676,
+            "lng": 15.5276218,
+            "zoom": 14,
+            "place_id": "ChIJTT7gPJROFBMRVEOMJ1_wBs4",
+            "name": "Forte Petrazza",
+            "street_number": "SNC",
+            "street_name": "Località Forte Petrazza",
+            "city": "Camaro Superiore",
+            "state": "Sicilia",
+            "state_short": "ME",
+            "post_code": "98151",
+            "country": "Italy",
+            "country_short": "IT"
+        },
+        "link": "https://philea.eu/members/fondazione-messina/",
+        "philea_info": {
+            "About": "The MeSSiNa Foundation operates as a “Transformation Steward” or catalyst for local development in marginalized territories, primarily in Sicily.",
+            "Mission": "The official purpose of the MeSSiNa Foundation is to promote social justice and sustainable economic and human development bydesigning, experimenting with, and promoting new socio-economic policies in marginalized territories",
+            "Geographic Focus": "The MeSSiNa Foundation’s primary target is the region of Sicily in Italy and more generally Southern Italy. Nevertheless, we consider Sicily as a \"natural laboratory\" for socio-environmental experimentation that could be adapted and tested in other contexts facing similar issues. Having this in mind, the Foundation operates within a transnational framework through its partnership with international entities, being already member of the European Federation of Ethical and Alternative Banks and Financiers (FEBEA), the European Network Of Cities And Regions For The Social Economy (REVES) and the Foundations Platform F20. It also runs several EU-funded projects with European and MENA partners.",
+            "Programme Areas": "The cluster led by the Foundation covers several areas: Social mediation and personalized social support for disadvantaged people (mentally ill people, low-income families, former prisoners, etc.);\nEnergy projects (design and implementation of energy efficiency, production and redistribution interventions, creation of Renewable Energy Communities, etc.);\nCultural production and events, including the creation and management of museums, digital immersive rooms, international festival of performative arts, etc.;\nEducational activities for students of all ages;\nBusiness incubation and consolidation of social enterprises, through training, coaching, temporary management, etc.;\nFinancial services (through a co-funded microcredit institution, a co-funded asset management company, partner banks, etc.);\nTechnological research and innovation on several fields (energy production and distribution, housing, bioplastics, digital immersive rooms, etc.);\nUrban regeneration interventions (regeneration of buildings, urban art, regeneration of green spaces, etc.); etc. In the cluster, the Foundation does not function as a traditional top-down administrator or a simple service provider; instead, it designs the overall local development strategy for and with the target community, providing a theoretical framework based on complexity science and human development. It then structures the financial and operational relationships and framework that allow the cluster to thrive and implement the policies integrating all different activity areas."
+        },
+        "tags_focus": [
+            "Arts & Culture",
+            "Education",
+            "Sciences & Research",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "International"
+            ],
+            "Europe (Western / General)": [
+                "Europe",
+                "European Union"
+            ],
+            "Europe (Southern / Mediterranean)": [
+                "Italy"
+            ],
+            "Middle East & North Africa (MENA)": [
+                "MENA"
+            ]
+        }
+    },
+    {
+        "id": 24349,
+        "name": "Volkswagen Slovakia Foundation",
+        "address": "",
+        "country": "",
+        "email": "",
+        "website": "http://www.nadacia-volkswagen.sk/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Jána Jánoša 1 bratislava",
+            "lat": 48.1477745,
+            "lng": 17.1071553,
+            "zoom": 12,
+            "place_id": "ChIJl2HKCjaJbEcRaEOI_YKbH2M",
+            "city": "Bratislava",
+            "state": "Bratislava Region",
+            "country": "Slovakia",
+            "country_short": "SK"
+        },
+        "link": "https://philea.eu/members/volkswagen-slovakia-foundation/",
+        "philea_info": {
+            "About": "Transforming Slovakia into a more educated, open, and engaged society — together and through innovation.",
+            "Mission": "Transforming Slovakia into a more educated, open, and engaged society — together and through innovation.",
+            "Geographic Focus": "Slovakia",
+            "Programme Areas": "Nadácia Volkswagen Slovakia focuses on advancing education, participation of vulnerable groups, and the development of cohesive communities. Our core expertise lies in designing and scaling innovative programmes that strengthen inclusive education, empower underrepresented learners, and build bridges between schools, families, and communities.As a corporate foundation, we act as a connector between philanthropy, business, and public systems, supporting pilot projects that generate learning and evidence for broader policy and practice change. Through strategic partnerships, targeted grantmaking, and capacity-building, we scale promising initiatives and promote long-term, systemic impact.Our key strength is the ability to catalyse systems change — we convene diverse stakeholders from education, government, and civil society to co-create solutions that foster inclusion, equity, and innovation. By combining private-sector agility with social impact goals, Nadácia Volkswagen Slovakia contributes to a more inclusive, resilient, and future-oriented society."
+        },
+        "tags_focus": [
+            "Education"
+        ],
+        "geo_locations": {
+            "Europe (Central & Eastern / Balkans)": [
+                "Slovakia"
+            ]
+        }
+    },
+    {
+        "id": 24348,
+        "name": "Virgin Unite",
+        "address": "",
+        "country": "",
+        "email": "",
+        "website": "http://www.virginunite.com",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "50a Charlotte Street, London, UK",
+            "lat": 51.5198393,
+            "lng": -0.1358514,
+            "zoom": 14,
+            "place_id": "ChIJj2Wr5CsbdkgRDcBQ-Ujjj-0",
+            "name": "50a Charlotte St.",
+            "street_number": "50a",
+            "street_name": "Charlotte Street",
+            "street_name_short": "Charlotte St.",
+            "city": "London",
+            "state": "England",
+            "post_code": "W1T 2NS",
+            "country": "United Kingdom",
+            "country_short": "GB"
+        },
+        "link": "https://philea.eu/members/virgin-unite/",
+        "philea_info": {
+            "About": "Virgin Unite was founded in 2004 as the non-profit foundation of the Virgin Group, to unite people and entrepreneurial ideas to create opportunities for a better world. Since launch, together with some great partners, Virgin Unite has inspired and incubated a number of wonderful collaborations – like The Elders, Ocean Unite (now ORRAA), Carbon War Room (now merged with RMI), The B Team, Caribbean Climate Smart Accelerator, Unite BVI and 100% Human at Work – which have spurred much-needed change in the world. We continue to catalyse radical collaboration to challenge the unacceptable as we work for a world where all the planet and all people thrive.",
+            "Geographic Focus": "Global",
+            "Programme Areas": "We do philanthropy the Virgin way – that means being a positive disruptor, taking risks, entering spaces that are underfunded or overlooked, and uniting unlikely allies to multiply impact. Our mission is to unite people and entrepreneurial ideas to tackle the world’s most urgent challenges. Whether addressing injustice, reimagining business, or protecting the planet, our approach remains the same: take risks, back the bold, and never act alone. Unlike many traditional non-profit foundations, Virgin Unite doesn’t focus on a single issue. Instead, we look to challenge unacceptable issues or drive systems change in areas that aren’t getting enough attention, mobilising our community, partners, and their resources towards supporting the cause. Crucially, we don’t focus on a particular geography or issue, instead looking to be a positive disruptor in areas where we think we can specifically make a difference due to our unique approach, or because others aren’t currently giving the issue the attention it needs. We act as a positive disruptor by incubating and launching new non-profit initiatives. These organisations address a gap where systemic change is needed and eventually go on to thrive independently, with continued support from Virgin Unite. As of 2024, Virgin Unite has led and supported the incubation of 22 non-profit initiatives – including The Elders, The B Team, Ocean Unite (now ORRAA), Carbon War Room (now merged with RMI), Caribbean Climate Smart Accelerator, Unite BVI, and Planetary Guardians. We also look to embrace the same bold and innovative spirit that Virgin uses to change business for good and apply it to the world’s toughest challenges. This means working with businesses, and backing entrepreneurs, that drive positive social, environmental and economic benefits for people and the planet .A key component of Virgin Unite is our Constellation – a network and community of over 3,500 high net-wealth individuals, philanthropists, business leaders and entrepreneurs who convene to co-create solutions to some of the world’s biggest problems."
+        },
+        "tags_focus": [
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Environment/Climate"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24347,
+        "name": "Romanian Federation for Community Foundations",
+        "address": "",
+        "country": "",
+        "email": "",
+        "website": "https://ffcr.ro/",
+        "type": {
+            "value": "affiliate",
+            "label": "Philanthropy infrastructure organisation"
+        },
+        "position": {
+            "address": "Int. Dridu nr. 7, bl. F13, sc. B, ap. 68, sector 1",
+            "lat": 44.452444,
+            "lng": 26.0856777,
+            "zoom": 16,
+            "place_id": "ChIJX-KIi7kDskARFJCx_PyWpi4",
+            "city": "Bucharest",
+            "state": "Bucharest",
+            "country": "Romania",
+            "country_short": "RO"
+        },
+        "link": "https://philea.eu/members/romanian-federation-for-community-foundations/",
+        "philea_info": {
+            "About": "FFCR’s vision is to develop a strong network of Community Foundations that contribute to transforming every community into a welcoming “home” by supporting local philanthropy and civic initiatives. The organization’s mission is to be the network that creates sustainable, active, and inclusive communities through national programs, expertise, strategic partnerships, and collaborative leadership. The Federation promotes strategic philanthropy, cross-sector collaboration (public, private, civil society), social responsibility, and civic engagement, aiming to support individuals and organizations that invest in the development of their own communities. FFCR’s actions are guided by the values of Togetherness, Trust, and Foresight and Leadership.",
+            "Mission": "To be the network that creates sustainable, active, and inclusive communities through national programs, expertise, strategic partnerships, and collaborative leadership."
+        },
+        "tags_focus": [
+            "Citizenship, Social Justice & Public Affairs",
+            "Civil society, Voluntarism & Non-Profit Sector"
+        ],
+        "geo_locations": {
+            "Europe (Central & Eastern / Balkans)": [
+                "Romania"
+            ]
+        }
+    },
+    {
+        "id": 24346,
+        "name": "Grundfos Foundation",
+        "address": "",
+        "country": "",
+        "email": "",
+        "website": "https://www.pdjf.dk/en/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Poul Due Jensens Vej 7, Bjerringbro, Denmark",
+            "lat": 56.3802866,
+            "lng": 9.6690239,
+            "zoom": 14,
+            "place_id": "ChIJ1faoOTH4S0YRTPoMyHenWaM",
+            "name": "Poul Due Jensens Vej 7",
+            "street_number": "7",
+            "street_name": "Poul Due Jensens Vej",
+            "city": "Bjerringbro",
+            "post_code": "8850",
+            "country": "Denmark",
+            "country_short": "DK"
+        },
+        "link": "https://philea.eu/members/grundfos-foundation/",
+        "philea_info": {
+            "About": "The main purpose of the Grundfos Foundation is to ensure and support healthy economic growth and development of the Grundfos Group. The Foundation fulfils its main purpose through exercising active ownership towards the Grundfos Group.",
+            "Mission": "The main purpose of the Grundfos Foundation is to ensure and support healthy economic growth and development of the Grundfos Group. The Foundation fulfils its main purpose through exercising active ownership towards the Grundfos Group.",
+            "Geographic Focus": "Global, with a focus on Denmark",
+            "Programme Areas": "Philanthropy The Foundation runs its philanthropic business through donations to areas that are in harmony with the will and principles of the founder; contribute positively to the sustainable development of Grundfos and the surrounding community; contribute to the pride of Grundfos’ employeesaffect society and strengthen relationships that support Grundfos’ work; maintain the Foundation and Grundfos as socio-bearing entities. The Foundation’s donations are given primarily in three areas: Research and Learning: The Foundation supports selected research environments, especially within natural and technical science and initiatives that inspire children and young people to explore science and technology\nWater and Sustainable Development: The Foundation strives to provide access to affordable drinking water and sanitation for the world’s poorest. The aim is to contribute to reducing global inequality.\nInclusion and Community Engagement: The Foundation focuses on the Central Jutland Region and the municipalities that are close to Grundfos’ home in Bjerringbro and supports Grundfos companies all over the world building local partnerships with organisations, institutions and associations. Grants from the Foundation must first and foremost benefit the intended beneficiaries. A project may very well cover several areas. For example, it is desirable that follow-up research be linked to projects within water and social inclusion. Likewise, initiatives in the field of water also contribute to social inclusion – in the form of, for example, local workplaces and improved communities. The Foundation not only supports fully designed projects, but also concept development, studies, project and product development."
+        },
+        "tags_focus": [
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Education",
+            "Health",
+            "Sciences & Research",
+            "Socio-economic Development, Poverty",
+            "Youth/Children Development"
+        ],
+        "geo_locations": {
+            "Europe (Nordic Region)": [
+                "Denmark"
+            ],
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 24345,
+        "name": "Exea Impact",
+        "address": "",
+        "country": "",
+        "email": "",
+        "website": "http://www.exeaimpact.org",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Puig Brands Torre 2, Plaça d'Europa, 34, L'Hospitalet de Llobregat, Spain",
+            "lat": 41.357969,
+            "lng": 2.1227306,
+            "zoom": 14,
+            "place_id": "ChIJ-a07tUCZpBIRjPXXZQm5n6c",
+            "name": "Puig Brands Torre 2",
+            "street_number": "34",
+            "street_name": "Plaça d'Europa",
+            "street_name_short": "Pl. d'Europa",
+            "city": "L'Hospitalet de Llobregat",
+            "state": "Catalunya",
+            "state_short": "CT",
+            "post_code": "08908",
+            "country": "Spain",
+            "country_short": "ES"
+        },
+        "link": "https://philea.eu/members/exea-impact/",
+        "philea_info": {
+            "About": ""
+        },
+        "tags_focus": [],
+        "geo_locations": {
+            "Europe (Southern / Mediterranean)": [
+                "Spain"
+            ]
+        }
+    },
+    {
+        "id": 24344,
+        "name": "Bulgarian Fund for Women",
+        "address": "",
+        "country": "Bulgaria",
+        "email": "",
+        "website": "https://bgfundforwomen.org/en/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "улица „Солунска“ 26, Sofia, Bulgaria",
+            "lat": 42.6929644,
+            "lng": 23.3191476,
+            "zoom": 14,
+            "place_id": "ChIJUXfHw2yFqkARScaIU7ZQWBI",
+            "name": "Solunska Street 26",
+            "street_number": "26",
+            "street_name": "Solunska Street",
+            "city": "Sofia",
+            "state": "Sofia City Province",
+            "post_code": "1000",
+            "country": "Bulgaria",
+            "country_short": "BG"
+        },
+        "link": "https://philea.eu/members/bulgarian-fund-for-women/",
+        "philea_info": {
+            "About": "The Bulgarian Fund for Women’s major areas of expertise center on grantmaking for women’s rights, building the capacity of civil society organizations, and advancing gender equality and social justice in Bulgaria and the wider region. The organization has developed particular strengths in feminist philanthropy, intersectional advocacy, and supporting grassroots activism across diverse marginalized groups, including LGBTI+, rural women, migrants, and people with disabilities.",
+            "Mission": "To support the human rights and social justice movements by advancing philanthropy aimed at achieving structural change.",
+            "Geographic Focus": "Bulgaria",
+            "Programme Areas": "Distinguishing Characteristics BFW is distinguished as the only indigenous feminist foundation in Bulgaria, independent from any family, corporate, or external donor governance. It leads with an intersectional approach, prioritizing social inclusion and innovative movement building. Its expertise includes developing local resources, nurturing coalitions, and collaborating with both national and European partners to address systemic barriers and deliver impactful, evidence-based programming. Key Strength or Contribution BFW’s key strength is its ability to combine grantmaking with deep local engagement—mobilizing knowledge, networks, and resources to empower underrepresented groups and drive public policy changes. Its contribution to society is seen in capacity building for women’s organizations, cross-sector advocacy, and fostering a resilient ecosystem for gender justice and democracy in Bulgaria. This independent and strategic approach amplifies the voices of the most vulnerable, catalyzes wider social movements, and sustains long-term feminist change. Thematic Areas: Arts & Culture,\nCitizenship, Social Justice & Public Affairs,\nCivil society, Voluntarism & Non-Profit Sector,\nEmployment/Workforce,\nEnvironment/Climate,\nHuman/Civil Rights,\nGender equality and women’s empowerment Prevention ofgender-based violence and discrimination LGBTI+ rightsadvocacy Intersectional movement building formarginalized groups Activity Areas: Grantmaking: Providing core and project funding to women’s rights and gender justice organizations across Bulgaria.\nCapacity building: Offering training, mentoring, networking, and collective action platforms for grassroots leaders and organizations.\nAdvocacy & research: Conducting research on the status of women’s rights and civil society, and leading advocacy to inform public policy and philanthropy.\nAwareness and movement building: Developing feminist campaigns, convening forums, and supporting collective movement action for gender equality and democracy."
+        },
+        "tags_focus": [
+            "Arts & Culture",
+            "Citizenship, Social Justice & Public Affairs",
+            "Civil society, Voluntarism & Non-Profit Sector",
+            "Education",
+            "Environment/Climate",
+            "Human/Civil Rights",
+            "Sciences & Research",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Europe (Central & Eastern / Balkans)": [
+                "Bulgaria"
+            ]
+        }
+    },
+    {
+        "id": 23661,
+        "name": "Kosovar Civil Society Foundation",
+        "address": "MUSA TOLAJ, LAM A, H1, KAT.12, NR. 10000 Prishtine Kosovo",
+        "country": "",
+        "email": "",
+        "website": "http://www.kcsfoundation.org/",
+        "type": {
+            "value": "affiliate",
+            "label": "Philanthropy infrastructure organisation"
+        },
+        "position": {
+            "address": "MUSA TOLAJ, LAM A, H1, KAT.12, NR. 10000 Prishtine Kosovo",
+            "lat": 42.6673053,
+            "lng": 21.1643067,
+            "zoom": 14,
+            "place_id": "ChIJJwkRBeaeVBMRWrleON-_ZZM",
+            "city": "Pristina"
+        },
+        "link": "https://philea.eu/members/kosovar-civil-society-foundation/",
+        "philea_info": {
+            "About": "Since its establishment in 1998 KCSF has functioned as a civil society hub, initially with significant expertise in financial and capacity building support to civil society and later also with extensive advocacy for protecting and advancing civic space. Within these core areas of work, KCSF’s in-house expertise includes grant making, civic participation, public funding for civil society, civil society-government cooperation, freedom of association, internal governance of CSOs, as well as civil society inclusion in European Integration. While primarily focused in Kosovo, KCSF has actively contributed to these areas also at the regional level in the Balkans, as well as participated in various European and global initiatives. KCSF is recognized for its systematic and holistic approach, namely insisting on building larger and integrated systems rather than one-off solutions. It is also recognized as a vocal supporter and contributor of localized approaches in supporting civil society, by both advocating for and applying support programs that are contextualized, in line with local needs and capacities and mindful of local culture. With a plethora of high-impact success stories over the years, in general KCSF is proud to have had enabled and empowered thousands of CSOs, informal groups and activists to become active and influential actors of Kosovo’s public life through adequate funding and tailor-made capacity building, while providing a crucial contribution through its advocacy to Kosovo being the only country in the Western Balkans to maintain a positive trend of civic space for over two decades now.",
+            "Mission": "Kosovar Civil Society Foundation (KCSF) is an independent, non-profit organisation which supports the development of civil society and initiatives that promote a democratic culture and respond to socio-economic needs of Kosovo, with particular focus on contributing to the process of integration in the European Union.",
+            "Geographic Focus": "Kosovo"
+        },
+        "tags_focus": [
+            "Arts & Culture",
+            "Citizenship, Social Justice & Public Affairs"
+        ],
+        "geo_locations": {
+            "Europe (Central & Eastern / Balkans)": [
+                "Kosovo"
+            ]
+        }
+    },
+    {
+        "id": 23660,
+        "name": "Swarovski Foundation",
+        "address": "Chiswick Business Park, Chiswick High Road, London, UK",
+        "country": "",
+        "email": "",
+        "website": "https://www.swarovskifoundation.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Chiswick Business Park, Chiswick High Road, London, UK",
+            "lat": 51.4930604,
+            "lng": -0.2748696,
+            "zoom": 14,
+            "place_id": "ChIJ-RcBF8UPdkgRvDCVVgd4zeE",
+            "name": "Chiswick Business Park",
+            "street_number": "566",
+            "street_name": "Chiswick High Road",
+            "street_name_short": "Chiswick High Rd.",
+            "city": "London",
+            "state": "England",
+            "post_code": "W4 5AN",
+            "country": "United Kingdom",
+            "country_short": "GB"
+        },
+        "link": "https://philea.eu/members/swarovski-foundation/",
+        "philea_info": {
+            "About": "Established in 2013, the Swarovski Foundation is inspired by a long history of philanthropy initiated by the company founder Daniel Swarovski who believed that “to achieve lasting change, you must think not only of yourself but also of others”. The Swarovski Foundation’s mission is to promote sustainable livelihoods through education to reduce inequality by supporting work that focuses on Equity, Water, and Creativity, and through initiatives: Action Fund, Waterschool and Creatives for Our Future. Since its inception, the Swarovski Foundation has reached over 2 million people in 93 countries through 85 partnerships to drive progress towards the Sustainable Development Goals set out by the United Nations. The Swarovski Foundation is a UK charity governed and managed by a Board of Trustees and chaired by Marisa Schiestl-Swarovski.",
+            "Mission": "To promote sustainable livelihoods through education to reduce inequalities",
+            "Geographic Focus": "Global",
+            "Programme Areas": "Equity – to empower marginalised groups\nWater – to improve water security\nCreativity – to advance creative talent Own Initiatives Action Fund – The Action Fund supports organisations providing immediate relief to the most marginalised communities affected by urgent crises.\nCreatives For Our Future – Creatives For Our Future empowers the next generation of creative talent to unlock innovative approaches to our global sustainability challenges and drive progress towards the Sustainable Development Goals.\nWaterschool – The Waterschool empowers and educates young people on sustainable practices to address their local water challenges and improve water security globally."
+        },
+        "tags_focus": [
+            "Environment/Climate"
+        ],
+        "geo_locations": {
+            "Worldwide": [
+                "Global"
+            ]
+        }
+    },
+    {
+        "id": 23659,
+        "name": "L'Oréal Fund for Women",
+        "address": "14 Rue Royale, Paris, France",
+        "country": "",
+        "email": "",
+        "website": "http://fondationloreal.com/en",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "14 Rue Royale, Paris, France",
+            "lat": 48.8681213,
+            "lng": 2.3233605,
+            "zoom": 14,
+            "place_id": "ChIJfYB-yTJu5kcRdfw3SUPUciI",
+            "name": "14 Rue Royale",
+            "street_number": "14",
+            "street_name": "Rue Royale",
+            "city": "Paris",
+            "state": "Île-de-France",
+            "state_short": "IDF",
+            "post_code": "75008",
+            "country": "France",
+            "country_short": "FR"
+        },
+        "link": "https://philea.eu/members/loreal-fund-for-women/",
+        "philea_info": {
+            "About": "Women & girls dedicated Fund. We’re supporting NGO and grassroot organisations to help women & girls in different areas : training, education, socio professional integration, emergency needs. our main mission is to empower these women and girls worldwide",
+            "Mission": "Our mission is to support organisations helping women and girls in situation of high vulnerability",
+            "Geographic Focus": "North America, Latin America, Asia, Europe, Africa, Middle East",
+            "Programme Areas": "Education,\nEmployment/Workforce,\nSocio-economic Development, Poverty"
+        },
+        "tags_focus": [
+            "Education",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Latin America & Caribbean": [
+                "Latin America"
+            ],
+            "Middle East & North Africa (MENA)": [
+                "Middle East"
+            ],
+            "Europe (Western / General)": [
+                "Europe"
+            ],
+            "Africa / Sub-Saharan Africa": [
+                "Africa"
+            ],
+            "Asia & Pacific": [
+                "Asia"
+            ],
+            "North America": [
+                "United States"
+            ]
+        }
+    },
+    {
+        "id": 23658,
+        "name": "Foundever.org",
+        "address": "600 Brickell Ave ste 3200, Miami, FL, USA",
+        "country": "",
+        "email": "",
+        "website": "https://foundever.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "600 Brickell Ave ste 3200, Miami, FL, USA",
+            "lat": 25.7679928,
+            "lng": -80.19088359999999,
+            "zoom": 14,
+            "place_id": "Ei82MDAgQnJpY2tlbGwgQXZlIHN0ZSAzMjAwLCBNaWFtaSwgRkwgMzMxMzEsIFVTQSIkGiIKFgoUChIJ4bneW7y32YgRNTylH3ujU3oSCHN0ZSAzMjAw",
+            "name": "600 Brickell Ave ste 3200",
+            "street_number": "600",
+            "street_name": "Brickell Avenue",
+            "street_name_short": "Brickell Ave",
+            "city": "Miami",
+            "state": "Florida",
+            "state_short": "FL",
+            "post_code": "33131",
+            "country": "United States",
+            "country_short": "US"
+        },
+        "link": "https://philea.eu/members/foundever-org/",
+        "philea_info": {
+            "About": "Foundever.org specializes in education, employability, and social inclusion, building on the expertise of Foundever® in the Customer Experience (CX) industry. We focus on developing critical skills — such as digital and AI literacy, financial education, mentoring, and job-readiness — to empower individuals who face barriers to employment. What distinguishes us is our ability to adapt the proven impact sourcing model of the CX industry for the greater good, extending its benefits beyond business needs to support underserved communities. Our key contribution to society is promoting inclusion and equity by helping people gain the skills and confidence needed to access better opportunities.",
+            "Mission": "Our mission is to build and leverage educational programs to benefit untapped talent in deprived communities around the world and prepare individuals for their next employment opportunities.",
+            "Geographic Focus": "Europe; Africa (Egypt, South Africa, Morocco); Philippines;Latin America.",
+            "Programme Areas": "Citizenship, Social Justice & Public Affairs,\nEducation,\nEmployment/Workforce,\nSocial/Human Services,\nSocio-economic Development, Poverty"
+        },
+        "tags_focus": [
+            "Citizenship, Social Justice & Public Affairs",
+            "Education",
+            "Socio-economic Development, Poverty"
+        ],
+        "geo_locations": {
+            "Latin America & Caribbean": [
+                "Latin America"
+            ],
+            "Africa / Sub-Saharan Africa": [
+                "Africa",
+                "South Africa"
+            ],
+            "Asia & Pacific": [
+                "Philippines"
+            ],
+            "Middle East & North Africa (MENA)": [
+                "Egypt",
+                "Morocco"
+            ],
+            "Europe (Western / General)": [
+                "Europe"
+            ],
+            "North America": [
+                "United States"
+            ]
+        }
+    },
+    {
+        "id": 23656,
+        "name": "Fondazione Capellino",
+        "address": "Via de Marini, 1, Genoa, Metropolitan City of Genoa, Italy",
+        "country": "",
+        "email": "",
+        "website": "https://fondazionecapellino.org/en/fondazione-capellino",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Via de Marini, 1, Genoa, Metropolitan City of Genoa, Italy",
+            "lat": 44.4084736,
+            "lng": 8.900479599999999,
+            "zoom": 14,
+            "place_id": "ChIJ-1idExVB0xIRJw8sHBtYXOM",
+            "name": "Via de Marini, 1",
+            "street_number": "1",
+            "street_name": "Via de Marini",
+            "city": "Genova",
+            "state": "Liguria",
+            "state_short": "GE",
+            "post_code": "16149",
+            "country": "Italy",
+            "country_short": "IT"
+        },
+        "link": "https://philea.eu/members/fondazione-capellino/",
+        "philea_info": {
+            "About": "Their areas of intervention are: Habitat & Biodiverse Corridors, Climate Change, Regenerative Agriculture. The distinguishing characteristics of our organisation in our model called “Reintegration Economy”",
+            "Mission": "The Foundation’s purpose is:\n(a) the protection of the biosphere and biodiversity, through: (i) targeted initiatives and projects for protection, conservation and renaturalisation as well as for reducing the impact of human activities on the environment;\n(ii) cultural awareness and political activity initiatives;\n(iii) the promotion and experimentation of new alternative socio-economic, productive, cultural and political models that achieve a synthesis between the needs of human beings and the protection of the biosphere and biodiversity; (b) the acquisition of financial and cultural autonomy instrumental to the protection of the biosphere and biodiversity, through: (i) the management and valorization of the shares held in joint-stock companies, through the exercise of the related social rights, ensuring, to the extent of its competence, that the management is in accordance with the values of the Foundation;\n(ii) operations aimed at increasing its assets over time: to this end, it can establish, acquire, participate in capital companies;\n(iii) participation in foundations, associations, other bodies or organizations that comply with the values of the Foundation.",
+            "Geographic Focus": "EU, America, Africa",
+            "Programme Areas": "Environment/Climate,\nFood, Agriculture & Nutrition"
+        },
+        "tags_focus": [
+            "Environment/Climate",
+            "Food, Agriculture & Nutrition"
+        ],
+        "geo_locations": {
+            "Africa / Sub-Saharan Africa": [
+                "Africa"
+            ],
+            "Europe (Western / General)": [
+                "European Union"
+            ],
+            "North America": [
+                "United States"
+            ]
+        }
+    },
+    {
+        "id": 22839,
+        "name": "Ursimone Wietslibach Foundation",
+        "address": "Bahnhofstrasse 25, Zug, Switzerland",
+        "country": "Switzerland",
+        "email": "",
+        "website": "http://www.uswf.ch/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "Bahnhofstrasse 25, Zug, Switzerland",
+            "lat": 47.1701744,
+            "lng": 8.515627799999999,
+            "zoom": 14,
+            "place_id": "ChIJb1ehsPeqmkcRtoioJVUTpCc",
+            "name": "Bahnhofstrasse 25",
+            "street_number": "25",
+            "street_name": "Bahnhofstrasse",
+            "city": "Zug",
+            "state": "Zug",
+            "state_short": "ZG",
+            "post_code": "6300",
+            "country": "Switzerland",
+            "country_short": "CH"
+        },
+        "link": "https://philea.eu/members/ursimone-wietslibach-foundation/",
+        "philea_info": {
+            "About": "They act entrepreneurially and invest in bold ideas and long-term partnerships. This is how they ensure communities have access to holistic health, human development, and active living.",
+            "Mission": "To help shape a world in which everyone can lead a fulfilling, active life — characterized by meaning, joy, and shared sustainability.",
+            "Geographic Focus": "Switzerland and the Mekong Region (Cambodia, Laos, Myanmar and Thailand Border area to Myanmar)",
+            "Programme Areas": "Holistic Health & Prevention Healthcare systems around the world primarily focus on treating diseases, with economic incentives directed towards established medical methods. Human Development For Well-Being Young people aged 15 to 25 in the Mekong region face significant difficulties transitioning from formal education to employment due to a lack of skills and digital literacy in the light of demanding employer requirements. Active Lifestyle People from low-income and challenging backgrounds often face barriers to participating in sports, including high costs, limited access to facilities, and lack of encouragement. Connecting Themes In all our impact areas we strive to include three important themes which intersect our impact areas, namely: inclusion, nutrition and consciousness. Inclusion The foundation aims to promote inclusion by integrating it into all initiatives, recognizing its strategic advantage and essential role in society. Disabilities are often invisible and affect individuals at all stages of life. By 2035, the goal is to be a leading inclusive funding foundation that inspires others. Nutrition The foundation recognizes the fundamental role of nutrition in health, human development, and sports, aiming to establish it as a cross-cutting theme in all funding areas by 2035. Nutrition is crucial for physical and mental health, cognitive development, and athletic performance, and addressing it can help prevent rising issues like obesity, diabetes, and cardiovascular diseases. Consciousness The foundation aims to promote awareness and mindfulness, integrating it into all programme designs by 2035. This involves fostering personal and collective behaviour change through practical knowledge and motivation."
+        },
+        "tags_focus": [
+            "Education",
+            "Health"
+        ],
+        "geo_locations": {
+            "Europe (Western / General)": [
+                "Switzerland"
+            ],
+            "Asia & Pacific": [
+                "Cambodia",
+                "Laos",
+                "Myanmar",
+                "Thailand"
+            ]
+        }
+    },
+    {
+        "id": 22838,
+        "name": "America for Bulgaria Foundation",
+        "address": "ul. \"Malyovitsa\" 6, Sofia, Bulgaria",
+        "country": "Bulgaria",
+        "email": "",
+        "website": "http://www.us4bg.org/",
+        "type": {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        },
+        "position": {
+            "address": "ul. \"Malyovitsa\" 6, Sofia, Bulgaria",
+            "lat": 42.6892438,
+            "lng": 23.3287435,
+            "zoom": 14,
+            "place_id": "ChIJAfc9RQuFqkAR6o_IfC7KKpk",
+            "name": "ul. \"Malyovitsa\" 6",
+            "street_number": "6",
+            "street_name": "ulitsa \"Malyovitsa\"",
+            "street_name_short": "ul. \"Malyovitsa\"",
+            "city": "Sofia",
+            "state": "Sofia City Province",
+            "post_code": "1000",
+            "country": "Bulgaria",
+            "country_short": "BG"
+        },
+        "link": "https://philea.eu/members/america-for-bulgaria-foundation/",
+        "philea_info": {
+            "About": "The America for Bulgaria Foundation works in partnership with Bulgarians to support the country’s private sector and related democratic institutions.",
+            "Mission": "The America for Bulgaria Foundation works in partnership with Bulgarians to support the country’s private sector and related democratic institutions.",
+            "Programme Areas": "1. Private Sector Development Supporting entrepreneurship and small business growth.\nPromoting innovation ecosystems.\nEncouraging partnerships between business, academia, and government. 2. Education Enhancing the quality of education at all levels.\nSupporting STEM (Science, Technology, Engineering, Mathematics) programs.\nPromoting entrepreneurship and innovation among youth.\nImproving teacher training and leadership development. 3. Civic Engagement and Democratic Institutions Strengthening civil society and independent media.\nPromoting transparency, rule of law, and anti-corruption efforts.\nEncouraging citizen participation and community building. 4. Cultural Heritage and Tourism Preserving and promoting Bulgaria’s cultural heritage.\nInvesting in historical sites and museums.\nEnhancing Bulgaria’s image as an alternative/cultural and nature tourism destination 5. Leadership Development Nurturing the next generation of leaders across sectors.\nProviding fellowships, exchanges, and professional development programs."
+        },
+        "tags_focus": [
+            "Education"
+        ],
+        "geo_locations": {
+            "Europe (Central & Eastern / Balkans)": [
+                "Bulgaria"
+            ],
+            "North America": [
+                "United States"
+            ]
+        }
+    },
+    {
         "name": "#WILLDOES",
         "link": "https://www.hinchilla.com/funder-directory/willdoes",
         "philea_info": {
@@ -14,10 +1401,10 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£83,629 (2023-24)",
+            "annual_giving": "€100,355 (2023-24) (converted from GBP)",
             "success_rate": "",
             "decision_time": "",
-            "grant_range": "£4,000 - £10,000",
+            "grant_range": "€4,800 - €12,000 (converted from GBP)",
             "funding_model": "No Public Process"
         },
         "tags_focus": [
@@ -27,7 +1414,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.willdoes.co.uk/",
+        "address": "",
+        "email": ""
     },
     {
         "name": "10 % For The Ocean",
@@ -44,7 +1434,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£213,081 (2024 expenditure)",
+            "annual_giving": "€255,697 (2024 expenditure) (converted from GBP)",
             "success_rate": "Not publicly available",
             "decision_time": "Not publicly disclosed",
             "grant_range": "Not publicly disclosed (described as \"micro-grants\" and \"unrestricted funding\")",
@@ -66,7 +1456,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.10percentfortheocean.org",
+        "address": "",
+        "email": ""
     },
     {
         "name": "136193034",
@@ -103,7 +1496,10 @@
             "North America": [
                 "United States"
             ]
-        }
+        },
+        "website": "https://www.novartis.com/us-en/esg/corporate-responsibility/novartis-us-foundation",
+        "address": "",
+        "email": ""
     },
     {
         "name": "20th International Geographical Congress Fund",
@@ -120,10 +1516,10 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£3,500 (one grant per year from this fund)",
+            "annual_giving": "€4,200 (converted from GBP)",
             "success_rate": "Not publicly disclosed",
             "decision_time": "Approximately 8-12 weeks",
-            "grant_range": "Up to £3,500 (single grant awarded)",
+            "grant_range": "Up - €4,200 (converted from GBP)",
             "funding_model": ""
         },
         "tags_focus": [
@@ -136,7 +1532,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.rgs.org/in-the-field/grants/research-grants/rgs-ibg-small-research-grants",
+        "address": "",
+        "email": ""
     },
     {
         "name": "3R Foundation",
@@ -145,7 +1544,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A G Manly Charitable Trust",
@@ -154,7 +1556,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A H Boulton Trust",
@@ -185,7 +1590,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://register-of-charities.charitycommission.gov.uk/charity-search/-/charity-details/219907",
+        "address": "31 Linkside, WIRRAL, Merseyside, CH63 5PE",
+        "email": "steven.greenall@ntlworld.com"
     },
     {
         "name": "A J Bell Trust",
@@ -194,7 +1602,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A J H Ashby Will Trust",
@@ -203,7 +1614,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A P Taylor Trust",
@@ -220,7 +1634,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£131,111 (most recent year)",
+            "annual_giving": "€157,333 (converted from GBP)",
             "success_rate": "Not available",
             "decision_time": "3-4 months (January deadline, May distribution)",
             "grant_range": "Not specified",
@@ -233,7 +1647,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.aptaylortrust.org.uk",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A S Hornby Educational Trust Cio",
@@ -242,7 +1659,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A W Charitable Trust",
@@ -259,7 +1679,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£5,570,000 (charitable activities, year ending 30 June 2024)",
+            "annual_giving": "€6,684,000 (converted from GBP)",
             "success_rate": "",
             "decision_time": "Not publicly disclosed",
             "grant_range": "Not publicly disclosed",
@@ -276,7 +1696,10 @@
             "Worldwide": [
                 "International"
             ]
-        }
+        },
+        "website": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=283322&subid=0",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A Z H R CHARITABLE TRUST",
@@ -293,7 +1716,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£163,370 (2025)",
+            "annual_giving": "€196,044 (2025) (converted from GBP)",
             "success_rate": "Not publicly available",
             "decision_time": "Not publicly available",
             "grant_range": "Not publicly disclosed",
@@ -306,7 +1729,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "A G Leventis Foundation",
@@ -315,7 +1741,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Abo Trust",
@@ -324,7 +1753,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACACIA CHARITABLE TRUST",
@@ -341,7 +1773,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£95,948 (2024)",
+            "annual_giving": "€115,138 (2024) (converted from GBP)",
             "success_rate": "Not publicly available",
             "decision_time": "At trustees' discretion",
             "grant_range": "Not publicly specified",
@@ -354,7 +1786,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Academie du Vin Foundation",
@@ -371,10 +1806,10 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£281,025 (2024)",
+            "annual_giving": "€337,230 (2024) (converted from GBP)",
             "success_rate": "Not publicly available",
             "decision_time": "Not publicly specified",
-            "grant_range": "£2,500 - £5,000 (individual scholarships and bursaries)",
+            "grant_range": "€3,000 - €6,000 (converted from GBP)",
             "funding_model": ""
         },
         "tags_focus": [
@@ -414,7 +1849,10 @@
                 "Ireland",
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.iwsc.net",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Academy Of Medical Sciences",
@@ -423,7 +1861,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Access The Foundation For Social Investment",
@@ -432,7 +1873,10 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACE Africa (UK)",
@@ -449,7 +1893,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£541,466 (financial year ending December 2024)",
+            "annual_giving": "€649,759 (converted from GBP)",
             "success_rate": "Not applicable (invitation only)",
             "decision_time": "Not applicable",
             "grant_range": "Not publicly disclosed",
@@ -468,7 +1912,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.ace-africa.org",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Achisomoch Aid Company Limited",
@@ -523,7 +1970,10 @@
             "Europe (Southern / Mediterranean)": [
                 "Italy"
             ]
-        }
+        },
+        "website": "https://achisomoch.org/",
+        "address": "COHEN ARNOLD, NEW BURLINGTON HOUSE, 1075 FINCHLEY ROAD, LONDON, NW11 0PU",
+        "email": "admin@achisomoch.org"
     },
     {
         "name": "ACTACC",
@@ -540,10 +1990,10 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£96,024 (2024)",
+            "annual_giving": "€115,229 (2024) (converted from GBP)",
             "success_rate": "Not publicly available",
             "decision_time": "Applications adjudicated by Education Committee; announcements at Spring Scientific Meeting",
-            "grant_range": "£5,000 - £70,000",
+            "grant_range": "€6,000 - €84,000 (converted from GBP)",
             "funding_model": ""
         },
         "tags_focus": [
@@ -558,7 +2008,10 @@
                 "Ireland",
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.actacc.org",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACTION FOR A-T",
@@ -578,7 +2031,7 @@
             "annual_giving": "Not publicly available",
             "success_rate": "",
             "decision_time": "",
-            "grant_range": "Up to £250,000",
+            "grant_range": "Up - €300,000 (converted from GBP)",
             "funding_model": ""
         },
         "tags_focus": [
@@ -602,7 +2055,10 @@
             "North America": [
                 "United States"
             ]
-        }
+        },
+        "website": "https://www.actionforAT.org",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACTION FOR SUSTAINABLE COMMUNITIES FOUNDATION",
@@ -619,7 +2075,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£39,264 (2024)",
+            "annual_giving": "€47,117 (2024) (converted from GBP)",
             "success_rate": "",
             "decision_time": "",
             "grant_range": "Not publicly specified",
@@ -644,7 +2100,10 @@
                 "Africa",
                 "Malawi"
             ]
-        }
+        },
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACTION MEDICAL RESEARCH",
@@ -661,10 +2120,10 @@
             "email": "info@action.org.uk",
             "address": "Action Medical Research, 5th Floor, 167-169 Great Portland Street, London, W1W 5PF",
             "applicationPortal": "",
-            "annual_giving": "£4.24 million (charitable activities expenditure, 2024)",
+            "annual_giving": "€5 (converted from GBP)",
             "success_rate": "33-40% (for full applications)",
             "decision_time": "9-10 months (from outline to award)",
-            "grant_range": "Up to £200,000 (£250,000 for co-funded awards)",
+            "grant_range": "Up - €240,000 (converted from GBP)",
             "funding_model": ""
         },
         "tags_focus": [
@@ -678,7 +2137,10 @@
                 "Ireland",
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.action.org.uk",
+        "address": "Action Medical Research, 5th Floor, 167-169 Great Portland Street, London, W1W 5PF",
+        "email": "info@action.org.uk"
     },
     {
         "name": "Action With Communities In Rural England Acre",
@@ -691,7 +2153,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACTIS ACTS CIO",
@@ -708,7 +2173,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£1,170,000 committed (23 grants across 21 portfolio companies)",
+            "annual_giving": "€1,404,000 (converted from GBP)",
             "success_rate": "",
             "decision_time": "",
             "grant_range": "",
@@ -750,7 +2215,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.act.is/people/actis-acts/",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ACTIVE CHESHIRE",
@@ -770,7 +2238,7 @@
             "annual_giving": "",
             "success_rate": "",
             "decision_time": "",
-            "grant_range": "£200 - £25,000 (through partnership programmes)",
+            "grant_range": "€240 - €30,000 (converted from GBP)",
             "funding_model": ""
         },
         "tags_focus": [
@@ -782,7 +2250,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.activecheshire.org",
+        "address": "",
+        "email": ""
     },
     {
         "name": "ADAR CHARITABLE TRUST",
@@ -799,7 +2270,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£175,451 (FY 2024)",
+            "annual_giving": "€210,541 (converted from GBP)",
             "success_rate": "Not publicly available",
             "decision_time": "Not publicly available",
             "grant_range": "Not publicly disclosed",
@@ -812,7 +2283,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Addenbrooke's Charitable Trust",
@@ -832,7 +2306,7 @@
             "annual_giving": "",
             "success_rate": "",
             "decision_time": "2 weeks (under £10,000); up to 3 months (£10,000+)",
-            "grant_range": "No minimum - £40,000+ (larger grants by discussion)",
+            "grant_range": "No minimum - €48,000 (converted from GBP)",
             "funding_model": "Rolling basis via online portal"
         },
         "tags_focus": [
@@ -862,7 +2336,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.act4addenbrookes.org.uk",
+        "address": "BOX 126, ADDENBROOKES HOSPITAL, HILLS ROAD, CAMBRIDGE, CB2 0QQ",
+        "email": "hello@act4addenbrookes.org.uk"
     },
     {
         "name": "Adderbury Feoffee Charity",
@@ -879,7 +2356,7 @@
             "email": "",
             "address": "",
             "applicationPortal": "",
-            "annual_giving": "£8,000 - £10,000 (approx)",
+            "annual_giving": "€9,600 - €12,000 (converted from GBP)",
             "success_rate": "",
             "decision_time": "",
             "grant_range": "Not specified",
@@ -892,7 +2369,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://adderburyfeoffee.co.uk/",
+        "address": "",
+        "email": ""
     },
     {
         "name": "Additional Curates Society",
@@ -920,7 +2400,10 @@
             "Europe (Western / General)": [
                 "United Kingdom"
             ]
-        }
+        },
+        "website": "https://www.additionalcurates.co.uk",
+        "address": "16 COMMERCIAL STREET, BIRMINGHAM, B1 1RS",
+        "email": "info@additionalcurates.co.uk"
     },
     {
         "name": "Adelphi Genetics Forum",
@@ -929,6 +2412,9 @@
             "Error": "No sections container in resolved payload"
         },
         "tags_focus": [],
-        "geo_locations": {}
+        "geo_locations": {},
+        "website": "",
+        "address": "",
+        "email": ""
     }
 ]
