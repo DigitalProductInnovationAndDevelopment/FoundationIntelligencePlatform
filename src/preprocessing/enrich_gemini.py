@@ -303,7 +303,8 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
             max_val = None
             if grant_range and "not publicly available" not in grant_range.lower():
                 range_numbers = []
-                for p in re.split(r'[-\s|to]+', grant_range):
+                range_str = re.sub(r'[\(\[\{].*?[\)\]\}]', '', grant_range)
+                for p in re.split(r'\s*(?:-|\bto\b)\s*', range_str, flags=re.IGNORECASE):
                     num = _extract_number(p)
                     if num is not None:
                         range_numbers.append(num)
