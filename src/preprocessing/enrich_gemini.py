@@ -78,7 +78,7 @@ def _generate_content_with_retry(client, model, contents, config, max_retries=3,
         except Exception as e:
             if attempt == max_retries - 1:
                 logger.error(f"Failed to generate content after {max_retries} attempts: {e}")
-                raise e
+                raise
             logger.warning(
                 f"Gemini API attempt {attempt + 1}/{max_retries} failed: {e}. "
                 f"Retrying in {delay} seconds..."
