@@ -131,6 +131,10 @@ class TestEnrichGemini(unittest.TestCase):
         self.assertEqual(_extract_number("626,000 CHF (2022)"), 626000.0)
         self.assertEqual(_extract_number("€10.000"), 10000.0)
         self.assertEqual(_extract_number("€12,50"), 12.5)
+        self.assertEqual(_extract_number("£4.24 million"), 4240000.0)
+        self.assertEqual(_extract_number("€10m"), 10000000.0)
+        self.assertEqual(_extract_number("1.5 billion"), 1500000000.0)
+        self.assertEqual(_extract_number("50k"), 50000.0)
         self.assertIsNone(_extract_number("Not publicly available"))
 
     @patch("preprocessing.enrich_gemini.genai.Client")

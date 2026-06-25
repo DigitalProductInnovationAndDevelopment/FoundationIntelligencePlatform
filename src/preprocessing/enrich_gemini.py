@@ -57,8 +57,17 @@ def _extract_number(val_str):
         if len(parts[-1]) != 2 and len(parts[-1]) != 1:
             num_str = num_str.replace('.', '')
             
+    val_lower = cleaned.lower()
+    multiplier = 1.0
+    if re.search(r'\bmillion\b|(?<=\d)m\b|\bm\b', val_lower):
+        multiplier = 1_000_000.0
+    elif re.search(r'\bbillion\b|(?<=\d)b\b|\bb\b', val_lower):
+        multiplier = 1_000_000_000.0
+    elif re.search(r'\bthousand\b|(?<=\d)k\b|\bk\b', val_lower):
+        multiplier = 1_000.0
+
     try:
-        return float(num_str)
+        return float(num_str) * multiplier
     except ValueError:
         return None
 
