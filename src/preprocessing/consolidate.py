@@ -19,7 +19,6 @@ def _extract_number(val_str):
     """
     Extracts a numeric float value from a string, ignoring currency symbols and years.
     Handles standard number formats (thousands separators, decimals).
-    Reuses the logic from enrich_gemini.py.
     """
     if not val_str or "not publicly available" in val_str.lower() or "not disclosed" in val_str.lower():
         return None
@@ -163,7 +162,7 @@ def match_members(m1, m2):
     """
     # 1. Website domain match (strong indicator)
     web1 = m1.get("website", "")
-    web2 = m2.get("philea_info", {}).get("website", "") if isinstance(m2.get("philea_info"), dict) else m2.get("website", "")
+    web2 = m2.get("website", "")
     
     dom1 = extract_domain(web1)
     dom2 = extract_domain(web2)
@@ -203,12 +202,106 @@ def match_members(m1, m2):
             
     return False
 
+def normalize_to_clean_schema(member, source_name):
+    """
+    Transforms any raw Philea or Hinchilla member dict into the clean unified schema.
+    """
+    p_info = member.get("philea_info", {})
+    if not isinstance(p_info, dict):
+        p_info = {}
+        
+    position = member.get("position", {})
+    if not isinstance(position, dict):
+        position = {}
+        
+    # Core fields
+    name = member.get("name", "").strip()
+    
+    # Type handling
+    m_type = member.get("type", {})
+    if not m_type or not isinstance(m_type, dict):
+        m_type = {
+            "value": "foundation",
+            "label": "Foundation and philanthropic organisation"
+        }
+        
+    # Address and position flattening
+    address = position.get("address", "") or member.get("address", "") or p_info.get("address", "") or ""
+    city = position.get("city", "")
+    state = position.get("state", "")
+    country = position.get("country", "") or member.get("country", "") or ""
+    
+    # Coordinates
+    latitude = position.get("lat", None)
+    if latitude is not None:
+        try:
+            latitude = float(latitude)
+        except (ValueError, TypeError):
+            latitude = None
+            
+    longitude = position.get("lng", None)
+    if longitude is not None:
+        try:
+            longitude = float(longitude)
+        except (ValueError, TypeError):
+            longitude = None
+            
+    # Standalone Hinchilla financial conversion (or general Hinchilla standardization)
+    annual_giving = p_info.get("annual_giving", "")
+    average_grant = p_info.get("average_grant", "")
+    grant_range = p_info.get("grant_range", "")
+    expenditure = p_info.get("expenditure", "")
+    
+    if source_name == "Hinchilla":
+        annual_giving = convert_gbp_to_eur(annual_giving)
+        average_grant = convert_gbp_to_eur(average_grant)
+        grant_range = convert_gbp_to_eur(grant_range)
+        expenditure = convert_gbp_to_eur(expenditure)
+        
+    funding_info = {
+        "annual_giving": annual_giving,
+        "average_grant": average_grant,
+        "grant_range": grant_range,
+        "funding_model": p_info.get("funding_model", ""),
+        "application_details": p_info.get("application_details", ""),
+        "success_rate": p_info.get("success_rate", ""),
+        "decision_time": p_info.get("decision_time", ""),
+        "expenditure": expenditure,
+        "charity_number": p_info.get("charityNumber", "") or p_info.get("charity_number", ""),
+        "application_portal": p_info.get("applicationPortal", "") or p_info.get("application_portal", ""),
+        "sources": p_info.get("sources", [])
+    }
+    
+    # Renaming tag & geo fields
+    thematic_focus = member.get("tags_focus", []) or member.get("thematic_focus", [])
+    geographic_focus = member.get("geo_locations", {}) or member.get("geographic_focus", {})
+    
+    return {
+        "name": name,
+        "source": source_name,
+        "type": m_type,
+        "website": member.get("website", "") or p_info.get("website", "") or "",
+        "email": member.get("email", "") or p_info.get("email", "") or "",
+        "address": address,
+        "city": city,
+        "state": state,
+        "country": country,
+        "latitude": latitude,
+        "longitude": longitude,
+        "funding_info": funding_info,
+        "thematic_focus": sorted(list(set(thematic_focus))),
+        "geographic_focus": geographic_focus
+    }
+
 def merge_members(p_member, h_member):
     """
     Merges a Philea member and Hinchilla member.
+    Both members must be in the clean schema.
     Logs and records discrepancies under a hidden `_discrepancies` field.
     """
+    # Create copy of Philea clean member as base
     merged = dict(p_member)
+    merged["source"] = "Philea, Hinchilla"
     
     # Track discrepancies
     discrepancies = {}
@@ -265,83 +358,83 @@ def merge_members(p_member, h_member):
                         "warning": "Field values differ."
                     }
         return p_val # Default to Philea (primary source)
-
-    # 1. Merge core fields
-    merged["name"] = h_member.get("name") if is_numeric(merged.get("name")) and not is_numeric(h_member.get("name")) else merged.get("name")
+        
+    # Resolve top level strings
+    merged["website"] = resolve_field("website", merged.get("website", ""), h_member.get("website", ""))
+    merged["address"] = resolve_field("address", merged.get("address", ""), h_member.get("address", ""))
+    merged["email"] = resolve_field("email", merged.get("email", ""), h_member.get("email", ""))
     
-    p_info = merged.setdefault("philea_info", {})
-    h_info = h_member.get("philea_info", {})
+    # Resolve coordinates
+    merged["latitude"] = merged.get("latitude") if merged.get("latitude") is not None else h_member.get("latitude")
+    merged["longitude"] = merged.get("longitude") if merged.get("longitude") is not None else h_member.get("longitude")
     
-    # Standardize Hinchilla financial stats from GBP to EUR before comparison
-    h_annual_giving = convert_gbp_to_eur(h_info.get("annual_giving", ""))
-    h_grant_range = convert_gbp_to_eur(h_info.get("grant_range", ""))
-    h_average_grant = convert_gbp_to_eur(h_info.get("average_grant", ""))
-    h_expenditure = convert_gbp_to_eur(h_info.get("expenditure", ""))
+    # Merge funding info
+    p_fund = merged.setdefault("funding_info", {})
+    h_fund = h_member.get("funding_info", {})
     
-    # 2. Resolve fields and check conflicts
-    merged["website"] = resolve_field("website", merged.get("website", ""), h_info.get("website", ""))
-    merged["address"] = resolve_field("address", merged.get("address", ""), h_info.get("address", ""))
-    merged["email"] = resolve_field("email", merged.get("email", ""), h_info.get("email", ""))
+    p_fund["annual_giving"] = resolve_field("annual_giving", p_fund.get("annual_giving", ""), h_fund.get("annual_giving", ""), is_financial=True)
+    p_fund["average_grant"] = resolve_field("average_grant", p_fund.get("average_grant", ""), h_fund.get("average_grant", ""), is_financial=True)
+    p_fund["grant_range"] = resolve_field("grant_range", p_fund.get("grant_range", ""), h_fund.get("grant_range", ""), is_financial=True)
+    p_fund["funding_model"] = resolve_field("funding_model", p_fund.get("funding_model", ""), h_fund.get("funding_model", ""))
+    p_fund["expenditure"] = resolve_field("expenditure", p_fund.get("expenditure", ""), h_fund.get("expenditure", ""), is_financial=True)
     
-    p_info["annual_giving"] = resolve_field("annual_giving", p_info.get("annual_giving", ""), h_annual_giving, is_financial=True)
-    p_info["grant_range"] = resolve_field("grant_range", p_info.get("grant_range", ""), h_grant_range, is_financial=True)
-    p_info["average_grant"] = resolve_field("average_grant", p_info.get("average_grant", ""), h_average_grant, is_financial=True)
-    p_info["funding_model"] = resolve_field("funding_model", p_info.get("funding_model", ""), h_info.get("funding_model", ""))
+    # Union metadata
+    for key in ["success_rate", "decision_time", "charity_number", "application_portal"]:
+        if h_fund.get(key):
+            p_fund[key] = h_fund[key]
+            
+    # Text merge (prefer longer)
+    p_details = p_fund.get("application_details", "")
+    h_details = h_fund.get("application_details", "")
+    p_fund["application_details"] = h_details if len(h_details) > len(p_details) else p_details
     
-    # Detailed text merging (prefer longer/more detailed version)
-    for txt_field in ["About", "Programme Areas", "Geographic Focus", "application_details"]:
-        p_val = p_info.get(txt_field, "")
-        h_val = h_info.get(txt_field, "")
-        p_info[txt_field] = h_val if len(h_val) > len(p_val) else p_val
-
-    # 3. Add Hinchilla-specific metadata
-    for key in ["charityNumber", "areaOfOperation", "phone", "applicationPortal", "success_rate", "decision_time"]:
-        if key in h_info and h_info[key]:
-            p_info[key] = h_info[key]
-    if h_expenditure:
-        p_info["expenditure"] = h_expenditure
-
-    # 4. Merge tags and locations (unions)
-    p_tags = set(merged.get("tags_focus", []))
-    h_tags = set(h_member.get("tags_focus", []))
-    merged["tags_focus"] = sorted(list(p_tags | h_tags))
+    # Merge thematic focus (tags)
+    p_tags = set(merged.get("thematic_focus", []))
+    h_tags = set(h_member.get("thematic_focus", []))
+    merged["thematic_focus"] = sorted(list(p_tags | h_tags))
     
-    p_geo = merged.get("geo_locations", {})
-    h_geo = h_member.get("geo_locations", {})
+    # Merge geolocations (geographic focus)
+    p_geo = merged.get("geographic_focus", {})
+    h_geo = h_member.get("geographic_focus", {})
     merged_geo = {}
     
     all_regions = set(p_geo.keys()) | set(h_geo.keys())
     for reg in all_regions:
         countries = set(p_geo.get(reg, [])) | set(h_geo.get(reg, []))
         merged_geo[reg] = sorted(list(countries))
-    merged["geo_locations"] = merged_geo
-
-    # 5. Union sources
-    p_sources = set(p_info.get("sources", []))
-    h_sources = set(h_info.get("sources", []))
-    p_info["sources"] = sorted(list(p_sources | h_sources))
-
-    # Save internal discrepancies metadata
+    merged["geographic_focus"] = merged_geo
+    
+    # Merge sources URLs
+    p_sources = set(p_fund.get("sources", []))
+    h_sources = set(h_fund.get("sources", []))
+    p_fund["sources"] = sorted(list(p_sources | h_sources))
+    
+    # Save discrepancies
     if discrepancies:
         merged["_discrepancies"] = discrepancies
-
+        
     return merged
 
 def consolidate_datasets(philea_members, hinchilla_members):
     """
     Consolidates Philea and Hinchilla datasets by matching members,
     merging their fields, tracking conflicts, and return the combined list.
+    Every member is returned in the clean unified format.
     """
     logger.info(f"Starting consolidation of {len(philea_members)} Philea members and {len(hinchilla_members)} Hinchilla members...")
+    
+    # Normalize inputs to clean schema first
+    philea_clean = [normalize_to_clean_schema(m, "Philea") for m in philea_members]
+    hinchilla_clean = [normalize_to_clean_schema(m, "Hinchilla") for m in hinchilla_members]
     
     consolidated = []
     matched_hinchilla_indices = set()
     
-    for p_member in philea_members:
+    for p_member in philea_clean:
         matched_h = None
         matched_idx = -1
         
-        for idx, h_member in enumerate(hinchilla_members):
+        for idx, h_member in enumerate(hinchilla_clean):
             if idx in matched_hinchilla_indices:
                 continue
             if match_members(p_member, h_member):
@@ -355,27 +448,13 @@ def consolidate_datasets(philea_members, hinchilla_members):
             consolidated.append(merged)
             matched_hinchilla_indices.add(matched_idx)
         else:
-            consolidated.append(dict(p_member))
+            consolidated.append(p_member)
             
     # Add unmatched Hinchilla members
-    for idx, h_member in enumerate(hinchilla_members):
+    for idx, h_member in enumerate(hinchilla_clean):
         if idx not in matched_hinchilla_indices:
             logger.info(f"Adding unmatched Hinchilla member: '{h_member.get('name')}'")
-            # For unmatched Hinchilla members, ensure they conform to the preprocessed format
-            cleaned_h = dict(h_member)
-            h_info = cleaned_h.setdefault("philea_info", {})
-            
-            # Standardize GBP values for standalone Hinchilla records
-            for field in ["annual_giving", "grant_range", "average_grant", "expenditure"]:
-                if field in h_info:
-                    h_info[field] = convert_gbp_to_eur(h_info[field])
-                    
-            # Sync root attributes with philea_info for consistency
-            cleaned_h["website"] = h_info.get("website", "")
-            cleaned_h["address"] = h_info.get("address", "")
-            cleaned_h["email"] = h_info.get("email", "")
-            
-            consolidated.append(cleaned_h)
+            consolidated.append(h_member)
             
     logger.info(f"Consolidation complete. Resulting dataset has {len(consolidated)} members.")
     return consolidated

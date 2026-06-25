@@ -14,6 +14,7 @@ from preprocessing.consolidate import (
     jaccard_similarity,
     match_members,
     convert_gbp_to_eur,
+    normalize_to_clean_schema,
     merge_members,
     consolidate_datasets
 )
@@ -41,22 +42,22 @@ class TestConsolidate(unittest.TestCase):
     def test_match_members(self):
         # 1. Matching by Website
         m1 = {"name": "Test Org A", "website": "https://testorga.org"}
-        m2 = {"name": "Diff Name", "philea_info": {"website": "http://www.testorga.org/home"}}
+        m2 = {"name": "Diff Name", "website": "http://www.testorga.org/home"}
         self.assertTrue(match_members(m1, m2))
         
         # 2. Matching by normalized name exact/Jaccard
         m3 = {"name": "Toni Piëch Foundation", "website": ""}
-        m4 = {"name": "Toni Piëch", "philea_info": {"website": ""}}
+        m4 = {"name": "Toni Piëch", "website": ""}
         self.assertTrue(match_members(m3, m4))
         
         # 3. Numeric ID exclusion
         m5 = {"name": "136193034", "website": ""}
-        m6 = {"name": "Novartis US Foundation", "philea_info": {"website": ""}}
+        m6 = {"name": "Novartis US Foundation", "website": ""}
         self.assertFalse(match_members(m5, m6))
         
         # 4. No match
         m7 = {"name": "Women Win", "website": ""}
-        m8 = {"name": "Toni Piëch Foundation", "philea_info": {"website": ""}}
+        m8 = {"name": "Toni Piëch Foundation", "website": ""}
         self.assertFalse(match_members(m7, m8))
 
     def test_convert_gbp_to_eur(self):
@@ -65,8 +66,49 @@ class TestConsolidate(unittest.TestCase):
         self.assertEqual(convert_gbp_to_eur("€10,000"), "€10,000") # No conversion
         self.assertEqual(convert_gbp_to_eur("Not publicly available"), "Not publicly available")
 
+    def test_normalize_to_clean_schema(self):
+        raw_philea = {
+            "name": "Women Win",
+            "website": "http://www.womenwin.org",
+            "address": "Amsterdam",
+            "email": "info@womenwin.org",
+            "tags_focus": ["Health"],
+            "geo_locations": {"Worldwide": ["Global"]},
+            "position": {
+                "address": "Amsterdam, NL",
+                "city": "Amsterdam",
+                "state": "North Holland",
+                "country": "Netherlands",
+                "lat": "52.3676",
+                "lng": "4.9041"
+            },
+            "philea_info": {
+                "About": "Short description of Women Win",
+                "annual_giving": "€50,000 (2024)",
+                "funding_model": "Open applications",
+                "sources": ["http://source1.com"]
+            }
+        }
+        
+        clean = normalize_to_clean_schema(raw_philea, "Philea")
+        
+        self.assertEqual(clean["name"], "Women Win")
+        self.assertEqual(clean["source"], "Philea")
+        self.assertEqual(clean["website"], "http://www.womenwin.org")
+        self.assertEqual(clean["email"], "info@womenwin.org")
+        self.assertEqual(clean["address"], "Amsterdam, NL")
+        self.assertEqual(clean["city"], "Amsterdam")
+        self.assertEqual(clean["state"], "North Holland")
+        self.assertEqual(clean["country"], "Netherlands")
+        self.assertEqual(clean["latitude"], 52.3676)
+        self.assertEqual(clean["longitude"], 4.9041)
+        self.assertEqual(clean["funding_info"]["annual_giving"], "€50,000 (2024)")
+        self.assertEqual(clean["funding_info"]["funding_model"], "Open applications")
+        self.assertEqual(clean["thematic_focus"], ["Health"])
+        self.assertEqual(clean["geographic_focus"], {"Worldwide": ["Global"]})
+
     def test_merge_members(self):
-        p_member = {
+        p_member = normalize_to_clean_schema({
             "name": "Women Win",
             "website": "http://www.womenwin.org",
             "address": "Amsterdam",
@@ -79,9 +121,9 @@ class TestConsolidate(unittest.TestCase):
                 "funding_model": "Open applications",
                 "sources": ["http://source1.com"]
             }
-        }
+        }, "Philea")
         
-        h_member = {
+        h_member = normalize_to_clean_schema({
             "name": "Women Win",
             "tags_focus": ["Human/Civil Rights"],
             "geo_locations": {"Europe (Western / General)": ["Netherlands"]},
@@ -93,22 +135,22 @@ class TestConsolidate(unittest.TestCase):
                 "charityNumber": "12345",
                 "sources": ["http://source2.com"]
             }
-        }
+        }, "Hinchilla")
         
         merged = merge_members(p_member, h_member)
         
         # Verify preferred fields and merges
         self.assertEqual(merged["name"], "Women Win")
-        self.assertEqual(merged["philea_info"]["About"], h_member["philea_info"]["About"]) # Chose longer About
-        self.assertEqual(merged["philea_info"]["charityNumber"], "12345") # Extracted from Hinchilla
+        self.assertEqual(merged["source"], "Philea, Hinchilla")
+        self.assertEqual(merged["funding_info"]["charity_number"], "12345") # Extracted from Hinchilla
         
         # Verify tag and geolocation merging
-        self.assertEqual(sorted(merged["tags_focus"]), ["Health", "Human/Civil Rights"])
-        self.assertEqual(merged["geo_locations"]["Worldwide"], ["Global"])
-        self.assertEqual(merged["geo_locations"]["Europe (Western / General)"], ["Netherlands"])
+        self.assertEqual(sorted(merged["thematic_focus"]), ["Health", "Human/Civil Rights"])
+        self.assertEqual(merged["geographic_focus"]["Worldwide"], ["Global"])
+        self.assertEqual(merged["geographic_focus"]["Europe (Western / General)"], ["Netherlands"])
         
         # Verify sources merging
-        self.assertEqual(sorted(merged["philea_info"]["sources"]), ["http://source1.com", "http://source2.com"])
+        self.assertEqual(sorted(merged["funding_info"]["sources"]), ["http://source1.com", "http://source2.com"])
         
         # Verify discrepancies tracking
         self.assertIn("_discrepancies", merged)
@@ -133,8 +175,9 @@ class TestConsolidate(unittest.TestCase):
         
         # Verify unmatched Hinchilla was converted
         other_org = [m for m in consolidated if m["name"] == "Other Org"][0]
-        self.assertEqual(other_org["philea_info"]["annual_giving"], "€24,000 (converted from GBP)")
+        self.assertEqual(other_org["funding_info"]["annual_giving"], "€24,000 (converted from GBP)")
         self.assertEqual(other_org["website"], "https://other.org")
+        self.assertEqual(other_org["source"], "Hinchilla")
 
 if __name__ == "__main__":
     unittest.main()
