@@ -176,5 +176,103 @@ class TestEnrichGemini(unittest.TestCase):
         # Verify generate_content was only called ONCE (for research), NOT twice
         self.assertEqual(mock_client.models.generate_content.call_count, 1)
 
+    @patch("preprocessing.enrich_gemini.time.sleep")
+    @patch("preprocessing.enrich_gemini.genai.Client")
+    def test_enrich_organizations_retry_logic(self, mock_client_class, mock_sleep):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        mock_research_response = MagicMock()
+        mock_research_response.text = "Some research text"
+        
+        mock_parse_response = MagicMock()
+        mock_parse_response.text = json.dumps({
+            "annual_giving": "€50,000",
+            "average_grant": "€5,000",
+            "grant_range": "€1,000 - €10,000",
+            "funding_model": "Open applications",
+            "application_details": "No open calls",
+            "sources": []
+        })
+        
+        # Raise an exception on first call, succeed on subsequent calls
+        mock_client.models.generate_content.side_effect = [
+            Exception("Quota limit hit"),
+            mock_research_response,
+            mock_parse_response
+        ]
+        
+        res = enrich_organizations(self.members, api_key="dummy_key", sleep_time=0.0)
+        
+        # Verify first was successfully enriched despite first attempt failing
+        self.assertEqual(res[0]["philea_info"]["annual_giving"], "€50,000")
+        self.assertEqual(mock_sleep.call_count, 1) # Retried once
+
+    def test_ensure_eur_helpers(self):
+        from preprocessing.enrich_gemini import _ensure_eur, _ensure_eur_range
+        
+        # USD conversion
+        self.assertEqual(_ensure_eur("$10,000"), "€9,200 (converted from USD)")
+        self.assertEqual(_ensure_eur("$10,000 (2024)"), "€9,200 (2024) (converted from USD)")
+        
+        # GBP conversion
+        self.assertEqual(_ensure_eur("£10,000"), "€12,000 (converted from GBP)")
+        self.assertEqual(_ensure_eur("1,000 GBP"), "€1,200 (converted from GBP)")
+        
+        # CHF conversion
+        self.assertEqual(_ensure_eur("1,000 CHF"), "€1,050 (converted from CHF)")
+        
+        # Normal inputs preserved
+        self.assertEqual(_ensure_eur("€50,000"), "€50,000")
+        self.assertEqual(_ensure_eur("Not publicly available"), "Not publicly available")
+        
+        # Range inputs
+        self.assertEqual(_ensure_eur_range("£5,000 - £10,000"), "€6,000 - €12,000 (converted from GBP)")
+        self.assertEqual(_ensure_eur_range("$5,000 to $10,000"), "€4,600 - €9,200 (converted from USD)")
+        self.assertEqual(_ensure_eur_range("€5,000 - €10,000"), "€5,000 - €10,000")
+
+    @patch("preprocessing.enrich_gemini.genai.Client")
+    def test_enrich_organizations_advanced_plausibility_checks(self, mock_client_class):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        mock_research_response = MagicMock()
+        mock_research_response.text = "Some research text"
+        
+        # Case 1: Out of order range (re-ordered), average outside range (reset average)
+        mock_parse_response_1 = MagicMock()
+        mock_parse_response_1.text = json.dumps({
+            "annual_giving": "€50,000",
+            "average_grant": "€25,000",          # Outside re-ordered range [1,000, 10,000]
+            "grant_range": "€10,000 - €1,000",   # Out of order
+            "funding_model": "Open applications",
+            "application_details": "No open calls",
+            "sources": []
+        })
+        
+        mock_client.models.generate_content.side_effect = [mock_research_response, mock_parse_response_1]
+        res = enrich_organizations(self.members[:1], api_key="dummy_key", sleep_time=0.0)
+        self.assertEqual(res[0]["philea_info"]["grant_range"], "€1,000 - €10,000")
+        self.assertEqual(res[0]["philea_info"]["average_grant"], "Not publicly available")
+
+        # Reset mock
+        self.members[0]["philea_info"] = {}
+        
+        # Case 2: Max grant exceeds annual giving
+        mock_parse_response_2 = MagicMock()
+        mock_parse_response_2.text = json.dumps({
+            "annual_giving": "€50,000",
+            "average_grant": "€5,000",
+            "grant_range": "€1,000 - €100,000",  # Max grant (100k) > annual giving (50k)
+            "funding_model": "Open applications",
+            "application_details": "No open calls",
+            "sources": []
+        })
+        
+        mock_client.models.generate_content.side_effect = [mock_research_response, mock_parse_response_2]
+        res = enrich_organizations(self.members[:1], api_key="dummy_key", sleep_time=0.0)
+        self.assertEqual(res[0]["philea_info"]["grant_range"], "Not publicly available")
+
 if __name__ == "__main__":
     unittest.main()
+

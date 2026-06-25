@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import time
+import re
 from typing import List
 from pydantic import BaseModel, Field
 from google import genai
@@ -61,6 +62,119 @@ def _extract_number(val_str):
     except ValueError:
         return None
 
+def _generate_content_with_retry(client, model, contents, config, max_retries=3, initial_delay=2.0):
+    """
+    Wraps client.models.generate_content in a retry mechanism with exponential backoff
+    to handle rate limiting and transient connection errors.
+    """
+    delay = initial_delay
+    for attempt in range(max_retries):
+        try:
+            return client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
+            )
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Failed to generate content after {max_retries} attempts: {e}")
+                raise e
+            logger.warning(
+                f"Gemini API attempt {attempt + 1}/{max_retries} failed: {e}. "
+                f"Retrying in {delay} seconds..."
+            )
+            time.sleep(delay)
+            delay *= 2
+
+def _ensure_eur(val_str):
+    """
+    Post-processing check to ensure that values are converted to EUR.
+    If they are USD, GBP, or CHF, performs programmatic conversion.
+    """
+    if not val_str or not isinstance(val_str, str):
+        return val_str
+        
+    val_lower = val_str.lower()
+    if "not publicly available" in val_lower or "not disclosed" in val_lower or not val_lower.strip():
+        return val_str
+        
+    # If it already contains EUR/€, do nothing
+    if '€' in val_str or 'eur' in val_lower:
+        return val_str
+        
+    # Parse numeric value
+    num = _extract_number(val_str)
+    if num is None:
+        return val_str
+        
+    rate = None
+    curr_name = ""
+    if '£' in val_str or 'gbp' in val_lower or 'pound' in val_lower:
+        rate = 1.2
+        curr_name = "GBP"
+    elif '$' in val_str or 'usd' in val_lower or 'dollar' in val_lower:
+        rate = 0.92
+        curr_name = "USD"
+    elif 'chf' in val_lower or 'franc' in val_lower:
+        rate = 1.05
+        curr_name = "CHF"
+        
+    if rate is not None:
+        converted = num * rate
+        # Extract year suffix
+        year_match = re.search(r'[\(\[\{]\d{4}.*?[\)\]\}]', val_str)
+        suffix = f" {year_match.group(0)}" if year_match else ""
+        converted_str = f"€{converted:,.0f}{suffix} (converted from {curr_name})"
+        logger.info(f"Robustness check: Converted non-EUR value '{val_str}' to '{converted_str}'")
+        return converted_str
+        
+    return val_str
+
+def _ensure_eur_range(val_str):
+    """
+    Handles range formats for ensure_eur, e.g., '£4,000 - £10,000'.
+    """
+    if not val_str or not isinstance(val_str, str):
+        return val_str
+        
+    val_lower = val_str.lower()
+    if "not publicly available" in val_lower or "not disclosed" in val_lower or not val_lower.strip():
+        return val_str
+        
+    if '€' in val_str or 'eur' in val_lower:
+        return val_str
+        
+    # Check if it is a range (ignoring hyphens inside parenthesis/brackets like in years: 2023-24)
+    cleaned_for_check = re.sub(r'[\(\[\{].*?[\)\]\}]', '', val_str)
+    
+    # Split range if contains "-" or "to"
+    parts = []
+    if ' - ' in cleaned_for_check:
+        parts = val_str.split(' - ')
+    elif '-' in cleaned_for_check:
+        parts = val_str.split('-')
+    elif ' to ' in cleaned_for_check.lower():
+        parts = re.split(r'\s+to\s+', val_str, flags=re.IGNORECASE)
+        
+    if len(parts) == 2:
+        val1 = _ensure_eur(parts[0].strip())
+        val2 = _ensure_eur(parts[1].strip())
+        
+        # Clean conversion suffixes to avoid doubling
+        val1_clean = re.sub(r'\s*\(converted from.*?\)', '', val1)
+        val2_clean = re.sub(r'\s*\(converted from.*?\)', '', val2)
+        
+        if val1 != parts[0] or val2 != parts[1]:
+            curr_match = re.search(r'converted from (\w+)', val1 + val2)
+            curr_name = curr_match.group(1) if curr_match else "foreign currency"
+            year_match = re.search(r'[\(\[\{]\d{4}.*?[\)\]\}]', val_str)
+            suffix = f" {year_match.group(0)}" if year_match else ""
+            return f"{val1_clean} - {val2_clean}{suffix} (converted from {curr_name})"
+        else:
+            return val_str
+    else:
+        return _ensure_eur(val_str)
+
 def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_time=2.0, save_path=None, save_fn=None):
     """
     Enriches the list of members by querying Gemini API with Google Search grounding
@@ -77,9 +191,10 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
     todo_members = []
     for m in members:
         info = m.get("philea_info", {})
-        # Check if already enriched with annual_giving
-        if "annual_giving" in info and info["annual_giving"]:
-            logger.info(f"Skipping {m.get('name')} - already enriched.")
+        giving = info.get("annual_giving", "")
+        # Check if already has valid financial data (not empty, and not a placeholder)
+        if giving and giving.strip() and "not publicly available" not in giving.lower() and "not disclosed" not in giving.lower():
+            logger.info(f"Skipping {m.get('name')} - already has financial data.")
             continue
         todo_members.append(m)
 
@@ -119,8 +234,9 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
         """
 
         try:
-            # Step 1: Research with Google Search Grounding
-            research_response = client.models.generate_content(
+            # Step 1: Research with Google Search Grounding (with retry logic)
+            research_response = _generate_content_with_retry(
+                client=client,
                 model=model,
                 contents=research_prompt,
                 config=types.GenerateContentConfig(
@@ -145,7 +261,8 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
             {research_text}
             """
 
-            response = client.models.generate_content(
+            response = _generate_content_with_retry(
+                client=client,
                 model=model,
                 contents=parse_prompt,
                 config=types.GenerateContentConfig(
@@ -164,6 +281,11 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
             application_details = data.get("application_details", "")
             sources = data.get("sources", [])
 
+            # Post-processing Currency Validation
+            annual_giving = _ensure_eur(annual_giving)
+            average_grant = _ensure_eur(average_grant)
+            grant_range = _ensure_eur_range(grant_range)
+
             # Plausibility Check: Average grant must be smaller than annual giving
             annual_val = _extract_number(annual_giving)
             avg_val = _extract_number(average_grant)
@@ -172,6 +294,47 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
                     logger.warning(
                         f"Plausibility check failed for {name}: average grant ({average_grant}) "
                         f"is greater than annual giving ({annual_giving}). Resetting average_grant to 'Not publicly available'."
+                    )
+                    average_grant = "Not publicly available"
+                    avg_val = None
+
+            # Plausibility Check: Parse and check range limits
+            min_val = None
+            max_val = None
+            if grant_range and "not publicly available" not in grant_range.lower():
+                range_numbers = []
+                for p in re.split(r'[-\s|to]+', grant_range):
+                    num = _extract_number(p)
+                    if num is not None:
+                        range_numbers.append(num)
+                if len(range_numbers) >= 2:
+                    min_val = min(range_numbers[:2])
+                    max_val = max(range_numbers[:2])
+                    if range_numbers[0] > range_numbers[1]:
+                        logger.warning(f"Plausibility check: Grant range '{grant_range}' was out of order for {name}. Re-ordering.")
+                        year_match = re.search(r'[\(\[\{]\d{4}.*?[\)\]\}]', grant_range)
+                        suffix = f" {year_match.group(0)}" if year_match else ""
+                        grant_range = f"€{min_val:,.0f} - €{max_val:,.0f}{suffix}"
+                elif len(range_numbers) == 1:
+                    max_val = range_numbers[0]
+
+            # Verify max_val vs annual_val
+            if annual_val is not None and max_val is not None:
+                if max_val > annual_val:
+                    logger.warning(
+                        f"Plausibility check: Max grant limit ({max_val}) is greater than annual giving ({annual_val}) for {name}. "
+                        f"Resetting grant_range to 'Not publicly available'."
+                    )
+                    grant_range = "Not publicly available"
+                    min_val = None
+                    max_val = None
+
+            # Verify average vs range
+            if avg_val is not None and min_val is not None and max_val is not None:
+                if avg_val < min_val or avg_val > max_val:
+                    logger.warning(
+                        f"Plausibility check: Average grant ({avg_val}) is outside the grant range ({min_val} - {max_val}) for {name}. "
+                        f"Resetting average_grant to 'Not publicly available'."
                     )
                     average_grant = "Not publicly available"
 
