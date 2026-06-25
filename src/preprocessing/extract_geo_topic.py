@@ -263,7 +263,7 @@ GEO_TAXONOMY = {
         "Angola": r"angola\w*",
         "Nigeria": r"nigeria\w*",
         "Cameroon": r"cameroon\w*",
-        "Ivory Coast": r"ivory coast|côte d.ivoire",
+        "Ivory Coast": r"ivory coast|côte d\.ivoire",
         "Mozambique": r"mozambique\w*",
         "Burundi": r"burundi\w*",
         "South Sudan": r"south sudan",
