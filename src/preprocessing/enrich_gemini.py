@@ -177,7 +177,7 @@ def _ensure_eur_range(val_str):
             curr_match = re.search(r'converted from (\w+)', val1 + val2)
             curr_name = curr_match.group(1) if curr_match else "foreign currency"
             year_match = re.search(r'[\(\[\{]\d{4}.*?[\)\]\}]', val_str)
-            suffix = f" {year_match.group(0)}" if year_match else ""
+            suffix = f" {year_match.group(0)}" if year_match and year_match.group(0) not in val1_clean and year_match.group(0) not in val2_clean else ""
             return f"{val1_clean} - {val2_clean}{suffix} (converted from {curr_name})"
         else:
             return val_str
