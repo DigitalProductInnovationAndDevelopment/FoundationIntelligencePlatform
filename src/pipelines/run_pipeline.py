@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import logging
+import json
 
 # Ensure src directory is in sys.path so imports work regardless of working directory
 PIPELINES_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -47,6 +48,67 @@ def run_pipeline(args):
     logging.info(f"Starting {source.title()} Data Pipeline Execution")
     logging.info("=========================================")
     
+    if source == "consolidate":
+        philea_input = args.philea_input or os.path.join(PROJECT_ROOT, "data/preprocessed/philea_members_preprocessed.json")
+        hinchilla_input = args.hinchilla_input or os.path.join(PROJECT_ROOT, "data/preprocessed/hinchilla_members_preprocessed.json")
+        consolidated_output = args.preprocessed_output or os.path.join(PROJECT_ROOT, "data/preprocessed/consolidated_members_preprocessed.json")
+
+        logging.info(f"Loading Philea preprocessed data from: {philea_input}")
+        logging.info(f"Loading Hinchilla preprocessed data from: {hinchilla_input}")
+
+        if not os.path.exists(philea_input):
+            logging.error(f"Philea preprocessed input file not found: {philea_input}")
+            sys.exit(1)
+        if not os.path.exists(hinchilla_input):
+            logging.error(f"Hinchilla preprocessed input file not found: {hinchilla_input}")
+            sys.exit(1)
+
+        try:
+            with open(philea_input, "r", encoding="utf-8") as f:
+                philea_data = json.load(f)
+            with open(hinchilla_input, "r", encoding="utf-8") as f:
+                hinchilla_data = json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to load input files: {e}")
+            sys.exit(1)
+
+        from preprocessing.consolidate import consolidate_datasets
+        try:
+            consolidated = consolidate_datasets(philea_data, hinchilla_data)
+            
+            # Optional Gemini Enrichment on the consolidated dataset
+            if args.enrich:
+                logging.info("Enriching consolidated organization data using Gemini and Google Search...")
+                from preprocessing.enrich_gemini import enrich_organizations
+                
+                def save_consolidated(m_list, path):
+                    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(m_list, f, ensure_ascii=False, indent=4)
+                
+                consolidated = enrich_organizations(
+                    consolidated,
+                    save_path=consolidated_output,
+                    save_fn=save_consolidated,
+                    sleep_time=args.sleep
+                )
+                
+
+            
+            # Save output
+            os.makedirs(os.path.dirname(os.path.abspath(consolidated_output)), exist_ok=True)
+            with open(consolidated_output, "w", encoding="utf-8") as f:
+                json.dump(consolidated, f, ensure_ascii=False, indent=4)
+            logging.info(f"Consolidated data successfully saved to: {consolidated_output}")
+        except Exception as e:
+            logging.error(f"Consolidation process failed: {e}")
+            sys.exit(1)
+            
+        logging.info("=========================================")
+        logging.info("Consolidation Pipeline Completed Successfully!")
+        logging.info("=========================================")
+        return
+
     # Dynamically import scraper for selected source
     if source == "philea":
         from scrapers.philea import scrape, save_data as save_raw_data
@@ -156,9 +218,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--source",
         type=str,
-        choices=["philea", "hinchilla"],
+        choices=["philea", "hinchilla", "consolidate"],
         default="philea",
-        help="The source directory to scrape and preprocess (choices: philea, hinchilla)."
+        help="The source directory to scrape and preprocess (choices: philea, hinchilla, consolidate)."
+    )
+    parser.add_argument(
+        "--philea-input",
+        type=str,
+        default=None,
+        help="Path to preprocessed Philea data (used for consolidation)."
+    )
+    parser.add_argument(
+        "--hinchilla-input",
+        type=str,
+        default=None,
+        help="Path to preprocessed Hinchilla data (used for consolidation)."
     )
     parser.add_argument(
         "--raw-output",
