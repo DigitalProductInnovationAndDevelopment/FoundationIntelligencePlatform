@@ -190,7 +190,7 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
 
     todo_members = []
     for m in members:
-        info = m.get("philea_info", {})
+        info = m.get("funding_info", {})
         giving = info.get("annual_giving", "")
         # Check if already has valid financial data (not empty, and not a placeholder)
         if giving and giving.strip() and "not publicly available" not in giving.lower() and "not disclosed" not in giving.lower():
@@ -211,7 +211,7 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
         name = m.get("name", "Unknown Name")
         website = m.get("website", "")
         address = m.get("address", "")
-        country = m.get("position", {}).get("country", "")
+        country = m.get("country", "")
 
         logger.info(f"Processing {counter}/{total}: {name}")
 
@@ -338,8 +338,8 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
                     )
                     average_grant = "Not publicly available"
 
-            # Populate philea_info
-            info = m.setdefault("philea_info", {})
+            # Populate funding_info
+            info = m.setdefault("funding_info", {})
             info["annual_giving"] = annual_giving
             info["average_grant"] = average_grant
             info["grant_range"] = grant_range
@@ -352,7 +352,7 @@ def enrich_organizations(members, api_key=None, model='gemini-2.5-flash', sleep_
         except Exception as e:
             logger.error(f"Failed to enrich {name}: {e}")
             # Ensure keys exist even on failure to avoid issues, or mark as failed
-            info = m.setdefault("philea_info", {})
+            info = m.setdefault("funding_info", {})
             info.setdefault("annual_giving", "")
             info.setdefault("average_grant", "")
             info.setdefault("grant_range", "")

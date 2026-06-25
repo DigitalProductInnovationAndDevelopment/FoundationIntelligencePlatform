@@ -21,15 +21,15 @@ class TestEnrichGemini(unittest.TestCase):
                 "name": "Funder A",
                 "website": "https://fundera.org",
                 "address": "123 Street",
-                "position": {"country": "Germany"},
-                "philea_info": {}
+                "country": "Germany",
+                "funding_info": {}
             },
             {
                 "name": "Funder B",
                 "website": "https://funderb.org",
                 "address": "456 Avenue",
-                "position": {"country": "France"},
-                "philea_info": {
+                "country": "France",
+                "funding_info": {
                     "annual_giving": "€500,000 (2024)",
                     "average_grant": "€10,000",
                     "grant_range": "€5,000 - €20,000",
@@ -64,12 +64,12 @@ class TestEnrichGemini(unittest.TestCase):
         res = enrich_organizations(self.members, api_key="dummy_key", sleep_time=0.0)
         
         # Verify first was enriched
-        self.assertEqual(res[0]["philea_info"]["annual_giving"], "€1,000,000 (2025)")
-        self.assertEqual(res[0]["philea_info"]["funding_model"], "Invitation only")
-        self.assertEqual(res[0]["philea_info"]["sources"], ["https://fundera.org/about"])
+        self.assertEqual(res[0]["funding_info"]["annual_giving"], "€1,000,000 (2025)")
+        self.assertEqual(res[0]["funding_info"]["funding_model"], "Invitation only")
+        self.assertEqual(res[0]["funding_info"]["sources"], ["https://fundera.org/about"])
         
         # Verify second was skipped (resume mode)
-        self.assertEqual(res[1]["philea_info"]["annual_giving"], "€500,000 (2024)")
+        self.assertEqual(res[1]["funding_info"]["annual_giving"], "€500,000 (2024)")
         self.assertEqual(mock_client.models.generate_content.call_count, 2)
 
     @patch("preprocessing.enrich_gemini.genai.Client")
@@ -82,9 +82,9 @@ class TestEnrichGemini(unittest.TestCase):
         res = enrich_organizations(self.members, api_key="dummy_key", sleep_time=0.0)
         
         # Verify empty/fallback fields populated on error
-        self.assertEqual(res[0]["philea_info"]["annual_giving"], "")
-        self.assertEqual(res[0]["philea_info"]["average_grant"], "")
-        self.assertEqual(res[0]["philea_info"]["sources"], [])
+        self.assertEqual(res[0]["funding_info"]["annual_giving"], "")
+        self.assertEqual(res[0]["funding_info"]["average_grant"], "")
+        self.assertEqual(res[0]["funding_info"]["sources"], [])
 
     def test_enrich_organizations_missing_key(self):
         # Temporarily clear env var
@@ -156,8 +156,8 @@ class TestEnrichGemini(unittest.TestCase):
         res = enrich_organizations(self.members, api_key="dummy_key", sleep_time=0.0)
         
         # Verify first was enriched and average_grant was reset to fallback
-        self.assertEqual(res[0]["philea_info"]["annual_giving"], "€50,000")
-        self.assertEqual(res[0]["philea_info"]["average_grant"], "Not publicly available")
+        self.assertEqual(res[0]["funding_info"]["annual_giving"], "€50,000")
+        self.assertEqual(res[0]["funding_info"]["average_grant"], "Not publicly available")
 
     @patch("preprocessing.enrich_gemini.genai.Client")
     def test_enrich_organizations_empty_research_response(self, mock_client_class):
@@ -172,7 +172,7 @@ class TestEnrichGemini(unittest.TestCase):
         res = enrich_organizations(self.members, api_key="dummy_key", sleep_time=0.0)
         
         # Verify first was handled and populated with fallback
-        self.assertEqual(res[0]["philea_info"]["annual_giving"], "")
+        self.assertEqual(res[0]["funding_info"]["annual_giving"], "")
         # Verify generate_content was only called ONCE (for research), NOT twice
         self.assertEqual(mock_client.models.generate_content.call_count, 1)
 
@@ -205,7 +205,7 @@ class TestEnrichGemini(unittest.TestCase):
         res = enrich_organizations(self.members, api_key="dummy_key", sleep_time=0.0)
         
         # Verify first was successfully enriched despite first attempt failing
-        self.assertEqual(res[0]["philea_info"]["annual_giving"], "€50,000")
+        self.assertEqual(res[0]["funding_info"]["annual_giving"], "€50,000")
         self.assertEqual(mock_sleep.call_count, 1) # Retried once
 
     def test_ensure_eur_helpers(self):
@@ -252,11 +252,11 @@ class TestEnrichGemini(unittest.TestCase):
         
         mock_client.models.generate_content.side_effect = [mock_research_response, mock_parse_response_1]
         res = enrich_organizations(self.members[:1], api_key="dummy_key", sleep_time=0.0)
-        self.assertEqual(res[0]["philea_info"]["grant_range"], "€1,000 - €10,000")
-        self.assertEqual(res[0]["philea_info"]["average_grant"], "Not publicly available")
+        self.assertEqual(res[0]["funding_info"]["grant_range"], "€1,000 - €10,000")
+        self.assertEqual(res[0]["funding_info"]["average_grant"], "Not publicly available")
 
         # Reset mock
-        self.members[0]["philea_info"] = {}
+        self.members[0]["funding_info"] = {}
         
         # Case 2: Max grant exceeds annual giving
         mock_parse_response_2 = MagicMock()
@@ -271,7 +271,7 @@ class TestEnrichGemini(unittest.TestCase):
         
         mock_client.models.generate_content.side_effect = [mock_research_response, mock_parse_response_2]
         res = enrich_organizations(self.members[:1], api_key="dummy_key", sleep_time=0.0)
-        self.assertEqual(res[0]["philea_info"]["grant_range"], "Not publicly available")
+        self.assertEqual(res[0]["funding_info"]["grant_range"], "Not publicly available")
 
 if __name__ == "__main__":
     unittest.main()
