@@ -177,5 +177,21 @@ class TestPhileaPreprocessor(unittest.TestCase):
         west_europe = members[0]["geo_locations"].get("Europe (Western / General)", [])
         self.assertNotIn("United Kingdom", west_europe)
 
+    def test_extract_geo_fallback(self):
+        members = [
+            {
+                "name": "The Social Change Nest",
+                "address": "Albert House, 256-260 Old St, London EC1V 9DD, UK",
+                "philea_info": {
+                    # Geographic Focus doesn't mention any locations, but About and address do.
+                    "Geographic Focus": "We tear down the barriers that prevent communities from creating change.",
+                    "About": "Helping groups in the UK.",
+                }
+            }
+        ]
+        extract_geo(members)
+        self.assertIn("Europe (Western / General)", members[0]["geo_locations"])
+        self.assertIn("United Kingdom", members[0]["geo_locations"]["Europe (Western / General)"])
+
 if __name__ == "__main__":
     unittest.main()

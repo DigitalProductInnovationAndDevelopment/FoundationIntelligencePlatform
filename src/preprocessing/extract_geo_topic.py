@@ -134,7 +134,7 @@ GEO_TAXONOMY = {
     "Europe (Western / General)": {
         "Europe": r"europ\w+",
         "European Union": r"european union|\beu\b",
-        "United Kingdom": r"\buk\b|united kingdom|great britain|london|scotland|west midlands|english",
+        "United Kingdom": r"\buk\b|united kingdom|great britain|london|scotland|west midlands|english|england|wales|wirral|merseyside|hillingdon|oxfordshire|cambridgeshire|essex|hertfordshire|norfolk|suffolk|cambridge|hayes|harlington|cheshire|warrington|buckland|cornwall|dorset|somerset|wiltshire|devon|hampshire",
         "Ireland": r"ireland|irish",
         "France": r"franc\w+",
         "Germany": r"german\w+",
@@ -142,7 +142,10 @@ GEO_TAXONOMY = {
         "Austria": r"austria\w*",
         "Luxembourg": r"luxembourg\w*",
         "Belgium": r"belgium\w*|belgian\w*|brussels",
-        "Netherlands": r"netherlands|dutch|the hague|delft|zoetermeer|leiden|noordwijk"
+        "Netherlands": r"netherlands|dutch|the hague|delft|zoetermeer|leiden|noordwijk",
+        "Monaco": r"monaco\w*",
+        "Liechtenstein": r"liechtenstein\w*",
+        "Andorra": r"andorra\w*"
     },
     "Europe (Nordic Region)": {
         "Nordic Region": r"nordic",
@@ -150,6 +153,7 @@ GEO_TAXONOMY = {
         "Finland": r"finland|finnish|herlin", # fängt Herlin-Stiftung ab
         "Sweden": r"sweden|swedish|\bse\b",
         "Norway": r"norway|norwegian|kristiansand",
+        "Iceland": r"iceland\w*",
         "Greenland": r"greenland",
         "Faroe Islands": r"faroe islands"
     },
@@ -158,7 +162,11 @@ GEO_TAXONOMY = {
         "Italy": r"ital\w+|sicily|sardinia|piedmont|aosta valley|modena|parma|padua|rovigo|tuscany|florence|grosseto|arezzo|cuneo|alto adige|lucca|lombardy|torino|bologna",
         "Greece": r"gree\w+",
         "Portugal": r"portug\w+",
-        "Turkey": r"turk\w+|türkiye"
+        "Turkey": r"turk\w+|türkiye",
+        "Malta": r"malta\w*",
+        "Cyprus": r"cyprus|cypriot\w*",
+        "San Marino": r"san marino",
+        "Vatican City": r"vatican|holy see"
     },
     "Europe (Central & Eastern / Balkans)": {
         "Balkans": r"balkans?|western balkans|serbian?|croatian?|slovenian?|bosnia\w*",
@@ -171,14 +179,22 @@ GEO_TAXONOMY = {
         "Ukraine": r"ukrain\w*",
         "Estonia": r"estonia\w*",
         "Lithuania": r"lithuania\w*",
-        "Poland": r"pol\w+|fundacja", # 'fundacja' deutet direkt auf Polen hin
+        "Poland": r"\bpoland\b|polish\w*|fundacja",
         "Latvia": r"latvia\w*",
         "Georgia": r"georgia\w*",
         "Czech Republic": r"czech\w*",
         "Romania": r"romani\w*",
         "Hungary": r"hungar\w*",
         "Belarus": r"belarus\w*",
-        "Moldova": r"moldova\w*"
+        "Moldova": r"moldova\w*",
+        "Russia": r"russia\w*",
+        "Albania": r"albania\w*",
+        "Bosnia and Herzegovina": r"bosnia\w*",
+        "North Macedonia": r"macedonia\w*",
+        "Montenegro": r"montenegro\w*",
+        "Serbia": r"serbia\w*",
+        "Armenia": r"armenia\w*",
+        "Azerbaijan": r"azerbaijan\w*"
     },
     "North America": {
         "United States": r"united states|\busa\b|\bus\b|america\w*|flint|michigan",
@@ -193,7 +209,33 @@ GEO_TAXONOMY = {
         "Peru": r"peru\w*",
         "Bolivia": r"bolivia\w*",
         "Ecuador": r"ecuador\w*",
-        "Guyana": r"guyana\w*"
+        "Guyana": r"guyana\w*",
+        "El Salvador": r"el salvador",
+        "Argentina": r"argentina\w*",
+        "Chile": r"chile\w*|chili\w*",
+        "Venezuela": r"venezuela\w*",
+        "Paraguay": r"paraguay\w*",
+        "Uruguay": r"uruguay\w*",
+        "Suriname": r"suriname\w*",
+        "Panama": r"panama\w*",
+        "Costa Rica": r"costa rica\w*",
+        "Nicaragua": r"nicaragua\w*",
+        "Honduras": r"honduras\w*",
+        "Guatemala": r"guatemala\w*",
+        "Belize": r"belize\w*",
+        "Cuba": r"cuba\w*",
+        "Dominican Republic": r"dominican republic",
+        "Haiti": r"haiti\w*",
+        "Jamaica": r"jamaica\w*",
+        "Bahamas": r"bahamas\w*",
+        "Trinidad and Tobago": r"trinidad\w*",
+        "Barbados": r"barbados\w*",
+        "Saint Lucia": r"saint lucia",
+        "Grenada": r"grenada\w*",
+        "Saint Vincent and the Grenadines": r"saint vincent",
+        "Antigua and Barbuda": r"antigua\w*",
+        "Dominica": r"\bdominica\b",
+        "Saint Kitts and Nevis": r"saint kitts"
     },
     "Africa / Sub-Saharan Africa": {
         "Africa": r"afric\w+",
@@ -210,7 +252,43 @@ GEO_TAXONOMY = {
         "Madagascar": r"madagascar\w*",
         "Rwanda": r"rwanda\w*",
         "Zimbabwe": r"zimbabwe\w*",
-        "South Africa": r"south africa|botswana|namibia|senegal|gambia|togo|benin|mali"
+        "South Africa": r"south africa",
+        "Botswana": r"botswana\w*",
+        "Namibia": r"namibia\w*",
+        "Senegal": r"senegal\w*",
+        "Gambia": r"gambia\w*",
+        "Togo": r"togo\w*",
+        "Benin": r"benin\w*",
+        "Mali": r"mali\w*",
+        "Angola": r"angola\w*",
+        "Nigeria": r"nigeria\w*",
+        "Cameroon": r"cameroon\w*",
+        "Ivory Coast": r"ivory coast|côte d\.ivoire",
+        "Mozambique": r"mozambique\w*",
+        "Burundi": r"burundi\w*",
+        "South Sudan": r"south sudan",
+        "Somalia": r"somalia\w*",
+        "Eritrea": r"eritrea\w*",
+        "Djibouti": r"djibouti\w*",
+        "Central African Republic": r"central african republic",
+        "Chad": r"\bchad\b",
+        "Congo": r"(?<!democratic republic of )(?<!democratic republic of the )\bcongo\w*",
+        "Democratic Republic of the Congo": r"democratic republic of (?:the )?congo|\bdrc\b",
+        "Gabon": r"gabon\w*",
+        "Equatorial Guinea": r"equatorial guinea",
+        "Sao Tome and Principe": r"sao tome",
+        "Cabo Verde": r"cabo verde|cape verde",
+        "Guinea": r"\bguinea\b(?!-bissau)",
+        "Guinea-Bissau": r"guinea-bissau",
+        "Liberia": r"liberia\w*",
+        "Mauritania": r"mauritania\w*",
+        "Niger": r"\bniger\b",
+        "Sudan": r"\bsudan\w*",
+        "Lesotho": r"lesotho\w*",
+        "Eswatini": r"eswatini|swaziland",
+        "Seychelles": r"seychelles\w*",
+        "Mauritius": r"mauritius\w*",
+        "Comoros": r"comoros\w*"
     },
     "Asia & Pacific": {
         "Asia": r"asia\w*",
@@ -228,7 +306,36 @@ GEO_TAXONOMY = {
         "Bangladesh": r"bangladesh\w*",
         "Philippines": r"philippines?",
         "Afghanistan": r"afghanistan\w*",
-        "Australia": r"australia\w*|singapore"
+        "Australia": r"australia\w*|singapore",
+        "Japan": r"japan\w*",
+        "South Korea": r"south korea|korean?",
+        "North Korea": r"north korea",
+        "Taiwan": r"taiwan\w*",
+        "Pakistan": r"pakistan\w*",
+        "Bhutan": r"bhutan\w*",
+        "Maldives": r"maldives\w*",
+        "Singapore": r"singapore\w*",
+        "Brunei": r"brunei\w*",
+        "East Timor": r"east timor|timor-leste",
+        "Kazakhstan": r"kazakhstan\w*",
+        "Uzbekistan": r"uzbekistan\w*",
+        "Turkmenistan": r"turkmenistan\w*",
+        "Kyrgyzstan": r"kyrgyzstan\w*",
+        "Tajikistan": r"tajikistan\w*",
+        "Mongolia": r"mongolia\w*",
+        "New Zealand": r"new zealand",
+        "Papua New Guinea": r"papua new guinea",
+        "Solomon Islands": r"solomon islands",
+        "Vanuatu": r"vanuatu\w*",
+        "Fiji": r"fiji\w*",
+        "Samoa": r"\bsamoa\b",
+        "Tonga": r"tonga\w*",
+        "Tuvalu": r"tuvalu\w*",
+        "Kiribati": r"kiribati\w*",
+        "Nauru": r"nauru\w*",
+        "Marshall Islands": r"marshall islands",
+        "Micronesia": r"micronesia\w*",
+        "Palau": r"palau\w*"
     },
     "Middle East & North Africa (MENA)": {
         "Middle East": r"middle east",
@@ -236,7 +343,23 @@ GEO_TAXONOMY = {
         "Arab World": r"arab world",
         "Israel": r"israel\w*",
         "Palestine": r"palestin\w+",
-        "Yemen": r"yemen\w*"
+        "Yemen": r"yemen\w*",
+        "Jordan": r"jordan\w*",
+        "Egypt": r"egypt\w*",
+        "Lebanon": r"leban\w+",
+        "Syria": r"syria\w*",
+        "Iraq": r"iraq\w*",
+        "Iran": r"iran\w*|persia\w*",
+        "Saudi Arabia": r"saudi\w*",
+        "Oman": r"oman\w*",
+        "United Arab Emirates": r"united arab emirates|\buae\b",
+        "Qatar": r"qatar\w*",
+        "Bahrain": r"bahrain\w*",
+        "Kuwait": r"kuwait\w*",
+        "Morocco": r"moroc\w+",
+        "Algeria": r"algeria\w*",
+        "Tunisia": r"tunisia\w*",
+        "Libya": r"libya\w*"
     }
 }
 
@@ -395,11 +518,32 @@ def extract_geo(members):
             info = {}
             
         raw_geo_text = info.get("Geographic Focus", "")
+        geos = {}
+        if raw_geo_text and raw_geo_text.strip() and raw_geo_text.strip() != "$e":
+            robust = extract_geos_robust(raw_geo_text)
+            final_geos = extract_geos_final(raw_geo_text)
+            geos = dict(robust)
+            for macro, countries in final_geos.items():
+                if macro not in geos:
+                    geos[macro] = []
+                geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
         
-        # Kaskade abfeuern
-        geos = extract_geos_robust(raw_geo_text)
+        # If no geolocations could be extracted from Geographic Focus, fall back to other fields
         if not geos:
-            geos = extract_geos_final(raw_geo_text)
+            addr = member.get("address", "") or info.get("address", "") or ""
+            country = member.get("country", "") or member.get("position", {}).get("country", "") or ""
+            aop = info.get("areaOfOperation", "") or ""
+            about = info.get("About", "") or ""
+            name = member.get("name", "")
+            fallback_text = f"{addr} {country} {aop} {about} {name}".strip()
+            if fallback_text:
+                robust = extract_geos_robust(fallback_text)
+                final_geos = extract_geos_final(fallback_text)
+                geos = dict(robust)
+                for macro, countries in final_geos.items():
+                    if macro not in geos:
+                        geos[macro] = []
+                    geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
         
         parsed_geo_results[member_name] = geos
     
