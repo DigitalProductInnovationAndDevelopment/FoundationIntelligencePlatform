@@ -8,7 +8,10 @@ import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from scrapers.philea import make_request, scrape
+from scrapers.hinchilla import extract_email_from_text, infer_application_portal
+from preprocessing.consolidate import normalize_to_clean_schema
 from preprocessing.extract_geo_topic import extract_tags, extract_geo
+from preprocessing.quality import has_technical_value, is_informative_value, is_placeholder_value
 
 class TestPhileaScraper(unittest.TestCase):
     
@@ -157,6 +160,62 @@ class TestPhileaPreprocessor(unittest.TestCase):
         self.assertIn("Europe (Western / General)", members[0]["geo_locations"])
         self.assertIn("United Kingdom", members[0]["geo_locations"]["Europe (Western / General)"])
 
+    def test_extract_geo_uk_local_counties(self):
+        members = [
+            {
+                "name": "3R Foundation",
+                "philea_info": {
+                    "Geographic Focus": "Local community funding.",
+                    "areaOfOperation": "Cumbria, Lancashire"
+                }
+            }
+        ]
+        extract_geo(members)
+        self.assertIn("Europe (Western / General)", members[0]["geo_locations"])
+        self.assertIn("United Kingdom", members[0]["geo_locations"]["Europe (Western / General)"])
+
+    def test_extract_geo_fallback_leaves_ambiguous_places_without_context_unresolved(self):
+        members = [
+            {
+                "name": "Lancaster Fund",
+                "philea_info": {
+                    "Geographic Focus": "Local community funding.",
+                    "areaOfOperation": "Lancaster"
+                }
+            },
+            {
+                "name": "Reading Fund",
+                "philea_info": {
+                    "Geographic Focus": "Local community funding.",
+                    "areaOfOperation": "Reading"
+                }
+            },
+            {
+                "name": "Georgia Fund",
+                "philea_info": {
+                    "Geographic Focus": "Local community funding.",
+                    "areaOfOperation": "Georgia"
+                }
+            },
+            {
+                "name": "Jordan Fund",
+                "philea_info": {
+                    "Geographic Focus": "Local community funding.",
+                    "areaOfOperation": "Jordan"
+                }
+            },
+            {
+                "name": "Victoria Fund",
+                "philea_info": {
+                    "Geographic Focus": "Local community funding.",
+                    "areaOfOperation": "Victoria"
+                }
+            }
+        ]
+        extract_geo(members)
+        for member in members:
+            self.assertEqual(member["geo_locations"], {})
+
     def test_extract_geo_substring_safety(self):
         members = [
             {
@@ -192,6 +251,61 @@ class TestPhileaPreprocessor(unittest.TestCase):
         extract_geo(members)
         self.assertIn("Europe (Western / General)", members[0]["geo_locations"])
         self.assertIn("United Kingdom", members[0]["geo_locations"]["Europe (Western / General)"])
+
+class TestHinchillaQualityPreprocessing(unittest.TestCase):
+
+    def test_placeholder_values_are_not_informative(self):
+        placeholders = [
+            "Not available",
+            "Not publicly available",
+            "Not published",
+            "Not specified",
+            "Not disclosed",
+            "Not publicly disclosed",
+            "Data not available",
+            "Data not publicly available",
+            "N/A",
+            "Unknown",
+            "Not publicly disclosed (operates through partnerships)",
+        ]
+
+        for value in placeholders:
+            self.assertTrue(has_technical_value(value))
+            self.assertTrue(is_placeholder_value(value))
+            self.assertFalse(is_informative_value(value))
+
+        self.assertTrue(is_informative_value("£250 - £1,000"))
+        self.assertFalse(is_placeholder_value("No public application process"))
+
+    def test_infer_application_portal_from_existing_url(self):
+        url = "https://www.3rc.org.uk/grant-application"
+
+        self.assertEqual(infer_application_portal([url]), url)
+        self.assertEqual(infer_application_portal(["Invitation only", "Rolling basis via online portal"]), "")
+
+    def test_extract_email_from_existing_hinchilla_text(self):
+        text = "Online application form submission via email to grants@rgs.org."
+
+        self.assertEqual(extract_email_from_text(text), "grants@rgs.org")
+
+    def test_annual_income_is_preserved_but_not_used_as_annual_giving(self):
+        raw_hinchilla = {
+            "name": "Income Only Trust",
+            "philea_info": {
+                "annual_income": "£100",
+                "number_of_grants": "68 grants awarded",
+                "quick_stats": {
+                    "Annual Income": "£100",
+                    "Number of Grants": "68 grants awarded",
+                },
+            },
+        }
+
+        clean = normalize_to_clean_schema(raw_hinchilla, "Hinchilla")
+
+        self.assertEqual(clean["funding_info"]["annual_giving"], "")
+        self.assertEqual(clean["funding_info"]["annual_income"], "€120 (converted from GBP)")
+        self.assertEqual(clean["funding_info"]["number_of_grants"], "68 grants awarded")
 
 if __name__ == "__main__":
     unittest.main()

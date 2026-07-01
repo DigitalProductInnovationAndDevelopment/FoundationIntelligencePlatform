@@ -38,6 +38,20 @@ class TestHinchillaScraper(unittest.TestCase):
         self.assertEqual(blocks["e"]["type"], "text")
         self.assertEqual(blocks["e"]["content"], "test")
 
+    def test_parse_rsc_payload_uses_byte_lengths_for_text(self):
+        # RSC T lengths are byte lengths. Non-ASCII text must not move the parser
+        # into the middle of a text segment and create fake blocks like "period:".
+        text = "Grant range: £250 - £1,000\nCooling off period: 3 months"
+        content = f"d:T{len(text.encode('utf-8')):x},{text}e:T4,test"
+        blocks = parse_rsc_payload(content)
+
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks["d"]["type"], "text")
+        self.assertEqual(blocks["d"]["content"], text)
+        self.assertEqual(blocks["e"]["type"], "text")
+        self.assertEqual(blocks["e"]["content"], "test")
+        self.assertNotIn("period", blocks)
+
     def test_resolve_rsc_references(self):
         blocks = {
             "d": {"type": "text", "content": "Funding Details Text"},
@@ -121,7 +135,7 @@ class TestHinchillaScraper(unittest.TestCase):
         mock_detail_resp.status_code = 200
         mock_detail_resp.text = """
         d:T17,Funding Priorities Text
-        9:[["$", "$Lc", null, {"data": {"name": "Three Peas", "areaOfOperation": "Greece, Czechia", "expenditure": "90000", "website": "https://threepeas.org"}, "sections": [{"title": "Overview", "content": "About Three Peas"}, {"title": "Funding Priorities", "content": "$d"}, {"title": "Quick Stats", "content": "- **Annual Giving**: 90k"}]}]]
+        9:[["$", "$Lc", null, {"data": {"name": "Three Peas", "areaOfOperation": "Greece, Czechia", "expenditure": "90000", "website": "https://threepeas.org"}, "sections": [{"title": "Overview", "content": "About Three Peas"}, {"title": "Funding Priorities", "content": "$d"}, {"title": "Quick Stats", "content": "- **Annual Grant Distribution**: £3 million+\\n- **Annual Income**: £4.66 million\\n- **Annual Expenditure**: £1.2 million\\n- **Application Process**: No public application process\\n- **Number of Grants**: 68 grants awarded\\n- **Average Grant**: £6,000"}]}]]
         """
         
         mock_make_request.side_effect = [mock_dir_resp, mock_detail_resp, mock_detail_resp]
@@ -136,7 +150,14 @@ class TestHinchillaScraper(unittest.TestCase):
         self.assertEqual(philea_info["Programme Areas"], "Funding Priorities Text")
         self.assertIn("Greece, Czechia", philea_info["Geographic Focus"])
         self.assertEqual(philea_info["website"], "https://threepeas.org")
-        self.assertEqual(philea_info["annual_giving"], "90k")
+        self.assertEqual(philea_info["annual_giving"], "£3 million+")
+        self.assertEqual(philea_info["annual_income"], "£4.66 million")
+        self.assertEqual(philea_info["annual_expenditure"], "£1.2 million")
+        self.assertEqual(philea_info["grant_range"], "£6,000")
+        self.assertEqual(philea_info["average_grant"], "£6,000")
+        self.assertEqual(philea_info["funding_model"], "No public application process")
+        self.assertEqual(philea_info["number_of_grants"], "68 grants awarded")
+        self.assertEqual(philea_info["quick_stats"]["Application Process"], "No public application process")
 
 if __name__ == "__main__":
     unittest.main()

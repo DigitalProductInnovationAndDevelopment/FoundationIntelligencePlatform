@@ -509,6 +509,182 @@ def extract_geo(members):
                     found[macro].add(country_name)
         
         return {k: sorted(list(v)) for k, v in found.items()}
+
+    def normalize_location_text(raw_text):
+        return re.sub(r"[^a-z0-9]+", " ", raw_text.lower()).strip()
+
+    def contains_location_phrase(text_clean, phrase):
+        phrase_clean = normalize_location_text(phrase)
+        if not phrase_clean:
+            return False
+        pattern = r"(?<![a-z0-9])" + re.escape(phrase_clean) + r"(?![a-z0-9])"
+        return re.search(pattern, text_clean) is not None
+
+    def merge_country_result(found, country_name):
+        macro = COUNTRY_TO_MACRO.get(country_name)
+        if not macro:
+            return
+        if macro not in found:
+            found[macro] = set()
+        elif not isinstance(found[macro], set):
+            found[macro] = set(found[macro])
+        found[macro].add(country_name)
+
+    def normalize_geo_result(found):
+        return {k: sorted(list(v)) for k, v in found.items() if v}
+
+    def stringify_geo_value(value):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return " ".join(stringify_geo_value(item) for item in value)
+        if isinstance(value, dict):
+            return " ".join(stringify_geo_value(item) for item in value.values())
+        return ""
+
+    def collect_fallback_text(member, info):
+        field_markers = (
+            "address",
+            "area",
+            "country",
+            "description",
+            "eligib",
+            "geo",
+            "location",
+            "operation",
+            "program",
+            "programme",
+            "region",
+        )
+        fallback_parts = [
+            member.get("address", ""),
+            member.get("country", ""),
+            member.get("position", {}).get("country", "") if isinstance(member.get("position"), dict) else "",
+            member.get("name", ""),
+        ]
+        for source in (member, info):
+            if not isinstance(source, dict):
+                continue
+            for key, value in source.items():
+                key_lower = str(key).lower()
+                if any(marker in key_lower for marker in field_markers):
+                    fallback_parts.append(stringify_geo_value(value))
+        return " ".join(part for part in fallback_parts if part).strip()
+
+    LOCAL_FALLBACK_GAZETTEER = {
+        "United Kingdom": {
+            "terms": [
+                "cumbria", "lancashire", "north lancashire", "south cumbria",
+                "morecambe", "kendal", "carnforth", "greater manchester",
+                "manchester", "liverpool", "leeds", "bristol", "birmingham",
+                "newcastle upon tyne", "glasgow", "edinburgh", "cardiff",
+                "belfast", "yorkshire", "derbyshire", "nottinghamshire",
+                "surrey", "kent", "sussex", "berkshire"
+            ],
+            "contextual_terms": {
+                "lancaster": ["cumbria", "lancashire", "morecambe", "kendal", "carnforth", "north west england", "uk", "england"],
+                "reading": ["berkshire", "thames valley", "uk", "england", "united kingdom"],
+            },
+        },
+        "Ireland": {"terms": ["dublin", "cork", "galway", "limerick"]},
+        "France": {"terms": ["paris", "lyon", "marseille", "bordeaux", "normandy", "brittany"]},
+        "Germany": {"terms": ["berlin", "munich", "hamburg", "frankfurt", "bavaria", "north rhine westphalia"]},
+        "Switzerland": {"terms": ["zurich", "geneva", "basel", "bern"]},
+        "Austria": {"terms": ["vienna", "salzburg", "tyrol"]},
+        "Netherlands": {"terms": ["amsterdam", "rotterdam", "utrecht", "eindhoven"]},
+        "Belgium": {"terms": ["antwerp", "flanders", "wallonia"]},
+        "Spain": {"terms": ["madrid", "barcelona", "catalonia", "andalusia", "valencia"]},
+        "Italy": {"terms": ["rome", "milan", "naples", "venice", "sicily", "sardinia", "tuscany"]},
+        "Portugal": {"terms": ["lisbon", "porto", "algarve"]},
+        "Greece": {"terms": ["athens", "crete", "thessaloniki"]},
+        "Denmark": {"terms": ["copenhagen", "jutland"]},
+        "Sweden": {"terms": ["stockholm", "gothenburg", "malmo"]},
+        "Norway": {"terms": ["oslo", "bergen", "trondheim"]},
+        "Finland": {"terms": ["helsinki", "espoo", "tampere"]},
+        "Poland": {"terms": ["warsaw", "krakow", "gdansk"]},
+        "Ukraine": {"terms": ["kyiv", "kiev", "lviv", "odesa", "odessa"]},
+        "Czech Republic": {"terms": ["prague", "brno"]},
+        "Romania": {"terms": ["bucharest", "cluj", "transylvania"]},
+        "United States": {
+            "terms": [
+                "california", "new york", "new york city", "texas", "florida",
+                "illinois", "chicago", "massachusetts", "boston", "colorado",
+                "denver", "michigan", "detroit", "pennsylvania", "philadelphia",
+                "ohio", "oregon", "portland", "seattle", "los angeles",
+                "san francisco", "washington dc", "district of columbia"
+            ],
+            "contextual_terms": {
+                "washington": ["seattle", "puget sound", "usa", "united states", "pacific northwest"],
+            },
+        },
+        "Canada": {"terms": ["ontario", "quebec", "toronto", "montreal", "vancouver", "british columbia", "alberta"]},
+        "Mexico": {"terms": ["mexico city", "yucatan", "oaxaca"]},
+        "Brazil": {"terms": ["sao paulo", "rio de janeiro", "bahia", "amazonas"]},
+        "Argentina": {"terms": ["buenos aires", "patagonia"]},
+        "Colombia": {"terms": ["bogota", "medellin"]},
+        "Chile": {"terms": ["santiago", "valparaiso"]},
+        "South Africa": {"terms": ["cape town", "johannesburg", "gauteng", "kwazulu natal"]},
+        "Kenya": {"terms": ["nairobi", "mombasa"]},
+        "Nigeria": {"terms": ["lagos", "abuja"]},
+        "Ghana": {"terms": ["accra", "kumasi"]},
+        "Tanzania": {"terms": ["dar es salaam", "zanzibar"]},
+        "India": {"terms": ["delhi", "new delhi", "mumbai", "bangalore", "bengaluru", "karnataka", "maharashtra"]},
+        "China": {"terms": ["beijing", "shanghai", "guangdong", "shenzhen"]},
+        "Japan": {"terms": ["tokyo", "osaka", "kyoto"]},
+        "South Korea": {"terms": ["seoul", "busan"]},
+        "Indonesia": {"terms": ["jakarta", "bali", "java"]},
+        "Thailand": {"terms": ["bangkok", "chiang mai"]},
+        "Vietnam": {"terms": ["hanoi", "ho chi minh city"]},
+        "Australia": {
+            "terms": ["sydney", "melbourne", "brisbane", "perth", "adelaide", "new south wales", "queensland", "western australia", "tasmania"],
+            "contextual_terms": {
+                "victoria": ["australia", "melbourne", "new south wales", "queensland", "tasmania"],
+            },
+        },
+        "New Zealand": {"terms": ["auckland", "wellington", "christchurch"]},
+        "Israel": {"terms": ["tel aviv", "jerusalem", "haifa"]},
+        "Palestine": {"terms": ["west bank", "gaza"]},
+        "Egypt": {"terms": ["cairo", "alexandria"]},
+        "Lebanon": {"terms": ["beirut"]},
+        "Morocco": {"terms": ["casablanca", "marrakesh", "rabat"]},
+        "United Arab Emirates": {"terms": ["dubai", "abu dhabi"]},
+    }
+
+    AMBIGUOUS_FALLBACK_CONTEXT = {
+        "Georgia": ["tbilisi", "caucasus", "black sea", "armenia", "azerbaijan", "eastern europe"],
+        "Jordan": ["amman", "middle east", "mena", "levant", "palestine", "syria", "iraq", "israel"],
+    }
+
+    def filter_ambiguous_fallback_geos(geos, raw_text):
+        text_clean = normalize_location_text(raw_text)
+        filtered = {macro: set(countries) for macro, countries in geos.items()}
+        for country_name, context_terms in AMBIGUOUS_FALLBACK_CONTEXT.items():
+            macro = COUNTRY_TO_MACRO.get(country_name)
+            if not macro or country_name not in filtered.get(macro, set()):
+                continue
+            if not any(contains_location_phrase(text_clean, term) for term in context_terms):
+                filtered[macro].discard(country_name)
+        return normalize_geo_result(filtered)
+
+    def extract_geos_from_fallback_gazetteer(raw_text):
+        if not raw_text:
+            return {}
+        text_clean = normalize_location_text(raw_text)
+        found = {}
+        for country_name, config in LOCAL_FALLBACK_GAZETTEER.items():
+            for term in config.get("terms", []):
+                if contains_location_phrase(text_clean, term):
+                    merge_country_result(found, country_name)
+                    break
+            if country_name in [country for countries in found.values() for country in countries]:
+                continue
+            for term, context_terms in config.get("contextual_terms", {}).items():
+                if contains_location_phrase(text_clean, term) and any(
+                    contains_location_phrase(text_clean, context) for context in context_terms
+                ):
+                    merge_country_result(found, country_name)
+                    break
+        return normalize_geo_result(found)
     
     parsed_geo_results = {}
     for member in members:
@@ -530,17 +706,18 @@ def extract_geo(members):
         
         # If no geolocations could be extracted from Geographic Focus, fall back to other fields
         if not geos:
-            addr = member.get("address", "") or info.get("address", "") or ""
-            country = member.get("country", "") or member.get("position", {}).get("country", "") or ""
-            aop = info.get("areaOfOperation", "") or ""
-            about = info.get("About", "") or ""
-            name = member.get("name", "")
-            fallback_text = f"{addr} {country} {aop} {about} {name}".strip()
+            fallback_text = collect_fallback_text(member, info)
             if fallback_text:
                 robust = extract_geos_robust(fallback_text)
                 final_geos = extract_geos_final(fallback_text)
                 geos = dict(robust)
                 for macro, countries in final_geos.items():
+                    if macro not in geos:
+                        geos[macro] = []
+                    geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
+                geos = filter_ambiguous_fallback_geos(geos, fallback_text)
+                fallback_geos = extract_geos_from_fallback_gazetteer(fallback_text)
+                for macro, countries in fallback_geos.items():
                     if macro not in geos:
                         geos[macro] = []
                     geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
