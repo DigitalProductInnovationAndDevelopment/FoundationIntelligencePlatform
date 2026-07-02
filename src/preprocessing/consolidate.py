@@ -20,6 +20,74 @@ if not logger.handlers:
 # Simple currency conversion rate: 1 GBP = 1.2 EUR
 GBP_TO_EUR_RATE = 1.2
 
+MONEY_UNIT_MULTIPLIERS = {
+    "k": 1_000.0,
+    "thousand": 1_000.0,
+    "m": 1_000_000.0,
+    "mn": 1_000_000.0,
+    "million": 1_000_000.0,
+    "b": 1_000_000_000.0,
+    "bn": 1_000_000_000.0,
+    "billion": 1_000_000_000.0,
+}
+
+_NUMBER_TOKEN = r"\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?|\d+(?:,\d+)?"
+_MONEY_UNIT = r"thousand|million|billion|mn|bn|[kmb](?![a-z])"
+_GBP_PREFIX_AMOUNT_RE = re.compile(
+    rf"(?P<prefix>£|gbp|pounds?)\s*"
+    rf"(?P<number>{_NUMBER_TOKEN})"
+    rf"(?P<plus>\+)?"
+    rf"(?:\s*(?P<unit>{_MONEY_UNIT}))?",
+    re.IGNORECASE,
+)
+_GBP_SUFFIX_AMOUNT_RE = re.compile(
+    rf"(?P<number>{_NUMBER_TOKEN})"
+    rf"(?P<plus>\+)?"
+    rf"(?:\s*(?P<unit>{_MONEY_UNIT}))?\s*"
+    rf"(?P<suffix>gbp|pounds?)",
+    re.IGNORECASE,
+)
+_GENERAL_AMOUNT_RE = re.compile(
+    rf"(?:[£€$]\s*)?"
+    rf"(?P<number>{_NUMBER_TOKEN})"
+    rf"(?P<plus>\+)?"
+    rf"(?:\s*(?P<unit>{_MONEY_UNIT}))?",
+    re.IGNORECASE,
+)
+
+
+def _parse_number_token(num_str, unit=None):
+    has_unit = bool(unit)
+    token = str(num_str).strip()
+
+    if "," in token and "." in token:
+        token = token.replace(",", "")
+    elif "," in token:
+        parts = token.split(",")
+        if len(parts) == 2 and len(parts[-1]) in {1, 2}:
+            token = token.replace(",", ".")
+        else:
+            token = token.replace(",", "")
+    elif "." in token:
+        parts = token.split(".")
+        if len(parts) > 2:
+            token = token.replace(".", "")
+        elif not has_unit and len(parts[-1]) == 3:
+            token = token.replace(".", "")
+
+    try:
+        amount = float(token)
+    except ValueError:
+        return None
+
+    multiplier = MONEY_UNIT_MULTIPLIERS.get(str(unit or "").casefold(), 1.0)
+    return amount * multiplier
+
+
+def _extract_amount_from_match(match):
+    return _parse_number_token(match.group("number"), match.groupdict().get("unit"))
+
+
 def _extract_number(val_str):
     """
     Extracts a numeric float value from a string, ignoring currency symbols and years.
@@ -31,40 +99,11 @@ def _extract_number(val_str):
     # Remove year patterns like (2024) or [2022] or (2023-24) to avoid matching the year as the number
     cleaned = re.sub(r'[\(\[\{]\d{4}.*?[\)\]\}]', '', val_str)
     
-    # Extract digit sequences that might contain periods or commas
-    numbers = re.findall(r'\d+(?:[.,]\d+)*', cleaned)
-    if not numbers:
-        return None
-    
-    num_str = numbers[0]
-    
-    # Standardize thousands separator vs decimal separator
-    if ',' in num_str and '.' in num_str:
-        num_str = num_str.replace(',', '')
-    elif ',' in num_str:
-        parts = num_str.split(',')
-        if len(parts[-1]) == 2:
-            num_str = num_str.replace(',', '.')
-        else:
-            num_str = num_str.replace(',', '')
-    elif '.' in num_str:
-        parts = num_str.split('.')
-        if len(parts[-1]) != 2 and len(parts[-1]) != 1:
-            num_str = num_str.replace('.', '')
-            
-    val_lower = cleaned.lower()
-    multiplier = 1.0
-    if re.search(r'\bmillion\b|(?<=\d)m\b|\bm\b', val_lower):
-        multiplier = 1_000_000.0
-    elif re.search(r'\bbillion\b|(?<=\d)b\b|\bb\b', val_lower):
-        multiplier = 1_000_000_000.0
-    elif re.search(r'\bthousand\b|(?<=\d)k\b|\bk\b', val_lower):
-        multiplier = 1_000.0
-
-    try:
-        return float(num_str) * multiplier
-    except ValueError:
-        return None
+    for match in _GENERAL_AMOUNT_RE.finditer(cleaned):
+        amount = _extract_amount_from_match(match)
+        if amount is not None:
+            return amount
+    return None
 
 def convert_gbp_to_eur(val_str):
     """
@@ -76,43 +115,27 @@ def convert_gbp_to_eur(val_str):
         return val_str
         
     val_lower = val_str.lower()
+    if "(converted from gbp)" in val_lower:
+        return val_str
     if '£' not in val_str and 'gbp' not in val_lower and 'pound' not in val_lower:
         return val_str
-        
-    # Check if it is a range (ignoring hyphens inside parenthesis/brackets like in years: 2023-24)
-    cleaned_for_check = re.sub(r'[\(\[\{].*?[\)\]\}]', '', val_str)
-    
-    parts = []
-    if ' - ' in cleaned_for_check:
-        parts = val_str.split(' - ')
-    elif '-' in cleaned_for_check:
-        parts = val_str.split('-')
-    elif ' to ' in cleaned_for_check.lower():
-        parts = re.split(r'\s+to\s+', val_str, flags=re.IGNORECASE)
-        
-    if len(parts) == 2:
-        def convert_single(part):
-            num = _extract_number(part)
-            if num is None:
-                return part
-            converted = num * GBP_TO_EUR_RATE
-            return f"€{converted:,.0f}"
-            
-        p1 = convert_single(parts[0].strip())
-        p2 = convert_single(parts[1].strip())
-        
-        year_match = re.search(r'[\(\[\{]\d{4}.*?[\)\]\}]', val_str)
-        suffix = f" {year_match.group(0)}" if year_match else ""
-        return f"{p1} - {p2}{suffix} (converted from GBP)"
-    else:
-        num = _extract_number(val_str)
-        if num is None:
-            return val_str
-            
-        converted = num * GBP_TO_EUR_RATE
-        year_match = re.search(r'[\(\[\{]\d{4}.*?[\)\]\}]', val_str)
-        suffix = f" {year_match.group(0)}" if year_match else ""
-        return f"€{converted:,.0f}{suffix} (converted from GBP)"
+
+    converted_any = False
+
+    def convert_match(match):
+        nonlocal converted_any
+        amount = _extract_amount_from_match(match)
+        if amount is None:
+            return match.group(0)
+        converted_any = True
+        plus = match.groupdict().get("plus") or ""
+        return f"€{amount * GBP_TO_EUR_RATE:,.0f}{plus}"
+
+    converted = _GBP_PREFIX_AMOUNT_RE.sub(convert_match, val_str)
+    converted = _GBP_SUFFIX_AMOUNT_RE.sub(convert_match, converted)
+    if not converted_any:
+        return val_str
+    return f"{converted} (converted from GBP)"
 
 def extract_domain(url):
     """

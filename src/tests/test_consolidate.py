@@ -14,6 +14,7 @@ from preprocessing.consolidate import (
     jaccard_similarity,
     match_members,
     convert_gbp_to_eur,
+    _extract_number,
     normalize_to_clean_schema,
     merge_members,
     consolidate_datasets
@@ -65,6 +66,24 @@ class TestConsolidate(unittest.TestCase):
         self.assertEqual(convert_gbp_to_eur("10,000 GBP"), "€12,000 (converted from GBP)")
         self.assertEqual(convert_gbp_to_eur("€10,000"), "€10,000") # No conversion
         self.assertEqual(convert_gbp_to_eur("Not publicly available"), "Not publicly available")
+
+    def test_convert_gbp_to_eur_uses_units_locally(self):
+        self.assertEqual(
+            _extract_number("£12,057,241 (UK); ~£120 million globally"),
+            12057241.0,
+        )
+        self.assertEqual(
+            convert_gbp_to_eur("£12,057,241 (UK); ~£120 million globally"),
+            "€14,468,689 (UK); ~€144,000,000 globally (converted from GBP)",
+        )
+        self.assertEqual(
+            convert_gbp_to_eur("Up to £80,000"),
+            "Up to €96,000 (converted from GBP)",
+        )
+        self.assertEqual(
+            convert_gbp_to_eur("£1,100,000,000+ (over £1.1 billion in annual grants)"),
+            "€1,320,000,000+ (over €1,320,000,000 in annual grants) (converted from GBP)",
+        )
 
     def test_normalize_to_clean_schema(self):
         raw_philea = {
