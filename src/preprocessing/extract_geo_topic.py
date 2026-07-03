@@ -40,7 +40,12 @@ MASTER_TAGS = [
     "Animal-Related",
     "Water",
     "Nature",
-    "Human/Civil Rights"  # FIX: War vorher vergessen
+    "Human/Civil Rights",  # FIX: War vorher vergessen
+    "Technology",
+    "Digital Transformation",
+    "Scientific Research and Technology Transfer",
+    "Innovation",
+    "tech-enablement"
 ]
 
 # 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 13 Hauptkategorien)
@@ -57,7 +62,14 @@ TAG_NORMALIZATION = {
     "Employment/Workforce": "Socio-economic Development, Poverty",
     "Social/Human Services": "Socio-economic Development, Poverty",
     "Recreation, Sport & Well-being": "Health",
-    "Policy development": "Citizenship, Social Justice & Public Affairs"
+    "Policy development": "Citizenship, Social Justice & Public Affairs",
+    
+    # Technology / Digitalization Mapping to tech-enablement
+    "Technology": "tech-enablement",
+    "Digital Transformation": "tech-enablement",
+    "Scientific Research and Technology Transfer": "tech-enablement",
+    "Innovation": "tech-enablement",
+    "tech-enablement": "tech-enablement"
 }
 
 # 3. Die Keyword-Kanten für den Freitext-Fallback (Exakt synchron zu den Normalisierungs-Targets)
@@ -116,6 +128,9 @@ KEYWORD_MAPPING = {
     ],
     "Peace & Conflict Resolution": [
         r"peacebuilding", r"conflict sensitivity", r"peace work"
+    ],
+    "tech-enablement": [
+        r"tech\w*", r"technolog\w*", r"digital\w*", r"software", r"data science", r"artificial intelligence", r"ai\b", r"it\b"
     ]
 }
 
