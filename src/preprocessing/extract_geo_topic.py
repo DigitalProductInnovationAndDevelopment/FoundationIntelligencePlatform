@@ -431,22 +431,30 @@ def extract_tags(members):
             info = {}
             
         tags = extract_tags_robust(info.get("Programme Areas", ""))
+        source = "exact_match"
         if not tags:  # Fallback auf die Freitext-Analyse, wenn keine Tags gefunden wurden
             tags = extract_tags_final(info.get("Programme Areas", ""))
+            source = "regex_fallback"
         if not tags:  # Letzte Chance: Manchmal stehen die Tags nicht unter "Programme Areas", sondern nur im allgemeinen "About"-Text
             tags = extract_tags_final(info.get("About", ""))
+            source = "regex_fallback"
         if not tags:
             tags = extract_tags_final(info.get("Mission", ""))
+            source = "regex_fallback"
             
-        parsed_results[member_name] = tags
+        parsed_results[member_name] = (tags, source)
     
     logging.info(f"Total processed members for tags: {len(parsed_results)}")
-    empty_count = sum(1 for tags in parsed_results.values() if not tags)
+    empty_count = sum(1 for tags, src in parsed_results.values() if not tags)
     logging.info(f"Number of members without tags: {empty_count}")
     
     for member in members:
         member_name = member.get("name", "Unknown")
-        member["tags_focus"] = sorted(parsed_results.get(member_name, []))
+        tags_list, source = parsed_results.get(member_name, ([], "exact_match"))
+        member["tags_focus"] = sorted(
+            [{"tag": t, "source": source} for t in tags_list],
+            key=lambda x: x["tag"]
+        )
         
 def extract_geo(members):
     # HILFS-STRUKTUREN AUTOMATISCH GENERIERT (Keine doppelte Pflege nötig!)

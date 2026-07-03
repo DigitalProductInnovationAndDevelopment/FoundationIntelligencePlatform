@@ -104,7 +104,7 @@ class TestConsolidate(unittest.TestCase):
         self.assertEqual(clean["longitude"], 4.9041)
         self.assertEqual(clean["funding_info"]["annual_giving"], "€50,000 (2024)")
         self.assertEqual(clean["funding_info"]["funding_model"], "Open applications")
-        self.assertEqual(clean["thematic_focus"], ["Health"])
+        self.assertEqual(clean["thematic_focus"], [{"tag": "Health", "source": "exact_match"}])
         self.assertEqual(clean["geographic_focus"], {"Worldwide": ["Global"]})
 
     def test_merge_members(self):
@@ -145,7 +145,13 @@ class TestConsolidate(unittest.TestCase):
         self.assertEqual(merged["funding_info"]["charity_number"], "12345") # Extracted from Hinchilla
         
         # Verify tag and geolocation merging
-        self.assertEqual(sorted(merged["thematic_focus"]), ["Health", "Human/Civil Rights"])
+        self.assertEqual(
+            merged["thematic_focus"],
+            [
+                {"tag": "Health", "source": "exact_match"},
+                {"tag": "Human/Civil Rights", "source": "exact_match"}
+            ]
+        )
         self.assertEqual(merged["geographic_focus"]["Worldwide"], ["Global"])
         self.assertEqual(merged["geographic_focus"]["Europe (Western / General)"], ["Netherlands"])
         
