@@ -51,28 +51,33 @@ def parse_rsc_payload(content):
     Parse a Next.js App Router Server Components RSC stream payload.
     Correctly decodes length-prefixed text blocks (T[hex],) and normal line-based blocks.
     """
+    raw_content = content.encode("utf-8")
     pointer = 0
     parsed_blocks = {}
+    segment_re = re.compile(rb'^[ \t\r\n]*([A-Za-z0-9_]+):')
     
-    while pointer < len(content):
-        # Match a key at current position, ignoring any leading newlines/whitespace
-        match = re.match(r'^[\r\n]*([0-9a-fA-F\w]+):', content[pointer:])
+    while pointer < len(raw_content):
+        # Match a key at the current segment boundary. RSC text lengths are byte
+        # lengths, so pointer movement must be done on the encoded payload.
+        match = segment_re.match(raw_content[pointer:])
         if not match:
-            # Advance if no match (e.g. whitespace, trailing characters)
-            pointer += 1
+            newline_idx = raw_content.find(b"\n", pointer)
+            if newline_idx == -1:
+                break
+            pointer = newline_idx + 1
             continue
             
-        key = match.group(1)
+        key = match.group(1).decode("ascii")
         pointer += match.end()
         
         # Check if it is a text block format: T[hex],
-        text_match = re.match(r'^T([0-9a-fA-F]+),', content[pointer:])
+        text_match = re.match(rb'^T([0-9a-fA-F]+),', raw_content[pointer:])
         if text_match:
-            hex_len = text_match.group(1)
+            hex_len = text_match.group(1).decode("ascii")
             length = int(hex_len, 16)
             pointer += text_match.end()
             
-            val = content[pointer:pointer+length]
+            val = raw_content[pointer:pointer+length].decode("utf-8", errors="replace")
             parsed_blocks[key] = {
                 "type": "text",
                 "content": val
@@ -80,12 +85,12 @@ def parse_rsc_payload(content):
             pointer += length
         else:
             # Standard line-based segment (usually JSON payload, HL, or I)
-            newline_idx = content.find("\n", pointer)
+            newline_idx = raw_content.find(b"\n", pointer)
             if newline_idx == -1:
-                val = content[pointer:]
-                pointer = len(content)
+                val = raw_content[pointer:].decode("utf-8", errors="replace")
+                pointer = len(raw_content)
             else:
-                val = content[pointer:newline_idx]
+                val = raw_content[pointer:newline_idx].decode("utf-8", errors="replace")
                 pointer = newline_idx + 1
                 
             parsed_blocks[key] = {
@@ -172,11 +177,63 @@ def parse_quick_stats(text):
                 stats[key] = val
     return stats
 
+def normalize_stat_key(key):
+    return re.sub(r"[^a-z0-9]+", "", key.lower())
+
 def get_case_insensitive(d, key_options):
+    normalized_options = {normalize_stat_key(opt) for opt in key_options}
     for opt in key_options:
         for k, v in d.items():
             if k.lower() == opt.lower():
                 return v
+    for k, v in d.items():
+        if normalize_stat_key(k) in normalized_options:
+            return v
+    return ""
+
+def pick_quick_stat(stats, key_options):
+    return get_case_insensitive(stats, key_options)
+
+APPLICATION_URL_INDICATORS = (
+    "apply",
+    "application",
+    "grant-application",
+    "funding",
+    "portal",
+    "grants",
+)
+
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+URL_RE = re.compile(r"https?://[^\s)\]>,]+")
+
+def extract_email_from_text(text):
+    if not text:
+        return ""
+    for match in EMAIL_RE.finditer(text):
+        email = match.group(0).strip().rstrip(".,;:)]}")
+        local, _, domain = email.partition("@")
+        if local and "." in domain and not domain.startswith(".") and not domain.endswith("."):
+            return email
+    return ""
+
+def extract_urls_from_text(text):
+    if not text:
+        return []
+    return [match.group(0).rstrip(".,;:)]}") for match in URL_RE.finditer(text)]
+
+def is_application_url(url):
+    if not url or not isinstance(url, str):
+        return False
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        return False
+    url_lower = url.lower()
+    return any(indicator in url_lower for indicator in APPLICATION_URL_INDICATORS)
+
+def infer_application_portal(urls):
+    for url in urls:
+        if is_application_url(url):
+            return url.strip()
     return ""
 
 def scrape(limit=None, sleep_time=1.0, timeout=10.0, completed_slugs=None):
@@ -293,6 +350,12 @@ def scrape(limit=None, sleep_time=1.0, timeout=10.0, completed_slugs=None):
             
             # Geographic Focus includes areaOfOperation, Funding Priorities, and Quick Stats info
             geo_focus_combined = f"Area of Operation: {area_of_operation}\n\n{funding_priorities}\n\n{quick_stats_text}"
+            text_for_contact = "\n".join([overview, funding_priorities, quick_stats_text])
+            website = meta_data.get("website", "")
+            email = meta_data.get("email", "") or extract_email_from_text(text_for_contact)
+            application_portal = meta_data.get("applicationPortal", "") or infer_application_portal(
+                [website] + extract_urls_from_text(text_for_contact)
+            )
             
             member["philea_info"] = {
                 # Normal fields expected by extract_geo_topic.py
@@ -304,18 +367,55 @@ def scrape(limit=None, sleep_time=1.0, timeout=10.0, completed_slugs=None):
                 "charityNumber": meta_data.get("charityNumber", ""),
                 "areaOfOperation": area_of_operation,
                 "expenditure": meta_data.get("expenditure", ""),
-                "website": meta_data.get("website", ""),
+                "website": website,
                 "phone": meta_data.get("phone", ""),
-                "email": meta_data.get("email", ""),
+                "email": email,
                 "address": meta_data.get("address", ""),
-                "applicationPortal": meta_data.get("applicationPortal", ""),
+                "applicationPortal": application_portal,
                 
                 # Financial stats from Quick Stats
-                "annual_giving": get_case_insensitive(quick_stats, ["Annual Giving", "Annual giving"]),
-                "success_rate": get_case_insensitive(quick_stats, ["Success Rate", "Success rate"]),
-                "decision_time": get_case_insensitive(quick_stats, ["Decision Time", "Decision time"]),
-                "grant_range": get_case_insensitive(quick_stats, ["Grant Range", "Grant range", "Average Grant", "Average grant"]),
-                "funding_model": get_case_insensitive(quick_stats, ["Funding Model", "Funding model", "Application Method", "Application method"]),
+                "quick_stats": quick_stats,
+                "annual_giving": pick_quick_stat(quick_stats, [
+                    "Annual Giving",
+                    "Annual Grant Distribution",
+                    "Annual Grants",
+                    "AAC's Own Annual Grants",
+                ]),
+                "annual_income": pick_quick_stat(quick_stats, ["Annual Income", "Total Income"]),
+                "annual_expenditure": pick_quick_stat(quick_stats, ["Annual Expenditure", "Charitable Expenditure"]),
+                "success_rate": pick_quick_stat(quick_stats, [
+                    "Success Rate",
+                    "Award Rate",
+                    "Acceptance Rate",
+                    "Funding Success Rate",
+                ]),
+                "decision_time": pick_quick_stat(quick_stats, [
+                    "Decision Time",
+                    "Decision Timeline",
+                    "Response Time",
+                    "Review Time",
+                    "Turnaround Time",
+                ]),
+                "grant_range": pick_quick_stat(quick_stats, [
+                    "Grant Range",
+                    "Average Grant",
+                    "Grant Amount",
+                    "Grant Size",
+                    "Award Range",
+                    "Typical Grant",
+                    "Amount",
+                ]),
+                "average_grant": pick_quick_stat(quick_stats, ["Average Grant", "Typical Grant"]),
+                "funding_model": pick_quick_stat(quick_stats, [
+                    "Funding Model",
+                    "Application Method",
+                    "Application Process",
+                    "Application",
+                    "Application Schedule",
+                    "Grant Distribution",
+                    "Distribution Method",
+                ]),
+                "number_of_grants": pick_quick_stat(quick_stats, ["Number of Grants", "Grants Awarded", "Projects Funded Globally"]),
             }
             scraped_successfully += 1
             
