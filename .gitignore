@@ -168,3 +168,7 @@ Thumbs.db
 # Project custom ignores
 response.html
 detail_response.txt
+
+# Official Charity Commission daily bulk extracts (large local cache)
+src/data/raw/charity_commission_bulk/
+src/data/processed/charity_commission_register.sqlite3*
