@@ -173,8 +173,9 @@ class CharityCommissionAPI:
         Searches for a charity by name.
         URL: searchCharityName/{charityname}
         """
-        endpoint = f"searchCharityName/{charity_name}"
-        response = self.make_request("GET", endpoint)
+from urllib.parse import quote
+endpoint = f"searchCharityName/{quote(str(charity_name), safe='')}"
+response = self.make_request("GET", endpoint)
         if response.status_code == 200:
             return response.json()
         else:
