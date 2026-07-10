@@ -22,7 +22,7 @@ def load_env():
                     key = key.strip()
                     val = val.strip().strip("'\"")
                     if key:
-                        os.environ[key] = val
+                        os.environ.setdefault(key, val)
 
 load_env()
 
