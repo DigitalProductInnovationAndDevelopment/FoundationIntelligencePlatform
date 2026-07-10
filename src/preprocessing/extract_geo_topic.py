@@ -130,7 +130,8 @@ KEYWORD_MAPPING = {
         r"peacebuilding", r"conflict sensitivity", r"peace work"
     ],
     "tech-enablement": [
-        r"tech\w*", r"technolog\w*", r"digital\w*", r"software", r"data science", r"artificial intelligence", r"ai\b", r"it\b"
+        r"tech\w*", r"technolog\w*", r"digital\w*", r"software", r"data science", r"artificial intelligence", r"ai\b",
+        r"\bit\b(?=\s+(systems?|services?|infrastructure|department|team|strategy|support))"
     ]
 }
 
