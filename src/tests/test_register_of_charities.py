@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import os
 import sys
-import requests
+
 
 # Add project root to sys.path so we can import scrapers
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
