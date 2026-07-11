@@ -48,7 +48,7 @@ MASTER_TAGS = [
     "tech-enablement"
 ]
 
-# 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 14 Hauptkategorien)
+# 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 14 Hauptkategorien inkl. tech-enablement)
 TAG_NORMALIZATION = {
     # Schreibweisen-Korrekturen
     "Arts and Culture": "Arts & Culture",
