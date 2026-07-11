@@ -4,6 +4,7 @@ import json
 import logging
 import argparse
 import requests
+from urllib.parse import quote
 
 # Load environment variables from .env file if it exists
 def load_env():
@@ -173,9 +174,8 @@ class CharityCommissionAPI:
         Searches for a charity by name.
         URL: searchCharityName/{charityname}
         """
-from urllib.parse import quote
-endpoint = f"searchCharityName/{quote(str(charity_name), safe='')}"
-response = self.make_request("GET", endpoint)
+        endpoint = f"searchCharityName/{quote(str(charity_name), safe='')}"
+        response = self.make_request("GET", endpoint)
         if response.status_code == 200:
             return response.json()
         else:
