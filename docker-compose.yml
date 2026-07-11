@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  bff:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - JWT_SECRET_KEY=bff_super_secret_signing_key_for_session_tokens_2026
+      - CORE_API_URL=http://localhost:8080
+      - DATA_PATH=/app/src/data/raw/register_of_charities_results.json
+    # Command overridden with --reload for development hot-reloading
+    command: uvicorn bff.main:app --host 0.0.0.0 --port 8000 --reload
