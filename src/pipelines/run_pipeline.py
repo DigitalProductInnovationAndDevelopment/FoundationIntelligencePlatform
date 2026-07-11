@@ -201,6 +201,28 @@ def run_pipeline(args):
     # Step 2: Preprocess
     logging.info("Step 2: Processing content to extract thematic focus tags and geographic locations...")
     try:
+        if source == "philea" and not args.skip_contact_crawler:
+            logging.info("Step 2.1: Checking for missing addresses and emails to enrich...")
+            from preprocessing.extract_impressum import crawl_impressum
+            for i, member in enumerate(members, 1):
+                email_missing = not member.get("email") or str(member.get("email")).strip() == ""
+                address_missing = not member.get("address") or str(member.get("address")).strip() == ""
+                
+                if (email_missing or address_missing) and member.get("website"):
+                    member_name = member.get("name", "Unknown Name")
+                    logging.info(f"[{i}/{len(members)}] Crawling missing contact info for: {member_name} ({member['website']})")
+                    try:
+                        impressum = crawl_impressum(member["website"], timeout=8)
+                        if impressum:
+                            if email_missing and impressum.get("generic_email"):
+                                member["email"] = impressum["generic_email"]
+                                logging.info(f"  -> Found email: {impressum['generic_email']}")
+                            if address_missing and impressum.get("address"):
+                                member["address"] = impressum["address"]
+                                logging.info(f"  -> Found address: {impressum['address']}")
+                    except Exception as e:
+                        logging.warning(f"  -> Failed to crawl {member_name}: {e}")
+                        
         extract_tags(members)
         extract_geo(members)
         save_preprocessed_data(members, preprocessed_output)
@@ -273,6 +295,11 @@ if __name__ == "__main__":
         "--enrich",
         action="store_true",
         help="Enrich scraped organization data using Gemini and Google Search grounding."
+    )
+    parser.add_argument(
+        "--skip-contact-crawler",
+        action="store_true",
+        help="Skip crawling missing contact info (email/address) from websites."
     )
     
     args = parser.parse_args()
