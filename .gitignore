@@ -114,11 +114,6 @@ celerybeat.pid
 
 # Environments
 .env
-.env.local
-.env.*.local
-.env.development
-.env.test
-.env.production
 .venv
 env/
 venv/
@@ -164,7 +159,3 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
-
-# Project custom ignores
-response.html
-detail_response.txt
