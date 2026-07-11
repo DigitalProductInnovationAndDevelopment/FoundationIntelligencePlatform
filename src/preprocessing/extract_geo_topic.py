@@ -40,10 +40,15 @@ MASTER_TAGS = [
     "Animal-Related",
     "Water",
     "Nature",
-    "Human/Civil Rights"  # FIX: War vorher vergessen
+    "Human/Civil Rights",  # FIX: War vorher vergessen
+    "Technology",
+    "Digital Transformation",
+    "Scientific Research and Technology Transfer",
+    "Innovation",
+    "tech-enablement"
 ]
 
-# 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 13 Hauptkategorien)
+# 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 14 Hauptkategorien inkl. tech-enablement)
 TAG_NORMALIZATION = {
     # Schreibweisen-Korrekturen
     "Arts and Culture": "Arts & Culture",
@@ -57,7 +62,14 @@ TAG_NORMALIZATION = {
     "Employment/Workforce": "Socio-economic Development, Poverty",
     "Social/Human Services": "Socio-economic Development, Poverty",
     "Recreation, Sport & Well-being": "Health",
-    "Policy development": "Citizenship, Social Justice & Public Affairs"
+    "Policy development": "Citizenship, Social Justice & Public Affairs",
+    
+    # Technology / Digitalization Mapping to tech-enablement
+    "Technology": "tech-enablement",
+    "Digital Transformation": "tech-enablement",
+    "Scientific Research and Technology Transfer": "tech-enablement",
+    "Innovation": "tech-enablement",
+    "tech-enablement": "tech-enablement"
 }
 
 # 3. Die Keyword-Kanten für den Freitext-Fallback (Exakt synchron zu den Normalisierungs-Targets)
@@ -116,6 +128,10 @@ KEYWORD_MAPPING = {
     ],
     "Peace & Conflict Resolution": [
         r"peacebuilding", r"conflict sensitivity", r"peace work"
+    ],
+    "tech-enablement": [
+        r"tech\w*", r"technolog\w*", r"digital\w*", r"software", r"data science", r"artificial intelligence", r"ai\b",
+        r"\bit\b(?=\s+(systems?|services?|infrastructure|department|team|strategy|support))"
     ]
 }
 
@@ -134,7 +150,7 @@ GEO_TAXONOMY = {
     "Europe (Western / General)": {
         "Europe": r"europ\w+",
         "European Union": r"european union|\beu\b",
-        "United Kingdom": r"\buk\b|united kingdom|great britain|london|scotland|west midlands|english",
+        "United Kingdom": r"\buk\b|united kingdom|great britain|london|scotland|west midlands|english|england|wales|wirral|merseyside|hillingdon|oxfordshire|cambridgeshire|essex|hertfordshire|norfolk|suffolk|cambridge|hayes|harlington|cheshire|warrington|buckland|cornwall|dorset|somerset|wiltshire|devon|hampshire",
         "Ireland": r"ireland|irish",
         "France": r"franc\w+",
         "Germany": r"german\w+",
@@ -142,7 +158,10 @@ GEO_TAXONOMY = {
         "Austria": r"austria\w*",
         "Luxembourg": r"luxembourg\w*",
         "Belgium": r"belgium\w*|belgian\w*|brussels",
-        "Netherlands": r"netherlands|dutch|the hague|delft|zoetermeer|leiden|noordwijk"
+        "Netherlands": r"netherlands|dutch|the hague|delft|zoetermeer|leiden|noordwijk",
+        "Monaco": r"monaco\w*",
+        "Liechtenstein": r"liechtenstein\w*",
+        "Andorra": r"andorra\w*"
     },
     "Europe (Nordic Region)": {
         "Nordic Region": r"nordic",
@@ -150,6 +169,7 @@ GEO_TAXONOMY = {
         "Finland": r"finland|finnish|herlin", # fängt Herlin-Stiftung ab
         "Sweden": r"sweden|swedish|\bse\b",
         "Norway": r"norway|norwegian|kristiansand",
+        "Iceland": r"iceland\w*",
         "Greenland": r"greenland",
         "Faroe Islands": r"faroe islands"
     },
@@ -158,7 +178,11 @@ GEO_TAXONOMY = {
         "Italy": r"ital\w+|sicily|sardinia|piedmont|aosta valley|modena|parma|padua|rovigo|tuscany|florence|grosseto|arezzo|cuneo|alto adige|lucca|lombardy|torino|bologna",
         "Greece": r"gree\w+",
         "Portugal": r"portug\w+",
-        "Turkey": r"turk\w+|türkiye"
+        "Turkey": r"turk\w+|türkiye",
+        "Malta": r"malta\w*",
+        "Cyprus": r"cyprus|cypriot\w*",
+        "San Marino": r"san marino",
+        "Vatican City": r"vatican|holy see"
     },
     "Europe (Central & Eastern / Balkans)": {
         "Balkans": r"balkans?|western balkans|serbian?|croatian?|slovenian?|bosnia\w*",
@@ -171,14 +195,22 @@ GEO_TAXONOMY = {
         "Ukraine": r"ukrain\w*",
         "Estonia": r"estonia\w*",
         "Lithuania": r"lithuania\w*",
-        "Poland": r"pol\w+|fundacja", # 'fundacja' deutet direkt auf Polen hin
+        "Poland": r"\bpoland\b|polish\w*|fundacja",
         "Latvia": r"latvia\w*",
         "Georgia": r"georgia\w*",
         "Czech Republic": r"czech\w*",
         "Romania": r"romani\w*",
         "Hungary": r"hungar\w*",
         "Belarus": r"belarus\w*",
-        "Moldova": r"moldova\w*"
+        "Moldova": r"moldova\w*",
+        "Russia": r"russia\w*",
+        "Albania": r"albania\w*",
+        "Bosnia and Herzegovina": r"bosnia\w*",
+        "North Macedonia": r"macedonia\w*",
+        "Montenegro": r"montenegro\w*",
+        "Serbia": r"serbia\w*",
+        "Armenia": r"armenia\w*",
+        "Azerbaijan": r"azerbaijan\w*"
     },
     "North America": {
         "United States": r"united states|\busa\b|\bus\b|america\w*|flint|michigan",
@@ -193,7 +225,33 @@ GEO_TAXONOMY = {
         "Peru": r"peru\w*",
         "Bolivia": r"bolivia\w*",
         "Ecuador": r"ecuador\w*",
-        "Guyana": r"guyana\w*"
+        "Guyana": r"guyana\w*",
+        "El Salvador": r"el salvador",
+        "Argentina": r"argentina\w*",
+        "Chile": r"chile\w*|chili\w*",
+        "Venezuela": r"venezuela\w*",
+        "Paraguay": r"paraguay\w*",
+        "Uruguay": r"uruguay\w*",
+        "Suriname": r"suriname\w*",
+        "Panama": r"panama\w*",
+        "Costa Rica": r"costa rica\w*",
+        "Nicaragua": r"nicaragua\w*",
+        "Honduras": r"honduras\w*",
+        "Guatemala": r"guatemala\w*",
+        "Belize": r"belize\w*",
+        "Cuba": r"cuba\w*",
+        "Dominican Republic": r"dominican republic",
+        "Haiti": r"haiti\w*",
+        "Jamaica": r"jamaica\w*",
+        "Bahamas": r"bahamas\w*",
+        "Trinidad and Tobago": r"trinidad\w*",
+        "Barbados": r"barbados\w*",
+        "Saint Lucia": r"saint lucia",
+        "Grenada": r"grenada\w*",
+        "Saint Vincent and the Grenadines": r"saint vincent",
+        "Antigua and Barbuda": r"antigua\w*",
+        "Dominica": r"\bdominica\b",
+        "Saint Kitts and Nevis": r"saint kitts"
     },
     "Africa / Sub-Saharan Africa": {
         "Africa": r"afric\w+",
@@ -210,7 +268,43 @@ GEO_TAXONOMY = {
         "Madagascar": r"madagascar\w*",
         "Rwanda": r"rwanda\w*",
         "Zimbabwe": r"zimbabwe\w*",
-        "South Africa": r"south africa|botswana|namibia|senegal|gambia|togo|benin|mali"
+        "South Africa": r"south africa",
+        "Botswana": r"botswana\w*",
+        "Namibia": r"namibia\w*",
+        "Senegal": r"senegal\w*",
+        "Gambia": r"gambia\w*",
+        "Togo": r"togo\w*",
+        "Benin": r"benin\w*",
+        "Mali": r"mali\w*",
+        "Angola": r"angola\w*",
+        "Nigeria": r"nigeria\w*",
+        "Cameroon": r"cameroon\w*",
+        "Ivory Coast": r"ivory coast|côte d\.ivoire",
+        "Mozambique": r"mozambique\w*",
+        "Burundi": r"burundi\w*",
+        "South Sudan": r"south sudan",
+        "Somalia": r"somalia\w*",
+        "Eritrea": r"eritrea\w*",
+        "Djibouti": r"djibouti\w*",
+        "Central African Republic": r"central african republic",
+        "Chad": r"\bchad\b",
+        "Congo": r"(?<!democratic republic of )(?<!democratic republic of the )\bcongo\w*",
+        "Democratic Republic of the Congo": r"democratic republic of (?:the )?congo|\bdrc\b",
+        "Gabon": r"gabon\w*",
+        "Equatorial Guinea": r"equatorial guinea",
+        "Sao Tome and Principe": r"sao tome",
+        "Cabo Verde": r"cabo verde|cape verde",
+        "Guinea": r"\bguinea\b(?!-bissau)",
+        "Guinea-Bissau": r"guinea-bissau",
+        "Liberia": r"liberia\w*",
+        "Mauritania": r"mauritania\w*",
+        "Niger": r"\bniger\b",
+        "Sudan": r"\bsudan\w*",
+        "Lesotho": r"lesotho\w*",
+        "Eswatini": r"eswatini|swaziland",
+        "Seychelles": r"seychelles\w*",
+        "Mauritius": r"mauritius\w*",
+        "Comoros": r"comoros\w*"
     },
     "Asia & Pacific": {
         "Asia": r"asia\w*",
@@ -228,7 +322,36 @@ GEO_TAXONOMY = {
         "Bangladesh": r"bangladesh\w*",
         "Philippines": r"philippines?",
         "Afghanistan": r"afghanistan\w*",
-        "Australia": r"australia\w*|singapore"
+        "Australia": r"australia\w*|singapore",
+        "Japan": r"japan\w*",
+        "South Korea": r"south korea|korean?",
+        "North Korea": r"north korea",
+        "Taiwan": r"taiwan\w*",
+        "Pakistan": r"pakistan\w*",
+        "Bhutan": r"bhutan\w*",
+        "Maldives": r"maldives\w*",
+        "Singapore": r"singapore\w*",
+        "Brunei": r"brunei\w*",
+        "East Timor": r"east timor|timor-leste",
+        "Kazakhstan": r"kazakhstan\w*",
+        "Uzbekistan": r"uzbekistan\w*",
+        "Turkmenistan": r"turkmenistan\w*",
+        "Kyrgyzstan": r"kyrgyzstan\w*",
+        "Tajikistan": r"tajikistan\w*",
+        "Mongolia": r"mongolia\w*",
+        "New Zealand": r"new zealand",
+        "Papua New Guinea": r"papua new guinea",
+        "Solomon Islands": r"solomon islands",
+        "Vanuatu": r"vanuatu\w*",
+        "Fiji": r"fiji\w*",
+        "Samoa": r"\bsamoa\b",
+        "Tonga": r"tonga\w*",
+        "Tuvalu": r"tuvalu\w*",
+        "Kiribati": r"kiribati\w*",
+        "Nauru": r"nauru\w*",
+        "Marshall Islands": r"marshall islands",
+        "Micronesia": r"micronesia\w*",
+        "Palau": r"palau\w*"
     },
     "Middle East & North Africa (MENA)": {
         "Middle East": r"middle east",
@@ -236,7 +359,23 @@ GEO_TAXONOMY = {
         "Arab World": r"arab world",
         "Israel": r"israel\w*",
         "Palestine": r"palestin\w+",
-        "Yemen": r"yemen\w*"
+        "Yemen": r"yemen\w*",
+        "Jordan": r"jordan\w*",
+        "Egypt": r"egypt\w*",
+        "Lebanon": r"leban\w+",
+        "Syria": r"syria\w*",
+        "Iraq": r"iraq\w*",
+        "Iran": r"iran\w*|persia\w*",
+        "Saudi Arabia": r"saudi\w*",
+        "Oman": r"oman\w*",
+        "United Arab Emirates": r"united arab emirates|\buae\b",
+        "Qatar": r"qatar\w*",
+        "Bahrain": r"bahrain\w*",
+        "Kuwait": r"kuwait\w*",
+        "Morocco": r"moroc\w+",
+        "Algeria": r"algeria\w*",
+        "Tunisia": r"tunisia\w*",
+        "Libya": r"libya\w*"
     }
 }
 
@@ -386,6 +525,182 @@ def extract_geo(members):
                     found[macro].add(country_name)
         
         return {k: sorted(list(v)) for k, v in found.items()}
+
+    def normalize_location_text(raw_text):
+        return re.sub(r"[^a-z0-9]+", " ", raw_text.lower()).strip()
+
+    def contains_location_phrase(text_clean, phrase):
+        phrase_clean = normalize_location_text(phrase)
+        if not phrase_clean:
+            return False
+        pattern = r"(?<![a-z0-9])" + re.escape(phrase_clean) + r"(?![a-z0-9])"
+        return re.search(pattern, text_clean) is not None
+
+    def merge_country_result(found, country_name):
+        macro = COUNTRY_TO_MACRO.get(country_name)
+        if not macro:
+            return
+        if macro not in found:
+            found[macro] = set()
+        elif not isinstance(found[macro], set):
+            found[macro] = set(found[macro])
+        found[macro].add(country_name)
+
+    def normalize_geo_result(found):
+        return {k: sorted(list(v)) for k, v in found.items() if v}
+
+    def stringify_geo_value(value):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return " ".join(stringify_geo_value(item) for item in value)
+        if isinstance(value, dict):
+            return " ".join(stringify_geo_value(item) for item in value.values())
+        return ""
+
+    def collect_fallback_text(member, info):
+        field_markers = (
+            "address",
+            "area",
+            "country",
+            "description",
+            "eligib",
+            "geo",
+            "location",
+            "operation",
+            "program",
+            "programme",
+            "region",
+        )
+        fallback_parts = [
+            member.get("address", ""),
+            member.get("country", ""),
+            member.get("position", {}).get("country", "") if isinstance(member.get("position"), dict) else "",
+            member.get("name", ""),
+        ]
+        for source in (member, info):
+            if not isinstance(source, dict):
+                continue
+            for key, value in source.items():
+                key_lower = str(key).lower()
+                if any(marker in key_lower for marker in field_markers):
+                    fallback_parts.append(stringify_geo_value(value))
+        return " ".join(part for part in fallback_parts if part).strip()
+
+    LOCAL_FALLBACK_GAZETTEER = {
+        "United Kingdom": {
+            "terms": [
+                "cumbria", "lancashire", "north lancashire", "south cumbria",
+                "morecambe", "kendal", "carnforth", "greater manchester",
+                "manchester", "liverpool", "leeds", "bristol", "birmingham",
+                "newcastle upon tyne", "glasgow", "edinburgh", "cardiff",
+                "belfast", "yorkshire", "derbyshire", "nottinghamshire",
+                "surrey", "kent", "sussex", "berkshire"
+            ],
+            "contextual_terms": {
+                "lancaster": ["cumbria", "lancashire", "morecambe", "kendal", "carnforth", "north west england", "uk", "england"],
+                "reading": ["berkshire", "thames valley", "uk", "england", "united kingdom"],
+            },
+        },
+        "Ireland": {"terms": ["dublin", "cork", "galway", "limerick"]},
+        "France": {"terms": ["paris", "lyon", "marseille", "bordeaux", "normandy", "brittany"]},
+        "Germany": {"terms": ["berlin", "munich", "hamburg", "frankfurt", "bavaria", "north rhine westphalia"]},
+        "Switzerland": {"terms": ["zurich", "geneva", "basel", "bern"]},
+        "Austria": {"terms": ["vienna", "salzburg", "tyrol"]},
+        "Netherlands": {"terms": ["amsterdam", "rotterdam", "utrecht", "eindhoven"]},
+        "Belgium": {"terms": ["antwerp", "flanders", "wallonia"]},
+        "Spain": {"terms": ["madrid", "barcelona", "catalonia", "andalusia", "valencia"]},
+        "Italy": {"terms": ["rome", "milan", "naples", "venice", "sicily", "sardinia", "tuscany"]},
+        "Portugal": {"terms": ["lisbon", "porto", "algarve"]},
+        "Greece": {"terms": ["athens", "crete", "thessaloniki"]},
+        "Denmark": {"terms": ["copenhagen", "jutland"]},
+        "Sweden": {"terms": ["stockholm", "gothenburg", "malmo"]},
+        "Norway": {"terms": ["oslo", "bergen", "trondheim"]},
+        "Finland": {"terms": ["helsinki", "espoo", "tampere"]},
+        "Poland": {"terms": ["warsaw", "krakow", "gdansk"]},
+        "Ukraine": {"terms": ["kyiv", "kiev", "lviv", "odesa", "odessa"]},
+        "Czech Republic": {"terms": ["prague", "brno"]},
+        "Romania": {"terms": ["bucharest", "cluj", "transylvania"]},
+        "United States": {
+            "terms": [
+                "california", "new york", "new york city", "texas", "florida",
+                "illinois", "chicago", "massachusetts", "boston", "colorado",
+                "denver", "michigan", "detroit", "pennsylvania", "philadelphia",
+                "ohio", "oregon", "portland", "seattle", "los angeles",
+                "san francisco", "washington dc", "district of columbia"
+            ],
+            "contextual_terms": {
+                "washington": ["seattle", "puget sound", "usa", "united states", "pacific northwest"],
+            },
+        },
+        "Canada": {"terms": ["ontario", "quebec", "toronto", "montreal", "vancouver", "british columbia", "alberta"]},
+        "Mexico": {"terms": ["mexico city", "yucatan", "oaxaca"]},
+        "Brazil": {"terms": ["sao paulo", "rio de janeiro", "bahia", "amazonas"]},
+        "Argentina": {"terms": ["buenos aires", "patagonia"]},
+        "Colombia": {"terms": ["bogota", "medellin"]},
+        "Chile": {"terms": ["santiago", "valparaiso"]},
+        "South Africa": {"terms": ["cape town", "johannesburg", "gauteng", "kwazulu natal"]},
+        "Kenya": {"terms": ["nairobi", "mombasa"]},
+        "Nigeria": {"terms": ["lagos", "abuja"]},
+        "Ghana": {"terms": ["accra", "kumasi"]},
+        "Tanzania": {"terms": ["dar es salaam", "zanzibar"]},
+        "India": {"terms": ["delhi", "new delhi", "mumbai", "bangalore", "bengaluru", "karnataka", "maharashtra"]},
+        "China": {"terms": ["beijing", "shanghai", "guangdong", "shenzhen"]},
+        "Japan": {"terms": ["tokyo", "osaka", "kyoto"]},
+        "South Korea": {"terms": ["seoul", "busan"]},
+        "Indonesia": {"terms": ["jakarta", "bali", "java"]},
+        "Thailand": {"terms": ["bangkok", "chiang mai"]},
+        "Vietnam": {"terms": ["hanoi", "ho chi minh city"]},
+        "Australia": {
+            "terms": ["sydney", "melbourne", "brisbane", "perth", "adelaide", "new south wales", "queensland", "western australia", "tasmania"],
+            "contextual_terms": {
+                "victoria": ["australia", "melbourne", "new south wales", "queensland", "tasmania"],
+            },
+        },
+        "New Zealand": {"terms": ["auckland", "wellington", "christchurch"]},
+        "Israel": {"terms": ["tel aviv", "jerusalem", "haifa"]},
+        "Palestine": {"terms": ["west bank", "gaza"]},
+        "Egypt": {"terms": ["cairo", "alexandria"]},
+        "Lebanon": {"terms": ["beirut"]},
+        "Morocco": {"terms": ["casablanca", "marrakesh", "rabat"]},
+        "United Arab Emirates": {"terms": ["dubai", "abu dhabi"]},
+    }
+
+    AMBIGUOUS_FALLBACK_CONTEXT = {
+        "Georgia": ["tbilisi", "caucasus", "black sea", "armenia", "azerbaijan", "eastern europe"],
+        "Jordan": ["amman", "middle east", "mena", "levant", "palestine", "syria", "iraq", "israel"],
+    }
+
+    def filter_ambiguous_fallback_geos(geos, raw_text):
+        text_clean = normalize_location_text(raw_text)
+        filtered = {macro: set(countries) for macro, countries in geos.items()}
+        for country_name, context_terms in AMBIGUOUS_FALLBACK_CONTEXT.items():
+            macro = COUNTRY_TO_MACRO.get(country_name)
+            if not macro or country_name not in filtered.get(macro, set()):
+                continue
+            if not any(contains_location_phrase(text_clean, term) for term in context_terms):
+                filtered[macro].discard(country_name)
+        return normalize_geo_result(filtered)
+
+    def extract_geos_from_fallback_gazetteer(raw_text):
+        if not raw_text:
+            return {}
+        text_clean = normalize_location_text(raw_text)
+        found = {}
+        for country_name, config in LOCAL_FALLBACK_GAZETTEER.items():
+            for term in config.get("terms", []):
+                if contains_location_phrase(text_clean, term):
+                    merge_country_result(found, country_name)
+                    break
+            if country_name in [country for countries in found.values() for country in countries]:
+                continue
+            for term, context_terms in config.get("contextual_terms", {}).items():
+                if contains_location_phrase(text_clean, term) and any(
+                    contains_location_phrase(text_clean, context) for context in context_terms
+                ):
+                    merge_country_result(found, country_name)
+                    break
+        return normalize_geo_result(found)
     
     parsed_geo_results = {}
     for member in members:
@@ -395,11 +710,33 @@ def extract_geo(members):
             info = {}
             
         raw_geo_text = info.get("Geographic Focus", "")
+        geos = {}
+        if raw_geo_text and raw_geo_text.strip() and raw_geo_text.strip() != "$e":
+            robust = extract_geos_robust(raw_geo_text)
+            final_geos = extract_geos_final(raw_geo_text)
+            geos = dict(robust)
+            for macro, countries in final_geos.items():
+                if macro not in geos:
+                    geos[macro] = []
+                geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
         
-        # Kaskade abfeuern
-        geos = extract_geos_robust(raw_geo_text)
+        # If no geolocations could be extracted from Geographic Focus, fall back to other fields
         if not geos:
-            geos = extract_geos_final(raw_geo_text)
+            fallback_text = collect_fallback_text(member, info)
+            if fallback_text:
+                robust = extract_geos_robust(fallback_text)
+                final_geos = extract_geos_final(fallback_text)
+                geos = dict(robust)
+                for macro, countries in final_geos.items():
+                    if macro not in geos:
+                        geos[macro] = []
+                    geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
+                geos = filter_ambiguous_fallback_geos(geos, fallback_text)
+                fallback_geos = extract_geos_from_fallback_gazetteer(fallback_text)
+                for macro, countries in fallback_geos.items():
+                    if macro not in geos:
+                        geos[macro] = []
+                    geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
         
         parsed_geo_results[member_name] = geos
     
