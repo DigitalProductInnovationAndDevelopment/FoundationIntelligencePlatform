@@ -128,6 +128,31 @@ class TestPhileaPreprocessor(unittest.TestCase):
         extract_tags(members)
         self.assertEqual(members[0]["tags_focus"], ["Human/Civil Rights"])
 
+    def test_extract_tags_tech_enablement(self):
+        # 1. Robust path: from official tags
+        members_robust = [
+            {
+                "name": "Org Tech Robust",
+                "philea_info": {
+                    "Programme Areas": "Digital Transformation\nEducation"
+                }
+            }
+        ]
+        extract_tags(members_robust)
+        self.assertEqual(sorted(members_robust[0]["tags_focus"]), ["Education", "tech-enablement"])
+
+        # 2. Fallback path: from free text keywords
+        members_fallback = [
+            {
+                "name": "Org Tech Fallback",
+                "philea_info": {
+                    "About": "Supporting the development of custom software and ai-driven solutions."
+                }
+            }
+        ]
+        extract_tags(members_fallback)
+        self.assertEqual(members_fallback[0]["tags_focus"], ["tech-enablement"])
+
     def test_extract_geo_taxonomy_matching(self):
         members = [
             {
