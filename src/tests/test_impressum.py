@@ -96,7 +96,7 @@ class TestImpressumExtractor(unittest.TestCase):
         Our headquarters are at Musterstraße 42, 80333 München, Germany.
         """
         address2 = extract_physical_address(text_singleline)
-        self.assertEqual(address2, "Musterstraße 42, 80333 München, Germany.")
+        self.assertEqual(address2, "Musterstraße 42, 80333 München, Germany")
 
         # Case 3: Phone number scrubbing
         text_with_phone = """

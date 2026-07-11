@@ -1,5 +1,4 @@
 import re
-import sys
 import argparse
 import logging
 from datetime import datetime, timezone
@@ -47,6 +46,12 @@ STREET_SUFFIXES = {
     "lane", "ln", "boulevard", "blvd", "drive", "dr.", "dr", "way"
 }
 
+ORG_NAME_MARKERS = (
+    "foundation", "stiftung", "fondation", "fondazione", "e.v.", "ev", "gmbh", "ag", "kg", "ug",
+    "ltd", "limited", "inc", "corp", "co.", "association", "associazione", "asbl", "vzw", "verein",
+    "ngo", "onlus", "trust", "society", "institute", "institut", "instituto"
+)
+
 STREET_WORDS = {
     "via", "viale", "piazza", "corso", "largo", "strada", "vicolo", "calata",
     "rue", "place", "route", "chemin", "quai", "faubourg", "passage", "impasse",
@@ -55,7 +60,7 @@ STREET_WORDS = {
 
 def get_base_domain(url):
     """
-    Extracts the registered base domain (e.g. example.com) from a URL.
+    Extracts the hostname/netloc (without a leading www.) from a URL.
     """
     try:
         parsed = urlparse(url)
@@ -300,7 +305,9 @@ def extract_physical_address(text):
                     "accueil", "a propos", "équipe", "equipe", "carrières", "carrieres", 
                     "partenaires", "actualités", "actualites", "mentions légales", "mentions legales"
                 ]
-                if len(prev_line) < 60 and not any(k in prev_line.lower() for k in forbidden_words):
+                prev_line_lower = prev_line.lower()
+                has_org_marker = any(marker in prev_line_lower for marker in ORG_NAME_MARKERS)
+                if len(prev_line) < 60 and has_org_marker and not any(k in prev_line_lower for k in forbidden_words):
                     org_name = prev_line
             
             # Case 1: ZIP code is in the same line (e.g. Musterstraße 42, 80333 München)
@@ -324,6 +331,7 @@ def extract_physical_address(text):
                 candidate = re.sub(r'\s+', ' ', candidate).strip()
                 # Clean phone number suffixes or prefix labels
                 candidate = re.sub(r'(?i)\b(tel|phone|telefon|fax|mobil|mobile|t\b|f\b)[:\s]*\+?[\d\s\-\(\)/]+', '', candidate).strip()
+                candidate = re.sub(r"[.;:!?]+$", "", candidate).strip()
                 # Filter out standard keywords and mail symbols
                 if "@" not in candidate and "http" not in candidate.lower() and len(candidate) > 5:
                     return candidate
@@ -349,6 +357,8 @@ def crawl_impressum(base_url, timeout=10):
                 "organization_url": base_url,
                 "extracted_at": now_utc,
                 "source_page_used": base_url,
+                "email_source_page": "",
+                "address_source_page": "",
                 "generic_email": "",
                 "address": ""
             }
@@ -359,6 +369,8 @@ def crawl_impressum(base_url, timeout=10):
             "organization_url": base_url,
             "extracted_at": now_utc,
             "source_page_used": base_url,
+            "email_source_page": "",
+            "address_source_page": "",
             "generic_email": "",
             "address": ""
         }
@@ -371,6 +383,8 @@ def crawl_impressum(base_url, timeout=10):
     address = extract_physical_address(base_text)
     
     email_res = emails[0] if emails else ""
+    email_source_page = base_url if email_res else ""
+    address_source_page = base_url if address else ""
     
     # If we found everything on the landing page, return early
     if email_res and address:
@@ -378,6 +392,8 @@ def crawl_impressum(base_url, timeout=10):
             "organization_url": base_url,
             "extracted_at": now_utc,
             "source_page_used": base_url,
+            "email_source_page": base_url,
+            "address_source_page": base_url,
             "generic_email": email_res,
             "address": address
         }
@@ -390,7 +406,6 @@ def crawl_impressum(base_url, timeout=10):
     
     logger.info(f"Identified {len(target_pages)} prioritized subpages to crawl.")
     
-    source_page = base_url
     for page in target_pages:
         target_url = page["url"]
         logger.info(f"Scraping priority subpage ({page['keyword']}): {target_url}")
@@ -409,10 +424,10 @@ def crawl_impressum(base_url, timeout=10):
             # Fill missing data
             if sub_emails and not email_res:
                 email_res = sub_emails[0]
-                source_page = target_url
+                email_source_page = target_url
             if sub_address and not address:
                 address = sub_address
-                source_page = target_url
+                address_source_page = target_url
                 
             # If both are populated, stop crawling subpages
             if email_res and address:
@@ -421,10 +436,21 @@ def crawl_impressum(base_url, timeout=10):
             logger.warning(f"Error fetching subpage {target_url}: {e}")
             continue
             
+    if email_source_page and address_source_page:
+        source_page_used = (
+            email_source_page
+            if email_source_page == address_source_page
+            else f"email:{email_source_page}|address:{address_source_page}"
+        )
+    else:
+        source_page_used = email_source_page or address_source_page or base_url
+
     return {
         "organization_url": base_url,
         "extracted_at": now_utc,
-        "source_page_used": source_page,
+        "source_page_used": source_page_used,
+        "email_source_page": email_source_page,
+        "address_source_page": address_source_page,
         "generic_email": email_res,
         "address": address
     }

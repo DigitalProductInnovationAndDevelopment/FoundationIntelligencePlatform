@@ -209,7 +209,8 @@ def run_pipeline(args):
                 address_missing = not member.get("address") or str(member.get("address")).strip() == ""
                 
                 if (email_missing or address_missing) and member.get("website"):
-                    logging.info(f"[{i}/{len(members)}] Crawling missing contact info for: {member['name']} ({member['website']})")
+                    member_name = member.get("name", "Unknown Name")
+                    logging.info(f"[{i}/{len(members)}] Crawling missing contact info for: {member_name} ({member['website']})")
                     try:
                         impressum = crawl_impressum(member["website"], timeout=8)
                         if impressum:
@@ -220,7 +221,7 @@ def run_pipeline(args):
                                 member["address"] = impressum["address"]
                                 logging.info(f"  -> Found address: {impressum['address']}")
                     except Exception as e:
-                        logging.warning(f"  -> Failed to crawl {member['name']}: {e}")
+                        logging.warning(f"  -> Failed to crawl {member_name}: {e}")
                         
         extract_tags(members)
         extract_geo(members)
