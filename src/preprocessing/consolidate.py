@@ -216,6 +216,39 @@ def match_members(m1, m2):
             
     return False
 
+def normalize_thematic_focus(tags_list):
+    """
+    Deduplicates and sorts thematic focus tags.
+    Accepts both list of strings (legacy/tests) and list of dicts with {"tag": ..., "source": ...}.
+    If a tag appears multiple times, prefers "exact_match" over "regex_fallback".
+    Returns a sorted list of dicts in the new schema format.
+    """
+    if not tags_list:
+        return []
+    
+    unique_tags = {}
+    for item in tags_list:
+        if isinstance(item, dict):
+            tag = item.get("tag")
+            source = item.get("source", "regex_fallback")
+        else:
+            tag = str(item)
+            source = "exact_match"  # Default for plain strings in legacy code / tests
+            
+        if not tag:
+            continue
+            
+        # If tag already exists, prefer 'exact_match'
+        if tag in unique_tags:
+            if source == "exact_match":
+                unique_tags[tag] = source
+        else:
+            unique_tags[tag] = source
+            
+    # Convert back to list of dicts and sort by tag name
+    result = [{"tag": tag, "source": src} for tag, src in unique_tags.items()]
+    return sorted(result, key=lambda x: x["tag"])
+
 def normalize_to_clean_schema(member, source_name):
     """
     Transforms any raw Philea or Hinchilla member dict into the clean unified schema.
@@ -311,7 +344,7 @@ def normalize_to_clean_schema(member, source_name):
         "latitude": latitude,
         "longitude": longitude,
         "funding_info": funding_info,
-        "thematic_focus": sorted(list(set(thematic_focus))),
+        "thematic_focus": normalize_thematic_focus(thematic_focus),
         "geographic_focus": geographic_focus
     }
 
@@ -415,9 +448,9 @@ def merge_members(p_member, h_member):
     p_fund["application_details"] = h_details if len(h_details) > len(p_details) else p_details
     
     # Merge thematic focus (tags)
-    p_tags = set(merged.get("thematic_focus", []))
-    h_tags = set(h_member.get("thematic_focus", []))
-    merged["thematic_focus"] = sorted(list(p_tags | h_tags))
+    p_tags = merged.get("thematic_focus", [])
+    h_tags = h_member.get("thematic_focus", [])
+    merged["thematic_focus"] = normalize_thematic_focus(p_tags + h_tags)
     
     # Merge geolocations (geographic focus)
     p_geo = merged.get("geographic_focus", {})

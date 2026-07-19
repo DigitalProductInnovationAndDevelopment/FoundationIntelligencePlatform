@@ -21,7 +21,10 @@
             "funding_model": "No Public Process"
         },
         "tags_focus": [
-            "Health"
+            {
+                "tag": "Health",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -51,11 +54,26 @@
             "funding_model": "No public application process"
         },
         "tags_focus": [
-            "Citizenship, Social Justice & Public Affairs",
-            "Education",
-            "Environment/Climate",
-            "Health",
-            "Sciences & Research"
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Environment/Climate",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -90,11 +108,26 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education",
-            "Food, Agriculture & Nutrition",
-            "Health",
-            "Sciences & Research",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Food, Agriculture & Nutrition",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -127,7 +160,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Sciences & Research"
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -178,8 +214,14 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -227,7 +269,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Health"
+            {
+                "tag": "Health",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -266,7 +311,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -300,7 +348,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -348,7 +399,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -378,7 +432,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -456,8 +513,14 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education",
-            "Health"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Health",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Africa / Sub-Saharan Africa": [
@@ -492,7 +555,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "North America": [
@@ -547,8 +613,14 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education",
-            "Sciences & Research"
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -582,7 +654,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -626,9 +701,18 @@
             "funding_model": "Invitation Only / No Public Application Process"
         },
         "tags_focus": [
-            "Education",
-            "Environment/Climate",
-            "Health"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Health",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Asia & Pacific": [
@@ -668,10 +752,22 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education",
-            "Health",
-            "Sciences & Research",
-            "Youth/Children Development"
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Youth/Children Development",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -715,11 +811,26 @@
             "funding_model": "Rolling basis via application form"
         },
         "tags_focus": [
-            "Education",
-            "Health",
-            "Human/Civil Rights",
-            "Socio-economic Development, Poverty",
-            "Youth/Children Development"
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Human/Civil Rights",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Youth/Children Development",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -774,9 +885,18 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Health",
-            "Socio-economic Development, Poverty",
-            "Youth/Children Development"
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Youth/Children Development",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -806,7 +926,10 @@
             "funding_model": ""
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -836,10 +959,22 @@
             "funding_model": "Rolling basis via online portal"
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Education",
-            "Health",
-            "Sciences & Research"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Africa / Sub-Saharan Africa": [
@@ -886,7 +1021,10 @@
             "funding_model": "Fixed Deadline (Educational) / Rolling (Other funds)"
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [

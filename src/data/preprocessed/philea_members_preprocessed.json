@@ -33,8 +33,14 @@
             "Geographic Focus": "Women Win is operates globally, but with a majority focus on Global South and East."
         },
         "tags_focus": [
-            "Health",
-            "Human/Civil Rights"
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Human/Civil Rights",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Global South / Majority World": [
@@ -80,7 +86,10 @@
             "Programme Areas": "Future of Cities & Construction: Dealing with Climate Change nowadays means to stop greenhouse gas emissions but at the same time finding ways to adapt to unavoidable impacts. Both is important to make societies more resilient – which first and foremost requires a better understanding of practical and implementable solutions. The Climate Change programme of the Toni Piëch Foundation therefore keeps its focus on projects that have an immediate impact with regard to its overall mission. Climate Change: Cities can host billions of people while still providing space for an enriching urban life. Or they can be an ecological human disaster – ‘the triumph or the tragedy’ of cities it is. Projects of the Toni Piëch Foundation will be looking at the climate footprint of cities e.g. that of buildings as they are among the biggest single sources of emissions in the world. The global construction sector is on the brink of a huge transformation towards using carbon absorbing materials. We seek to accelerate this shift and to help clean construction to thrive. Energy Transition: Our day to day life is attached to electricity or thermal energy use for heating and cooling, transport and electricity uses. It’s important to maintain and expand these services of energy but to better interlink the different sectors (sector coupling) and switch to modern green sources. The socio-economic benefits of renewable energy deployment are widely known. And global welfare gains could also increase – the Toni Piëch Foundation will help to accelerate the transformation. Communications & Storytelling: “If you can’t describe it in one sentence you simply don’t understand it well enough”. A quote attributed to Albert Einstein nails it: complex subjects such as Climate Change need to be explained. Not so much the technical or physical dynamics but rather what they mean to us and our day to day lives. And it needs to be communicated in a way that offerspositive outlooks. By deploying an explicit sensitivity to the storytelling, we seek to ensure a compassionate but forward-looking approach in our projects."
         },
         "tags_focus": [
-            "Environment/Climate"
+            {
+                "tag": "Environment/Climate",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -122,8 +131,14 @@
             "Programme Areas": "A free, independent media is the cornerstone of democracy. It holds power to account and empowers civil society to make informed decisions. We provide a range of support to journalists, news outlets and civil society organisations dedicated to defending and advancing press freedom globally. A fair legal ecosystem is critical to upholding human rights. Increasingly though, the law is being undermined or abused to seize power or is simply inaccessible for those who need it most. We work to scale the practice of pro bono across the profession, and we provide free legal support and resources to empower at-risk and marginalised communities. Corporations can contribute to social progress when they balance the short-term needs of their shareholders with the long-term impact on their stakeholders’ communities. We leverage our networks and data intelligence to encourage responsible business practices and corporate transparency, enabling businesses to thrive whilst doing no harm."
         },
         "tags_focus": [
-            "Citizenship, Social Justice & Public Affairs",
-            "Human/Civil Rights"
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Human/Civil Rights",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -206,10 +221,22 @@
             "Programme Areas": "Our major areas of expertise include the general development theme of Children and Youth, and more specifically, GFC is a leader in Community-led Development, Global Grantmaking, Trust-based Philanthropy, Participatory Grantmaking, healthy masculinities, well-being, and gender justice."
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Health",
-            "Human/Civil Rights",
-            "Youth/Children Development"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Human/Civil Rights",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Youth/Children Development",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -250,11 +277,26 @@
             "Programme Areas": "Arts & Culture\nEducation\nHealth\nSciences & Research\nYouth/Children Development The Suna and İnan Kıraç Foundation operates across three main programme areas:Education and Educational Equity: Designing and implementing evidence-based models that strengthen early childhood development, support girls’ educational participation and empowerment, and contribute to teacher development and systemic improvement.Cultural Heritage and Public Access to Culture: Preserving, researching, and sharing Türkiye’s cultural heritage through museums, research institutes, exhibitions, publications, and public learning programmes.Scientific Research: Advancing high-quality research in neurodegenerative diseases through the Foundation’s Neurodegeneration Research Laboratory (NDAL), contributing to international scientific knowledge and capacity building.Across all areas, the Foundation combines research, institutional excellence, and long-term engagement to generate sustainable societal impact."
         },
         "tags_focus": [
-            "Arts & Culture",
-            "Education",
-            "Health",
-            "Sciences & Research",
-            "Youth/Children Development"
+            {
+                "tag": "Arts & Culture",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Health",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Youth/Children Development",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Southern / Mediterranean)": [
@@ -296,11 +338,26 @@
             "Programme Areas": "Animal-Related\nEducation\nEnvironment/Climate\nFood, Agriculture & Nutrition\nSciences & Research\nSocio-economic Development, Poverty 1. Explore and document: HUB uncovers the planet’s hidden life. We partner with scientists to explore and document species, interactions and ecosystems—many still unknown to science—revealing the richness of nature so it can be understood and protected. 2. Protect and restore: HUB turns science into action. Working with local communities, we protect endangered species and restore vital ecosystems, starting in Brazil’s Atlantic rainforest and expanding to other biodiversity hotspots in the future. 3. Share knowledge: HUB connects people with nature. Through training, education, storytelling, and collaboration, we share discoveries that inspire curiosity, awareness, and action for a thriving planet."
         },
         "tags_focus": [
-            "Education",
-            "Environment/Climate",
-            "Food, Agriculture & Nutrition",
-            "Sciences & Research",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Food, Agriculture & Nutrition",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Latin America & Caribbean": [
@@ -343,12 +400,30 @@
             "Programme Areas": "Arts & Culture\nCivil society, Voluntarism & Non-Profit Sector\nEducation\nEnvironment/Climate\nPeace & Conflict Resolution\nSciences & Research"
         },
         "tags_focus": [
-            "Arts & Culture",
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Education",
-            "Environment/Climate",
-            "Peace & Conflict Resolution",
-            "Sciences & Research"
+            {
+                "tag": "Arts & Culture",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Peace & Conflict Resolution",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -390,9 +465,18 @@
             "Geographic Focus": "Currently, we operate in Ukraine for Ukrainian organizations, but we also provide services and have partnerships with international donors who support Ukraine or need our services for their grantees in Ukraine."
         },
         "tags_focus": [
-            "Citizenship, Social Justice & Public Affairs",
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Sciences & Research"
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -438,7 +522,10 @@
             "Programme Areas": "Our activity is divided into four main areas: Institutional representation: Defense of our member entities’ interests in national and international forums.\nEconomic and regulatory analysis: Exhaustive follow-up regulatory of the national and international agendas and economic studies ad-hoc.\nSustainability and Obra Social: Dissemination and promotion of the Obra Social, financial education and sustainability.\nWorker representation: Defense of member entities that are bound by the sector’s Collective Bargaining Agreement. The Obra Social of CECA’s member entities constitutes Spain’s leading source of private social investment, reflecting a firm commitment to building a more equitable and inclusive society. CECA represents banking institutions and more than thirty banking and ordinary foundations. In 2024, CECA Foundations and associated entities collectively invested over €906 million in social initiatives, positioning them as the country’s largest private social investor. This significant level of investment enables the development of programs that directly address societal needs across a wide range of areas. The social programs implemented by CECA’s entities and foundations encompass fields such as social assistance, financial education, job creation, cultural development, research, and environmental protection, among others. Another major strength of CECA’s contribution to society lies in the extensive territorial presence of its member entities. Thanks to the wide presence of its foundations and banks throughout the country, CECA is able to reach diverse population groups – including those in vulnerable or remote areas – ensuring that its impact is both far-reaching and deeply rooted in local communities. Furthermore, CECA and its associated entities demonstrate a strong commitment to Financial Education and Sustainability. In the field of financial education, CECA, its member entities continue to work on their social vocation with the conviction that financial education is more necessary than ever, as it is vital to have financially responsible citizens, who manage their resources in the most efficient way, and to enhance digitalization when it comes to disseminating knowledge and skills. Also, in terms of sustainability, CECA and its member entities are aware that the financial sector can promote changes that will bring it closer to achieving the 2030 Agenda, which sets out the 17 Sustainable Development Goals to implement actions aimed to social and environmental improvement throughout the world. Furthermore, CECA adheres to the WSBI-ESBG Charter for Responsible and Sustainable Business."
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Southern / Mediterranean)": [
@@ -480,8 +567,14 @@
             "Programme Areas": "Two of our most innovative and distinguishing characteristics are 1) our highly participatory grant-making model that ensures resources reach those most impacted and 2) our inclusive accompaniment model which ensure our grantee partners, who have multiple intersecting vulnerabilities, have with wrap around support."
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -534,11 +627,26 @@
             "Programme Areas": "The SOLIDARNA Foundation works at the intersection of human rights, gender equality, and democratic participation, with a strongfocus on translating values into tangible social impact. Our key areas of expertise include: Human rights and social justice – protecting and advancing the rights of women, minorities, migrants, and other marginalized groups through direct support and systemic advocacy.\nGender equality and women’s empowerment – supporting women-led initiatives, addressing gender-based violence, economic inequality, and structural discrimination.\nCivil society strengthening – providing financial support, capacity building, and strategic guidance to grassroots organizations and informal initiatives.\nCivic engagement and democratic participation – fostering active citizenship, community organizing, and protection of democratic values.Strategic philanthropy and grantmaking – designing and managing transparent, impact-oriented funding mechanisms that respond to real needs on the ground.\nPolicy advocacy and cross-sector collaboration – contributing expertise to policy development and building bridges between civil society, institutions, and responsible businesses. What sets SOLIDARNA apart is how we work and where we position ourselves: Community-rooted and trust-based: We do not impose solutions. We create space for solutions to emerge from communities themselves, grounded in lived experience and local knowledge.\nFrom solidarity to systems change: Alongside direct support, we invest in long-term structural change through advocacy, research, and partnerships.\nBridge-builder across sectors: SOLIDARNA connects civil society, public institutions, donors, and the private sector, translating shared values into concrete, measurable action.\nEvidence-based and dignified approach: Our work is informed by data, expertise, and practice, and communicated with respect—never sensationalist or patronizing.\nAgile and responsive: We are able to respond quickly to emerging social challenges while maintaining strategic focus and accountability.\n\nSOLIDARNA’s key strength lies in its ability to combine empathy with expertise, and immediacy with sustainability. We turn solidarity into a reliable social infrastructure—one that provides timely support where it is most needed, while also shaping conditions for a more just, equal, and resilient society. Our contribution is not only in the resources we mobilize, but in the trust we build, the voices we amplify, and the systemic changes we help make possible—in Croatia, the region, and across Europe"
         },
         "tags_focus": [
-            "Citizenship, Social Justice & Public Affairs",
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Human/Civil Rights",
-            "Sciences & Research",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Human/Civil Rights",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Central & Eastern / Balkans)": [
@@ -584,8 +692,14 @@
             "Programme Areas": "Invest: We find, vet, and invest in early-stage social leaders and organizations with huge potential to transform society. Connect: We bring together a rich community of African visionaries and global funders to foster transformative collaboration. Advise: We advance big visions by equipping partners and donors with the resources and advice they need to succeed."
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Africa / Sub-Saharan Africa": [
@@ -629,7 +743,10 @@
             "Programme Areas": "Grant Making: which aims to cultivate the conditions for economic systems change in Europe, to nurture economies in service of people and nature\nField Building: to grow and strengthen the new economy ecosystem, supporting people and organisations to find greater alignment, understanding, deepening their interdependence and building collective power. P4NE hosts an annual New Economies global gathering.\nPartnerships & Learning: P4NE is an international funder collaborative. We are committed to deepening understanding of new economic thinking in order to encourage support of real world solutions."
         },
         "tags_focus": [
-            "Environment/Climate"
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -673,7 +790,10 @@
             "Programme Areas": "Challenge Finance Mission: aligning financial policies and regulation enabling an energy transition away from fossil fuels.\nChallenge Influence mission: Addressing the political influence and social license of fossil fuel actors obstructing climate action\nEconomic Transformation mission: Exploring post-growth economic paradigms that can operate within planetary boundaries."
         },
         "tags_focus": [
-            "Environment/Climate"
+            {
+                "tag": "Environment/Climate",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -713,7 +833,10 @@
             "Programme Areas": "Biomes, Water, Climate, Inclusive and Circular Economy, Labor Innovation, Democracies"
         },
         "tags_focus": [
-            "Environment/Climate"
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Latin America & Caribbean": [
@@ -765,10 +888,22 @@
             "Programme Areas": "The cluster led by the Foundation covers several areas: Social mediation and personalized social support for disadvantaged people (mentally ill people, low-income families, former prisoners, etc.);\nEnergy projects (design and implementation of energy efficiency, production and redistribution interventions, creation of Renewable Energy Communities, etc.);\nCultural production and events, including the creation and management of museums, digital immersive rooms, international festival of performative arts, etc.;\nEducational activities for students of all ages;\nBusiness incubation and consolidation of social enterprises, through training, coaching, temporary management, etc.;\nFinancial services (through a co-funded microcredit institution, a co-funded asset management company, partner banks, etc.);\nTechnological research and innovation on several fields (energy production and distribution, housing, bioplastics, digital immersive rooms, etc.);\nUrban regeneration interventions (regeneration of buildings, urban art, regeneration of green spaces, etc.); etc. In the cluster, the Foundation does not function as a traditional top-down administrator or a simple service provider; instead, it designs the overall local development strategy for and with the target community, providing a theoretical framework based on complexity science and human development. It then structures the financial and operational relationships and framework that allow the cluster to thrive and implement the policies integrating all different activity areas."
         },
         "tags_focus": [
-            "Arts & Culture",
-            "Education",
-            "Sciences & Research",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Arts & Culture",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -816,7 +951,10 @@
             "Programme Areas": "Nadácia Volkswagen Slovakia focuses on advancing education, participation of vulnerable groups, and the development of cohesive communities. Our core expertise lies in designing and scaling innovative programmes that strengthen inclusive education, empower underrepresented learners, and build bridges between schools, families, and communities.As a corporate foundation, we act as a connector between philanthropy, business, and public systems, supporting pilot projects that generate learning and evidence for broader policy and practice change. Through strategic partnerships, targeted grantmaking, and capacity-building, we scale promising initiatives and promote long-term, systemic impact.Our key strength is the ability to catalyse systems change — we convene diverse stakeholders from education, government, and civil society to co-create solutions that foster inclusion, equity, and innovation. By combining private-sector agility with social impact goals, Nadácia Volkswagen Slovakia contributes to a more inclusive, resilient, and future-oriented society."
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Central & Eastern / Balkans)": [
@@ -858,8 +996,14 @@
             "Programme Areas": "We do philanthropy the Virgin way – that means being a positive disruptor, taking risks, entering spaces that are underfunded or overlooked, and uniting unlikely allies to multiply impact. Our mission is to unite people and entrepreneurial ideas to tackle the world’s most urgent challenges. Whether addressing injustice, reimagining business, or protecting the planet, our approach remains the same: take risks, back the bold, and never act alone. Unlike many traditional non-profit foundations, Virgin Unite doesn’t focus on a single issue. Instead, we look to challenge unacceptable issues or drive systems change in areas that aren’t getting enough attention, mobilising our community, partners, and their resources towards supporting the cause. Crucially, we don’t focus on a particular geography or issue, instead looking to be a positive disruptor in areas where we think we can specifically make a difference due to our unique approach, or because others aren’t currently giving the issue the attention it needs. We act as a positive disruptor by incubating and launching new non-profit initiatives. These organisations address a gap where systemic change is needed and eventually go on to thrive independently, with continued support from Virgin Unite. As of 2024, Virgin Unite has led and supported the incubation of 22 non-profit initiatives – including The Elders, The B Team, Ocean Unite (now ORRAA), Carbon War Room (now merged with RMI), Caribbean Climate Smart Accelerator, Unite BVI, and Planetary Guardians. We also look to embrace the same bold and innovative spirit that Virgin uses to change business for good and apply it to the world’s toughest challenges. This means working with businesses, and backing entrepreneurs, that drive positive social, environmental and economic benefits for people and the planet .A key component of Virgin Unite is our Constellation – a network and community of over 3,500 high net-wealth individuals, philanthropists, business leaders and entrepreneurs who convene to co-create solutions to some of the world’s biggest problems."
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Environment/Climate"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Environment/Climate",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -895,8 +1039,14 @@
             "Mission": "To be the network that creates sustainable, active, and inclusive communities through national programs, expertise, strategic partnerships, and collaborative leadership."
         },
         "tags_focus": [
-            "Citizenship, Social Justice & Public Affairs",
-            "Civil society, Voluntarism & Non-Profit Sector"
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Central & Eastern / Balkans)": [
@@ -937,12 +1087,30 @@
             "Programme Areas": "Philanthropy The Foundation runs its philanthropic business through donations to areas that are in harmony with the will and principles of the founder; contribute positively to the sustainable development of Grundfos and the surrounding community; contribute to the pride of Grundfos’ employeesaffect society and strengthen relationships that support Grundfos’ work; maintain the Foundation and Grundfos as socio-bearing entities. The Foundation’s donations are given primarily in three areas: Research and Learning: The Foundation supports selected research environments, especially within natural and technical science and initiatives that inspire children and young people to explore science and technology\nWater and Sustainable Development: The Foundation strives to provide access to affordable drinking water and sanitation for the world’s poorest. The aim is to contribute to reducing global inequality.\nInclusion and Community Engagement: The Foundation focuses on the Central Jutland Region and the municipalities that are close to Grundfos’ home in Bjerringbro and supports Grundfos companies all over the world building local partnerships with organisations, institutions and associations. Grants from the Foundation must first and foremost benefit the intended beneficiaries. A project may very well cover several areas. For example, it is desirable that follow-up research be linked to projects within water and social inclusion. Likewise, initiatives in the field of water also contribute to social inclusion – in the form of, for example, local workplaces and improved communities. The Foundation not only supports fully designed projects, but also concept development, studies, project and product development."
         },
         "tags_focus": [
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Education",
-            "Health",
-            "Sciences & Research",
-            "Socio-economic Development, Poverty",
-            "Youth/Children Development"
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Health",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Youth/Children Development",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Nordic Region)": [
@@ -1026,14 +1194,38 @@
             "Programme Areas": "Distinguishing Characteristics BFW is distinguished as the only indigenous feminist foundation in Bulgaria, independent from any family, corporate, or external donor governance. It leads with an intersectional approach, prioritizing social inclusion and innovative movement building. Its expertise includes developing local resources, nurturing coalitions, and collaborating with both national and European partners to address systemic barriers and deliver impactful, evidence-based programming. Key Strength or Contribution BFW’s key strength is its ability to combine grantmaking with deep local engagement—mobilizing knowledge, networks, and resources to empower underrepresented groups and drive public policy changes. Its contribution to society is seen in capacity building for women’s organizations, cross-sector advocacy, and fostering a resilient ecosystem for gender justice and democracy in Bulgaria. This independent and strategic approach amplifies the voices of the most vulnerable, catalyzes wider social movements, and sustains long-term feminist change. Thematic Areas: Arts & Culture,\nCitizenship, Social Justice & Public Affairs,\nCivil society, Voluntarism & Non-Profit Sector,\nEmployment/Workforce,\nEnvironment/Climate,\nHuman/Civil Rights,\nGender equality and women’s empowerment Prevention ofgender-based violence and discrimination LGBTI+ rightsadvocacy Intersectional movement building formarginalized groups Activity Areas: Grantmaking: Providing core and project funding to women’s rights and gender justice organizations across Bulgaria.\nCapacity building: Offering training, mentoring, networking, and collective action platforms for grassroots leaders and organizations.\nAdvocacy & research: Conducting research on the status of women’s rights and civil society, and leading advocacy to inform public policy and philanthropy.\nAwareness and movement building: Developing feminist campaigns, convening forums, and supporting collective movement action for gender equality and democracy."
         },
         "tags_focus": [
-            "Arts & Culture",
-            "Citizenship, Social Justice & Public Affairs",
-            "Civil society, Voluntarism & Non-Profit Sector",
-            "Education",
-            "Environment/Climate",
-            "Human/Civil Rights",
-            "Sciences & Research",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Arts & Culture",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Civil society, Voluntarism & Non-Profit Sector",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Education",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Environment/Climate",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Human/Civil Rights",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Sciences & Research",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Central & Eastern / Balkans)": [
@@ -1067,8 +1259,14 @@
             "Geographic Focus": "Kosovo"
         },
         "tags_focus": [
-            "Arts & Culture",
-            "Citizenship, Social Justice & Public Affairs"
+            {
+                "tag": "Arts & Culture",
+                "source": "regex_fallback"
+            },
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "regex_fallback"
+            }
         ],
         "geo_locations": {
             "Europe (Central & Eastern / Balkans)": [
@@ -1111,7 +1309,10 @@
             "Programme Areas": "Equity – to empower marginalised groups\nWater – to improve water security\nCreativity – to advance creative talent Own Initiatives Action Fund – The Action Fund supports organisations providing immediate relief to the most marginalised communities affected by urgent crises.\nCreatives For Our Future – Creatives For Our Future empowers the next generation of creative talent to unlock innovative approaches to our global sustainability challenges and drive progress towards the Sustainable Development Goals.\nWaterschool – The Waterschool empowers and educates young people on sustainable practices to address their local water challenges and improve water security globally."
         },
         "tags_focus": [
-            "Environment/Climate"
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Worldwide": [
@@ -1154,8 +1355,14 @@
             "Programme Areas": "Education,\nEmployment/Workforce,\nSocio-economic Development, Poverty"
         },
         "tags_focus": [
-            "Education",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Latin America & Caribbean": [
@@ -1214,9 +1421,18 @@
             "Programme Areas": "Citizenship, Social Justice & Public Affairs,\nEducation,\nEmployment/Workforce,\nSocial/Human Services,\nSocio-economic Development, Poverty"
         },
         "tags_focus": [
-            "Citizenship, Social Justice & Public Affairs",
-            "Education",
-            "Socio-economic Development, Poverty"
+            {
+                "tag": "Citizenship, Social Justice & Public Affairs",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Socio-economic Development, Poverty",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Latin America & Caribbean": [
@@ -1276,8 +1492,14 @@
             "Programme Areas": "Environment/Climate,\nFood, Agriculture & Nutrition"
         },
         "tags_focus": [
-            "Environment/Climate",
-            "Food, Agriculture & Nutrition"
+            {
+                "tag": "Environment/Climate",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Food, Agriculture & Nutrition",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Africa / Sub-Saharan Africa": [
@@ -1326,8 +1548,14 @@
             "Programme Areas": "Holistic Health & Prevention Healthcare systems around the world primarily focus on treating diseases, with economic incentives directed towards established medical methods. Human Development For Well-Being Young people aged 15 to 25 in the Mekong region face significant difficulties transitioning from formal education to employment due to a lack of skills and digital literacy in the light of demanding employer requirements. Active Lifestyle People from low-income and challenging backgrounds often face barriers to participating in sports, including high costs, limited access to facilities, and lack of encouragement. Connecting Themes In all our impact areas we strive to include three important themes which intersect our impact areas, namely: inclusion, nutrition and consciousness. Inclusion The foundation aims to promote inclusion by integrating it into all initiatives, recognizing its strategic advantage and essential role in society. Disabilities are often invisible and affect individuals at all stages of life. By 2035, the goal is to be a leading inclusive funding foundation that inspires others. Nutrition The foundation recognizes the fundamental role of nutrition in health, human development, and sports, aiming to establish it as a cross-cutting theme in all funding areas by 2035. Nutrition is crucial for physical and mental health, cognitive development, and athletic performance, and addressing it can help prevent rising issues like obesity, diabetes, and cardiovascular diseases. Consciousness The foundation aims to promote awareness and mindfulness, integrating it into all programme designs by 2035. This involves fostering personal and collective behaviour change through practical knowledge and motivation."
         },
         "tags_focus": [
-            "Education",
-            "Health"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            },
+            {
+                "tag": "Health",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Western / General)": [
@@ -1375,7 +1603,10 @@
             "Programme Areas": "1. Private Sector Development Supporting entrepreneurship and small business growth.\nPromoting innovation ecosystems.\nEncouraging partnerships between business, academia, and government. 2. Education Enhancing the quality of education at all levels.\nSupporting STEM (Science, Technology, Engineering, Mathematics) programs.\nPromoting entrepreneurship and innovation among youth.\nImproving teacher training and leadership development. 3. Civic Engagement and Democratic Institutions Strengthening civil society and independent media.\nPromoting transparency, rule of law, and anti-corruption efforts.\nEncouraging citizen participation and community building. 4. Cultural Heritage and Tourism Preserving and promoting Bulgaria’s cultural heritage.\nInvesting in historical sites and museums.\nEnhancing Bulgaria’s image as an alternative/cultural and nature tourism destination 5. Leadership Development Nurturing the next generation of leaders across sectors.\nProviding fellowships, exchanges, and professional development programs."
         },
         "tags_focus": [
-            "Education"
+            {
+                "tag": "Education",
+                "source": "exact_match"
+            }
         ],
         "geo_locations": {
             "Europe (Central & Eastern / Balkans)": [

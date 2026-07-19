@@ -100,7 +100,7 @@ class TestPhileaPreprocessor(unittest.TestCase):
             }
         ]
         extract_tags(members)
-        self.assertEqual(members[0]["tags_focus"], ["Arts & Culture"])
+        self.assertEqual(members[0]["tags_focus"], [{"tag": "Arts & Culture", "source": "exact_match"}])
 
     def test_extract_tags_fallback(self):
         members = [
@@ -113,7 +113,7 @@ class TestPhileaPreprocessor(unittest.TestCase):
             }
         ]
         extract_tags(members)
-        self.assertEqual(members[0]["tags_focus"], ["Education"])
+        self.assertEqual(members[0]["tags_focus"], [{"tag": "Education", "source": "regex_fallback"}])
 
     def test_extract_tags_special_boundary(self):
         members = [
@@ -126,7 +126,7 @@ class TestPhileaPreprocessor(unittest.TestCase):
             }
         ]
         extract_tags(members)
-        self.assertEqual(members[0]["tags_focus"], ["Human/Civil Rights"])
+        self.assertEqual(members[0]["tags_focus"], [{"tag": "Human/Civil Rights", "source": "regex_fallback"}])
 
     def test_extract_tags_tech_enablement(self):
         # 1. Robust path: from official tags
