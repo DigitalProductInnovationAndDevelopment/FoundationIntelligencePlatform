@@ -14,6 +14,8 @@ BFF_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(BFF_DIR)
 DEFAULT_DATA_PATH = os.path.join(SRC_DIR, "data", "raw", "register_of_charities_results.json")
 DATA_PATH = os.environ.get("DATA_PATH", DEFAULT_DATA_PATH)
+DEFAULT_DB_PATH = os.path.join(SRC_DIR, "data", "charities.db")
+DB_PATH = os.environ.get("DB_PATH", DEFAULT_DB_PATH)
 
 # Basic Mock Authentication credentials
 BFF_ADMIN_USER = os.environ.get("BFF_ADMIN_USER", "admin")

@@ -212,13 +212,14 @@ def search_charity_name(charity_name, api_key=None):
     return client.search_charity_name(charity_name)
 
 
-def scrape(registered_numbers=None, search_name=None, limit=None, sleep_time=1.0, timeout=10.0, api_key=None):
+def scrape(registered_numbers=None, search_name=None, limit=None, sleep_time=1.0, timeout=10.0, api_key=None, completed_numbers=None):
     """
     Scrapes data for one or more charities.
     Can either search for a charity name or fetch details for specific registered numbers.
     """
     client = CharityCommissionAPI(api_key=api_key, timeout=timeout)
     results = []
+    completed_numbers = completed_numbers or set()
     
     if search_name:
         logging.info(f"Searching for charities with name matching: '{search_name}'")
@@ -247,6 +248,9 @@ def scrape(registered_numbers=None, search_name=None, limit=None, sleep_time=1.0
     else:
         logging.error("Either registered_numbers or search_name must be provided to scrape.")
         return []
+
+    # Filter out completed numbers
+    reg_numbers = [(r, s) for r, s in reg_numbers if r not in completed_numbers]
 
     if limit:
         reg_numbers = reg_numbers[:limit]

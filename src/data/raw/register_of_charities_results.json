@@ -929,5 +929,4861 @@
                 "exp_total": null
             }
         ]
+    },
+    {
+        "registered_charity_number": 220949,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=220949&subid=0",
+        "all_details": {
+            "organisation_number": 220949,
+            "reg_charity_number": 220949,
+            "group_subsid_suffix": 0,
+            "charity_name": "THE BRITISH RED CROSS SOCIETY",
+            "charity_type": "Other",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1963-03-21T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-01-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2024-12-31T00:00:00",
+            "latest_income": 287100000.0,
+            "latest_expenditure": 310300000.0,
+            "address_line_one": "BRITISH RED CROSS SOCIETY",
+            "address_line_two": "44 MOORFIELDS",
+            "address_line_three": "LONDON",
+            "address_line_four": null,
+            "address_line_five": null,
+            "address_post_code": "EC2Y 9AL",
+            "phone": "0344 871 11 11",
+            "email": "contactus@redcross.org.uk",
+            "web": "www.redcross.org.uk",
+            "charity_co_reg_number": "RC000070",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-02-14T13:42:20.763",
+            "trustee_names": [
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Yaseer Ahmed",
+                    "trustee_id": 12253725
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Dennis Dunn MBE JP DL",
+                    "trustee_id": 12253730
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Louise Halpin",
+                    "trustee_id": 12416273
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Katie Igras",
+                    "trustee_id": 12509364
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Kirsty Robeson",
+                    "trustee_id": 12509368
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Sir John Eaton Holmes",
+                    "trustee_id": 12556599
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Howard Ashley Bell",
+                    "trustee_id": 12740427
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Alan House QFSM",
+                    "trustee_id": 2996652
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "MARK PETER BEDDY",
+                    "trustee_id": 2347002
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Carl David Cowling",
+                    "trustee_id": 13002179
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Gabrielle Inglis",
+                    "trustee_id": 13129011
+                },
+                {
+                    "organisation_number": 220949,
+                    "trustee_name": "Helen Frances Bennett",
+                    "trustee_id": 13129013
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "101",
+                    "classification_type": "What",
+                    "classification_desc": "General Charitable Purposes"
+                },
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "104",
+                    "classification_type": "What",
+                    "classification_desc": "Disability"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "106",
+                    "classification_type": "What",
+                    "classification_desc": "Overseas Aid/famine Relief"
+                },
+                {
+                    "classification_code": "201",
+                    "classification_type": "Who",
+                    "classification_desc": "Children/young People"
+                },
+                {
+                    "classification_code": "202",
+                    "classification_type": "Who",
+                    "classification_desc": "Elderly/old People"
+                },
+                {
+                    "classification_code": "203",
+                    "classification_type": "Who",
+                    "classification_desc": "People With Disabilities"
+                },
+                {
+                    "classification_code": "206",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Defined Groups"
+                },
+                {
+                    "classification_code": "207",
+                    "classification_type": "Who",
+                    "classification_desc": "The General Public/mankind"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "304",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Human Resources"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Afghanistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Bangladesh",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Djibouti",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Guinea",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Iraq",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Kenya",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Lebanon",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Lesotho",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Mongolia",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Burma",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Nepal",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "North Korea",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Pakistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Philippines",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Sierra Leone",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Somalia",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "South Africa",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Syria",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Uganda",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Yemen",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Zimbabwe",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Turks And Caicos Islands",
+                    "continent": "North America"
+                },
+                {
+                    "country": "South Sudan",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Burkina Faso",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Mali",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Niger",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Nigeria",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Anguilla",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Bermuda",
+                    "continent": "North America"
+                },
+                {
+                    "country": "British Virgin Islands",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Cayman Islands",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Falkland Islands",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Gibraltar",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Isle Of Man",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Montserrat",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Saint Helena",
+                    "continent": "Africa"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [
+                {
+                    "other_name": "BRITISH RED CROSS",
+                    "name_type": "W"
+                }
+            ],
+            "constituency_name": [
+                {
+                    "constituency_name": "Cities of London and Westminster"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 220949,
+                "fin_period_end_date": "2020-12-31T00:00:00",
+                "assets_own_use": 66900000.0,
+                "assets_long_term_investment": 19400000.0,
+                "defined_net_assets_pension": 11100000.0,
+                "assets_other_assets": 126800000.0,
+                "assets_total_liabilities": 24800000.0
+            },
+            {
+                "organisation_number": 220949,
+                "fin_period_end_date": "2021-12-31T00:00:00",
+                "assets_own_use": 64000000.0,
+                "assets_long_term_investment": 23900000.0,
+                "defined_net_assets_pension": 15800000.0,
+                "assets_other_assets": 116400000.0,
+                "assets_total_liabilities": 22000000.0
+            },
+            {
+                "organisation_number": 220949,
+                "fin_period_end_date": "2022-12-31T00:00:00",
+                "assets_own_use": 54100000.0,
+                "assets_long_term_investment": 60800000.0,
+                "defined_net_assets_pension": 9400000.0,
+                "assets_other_assets": 155400000.0,
+                "assets_total_liabilities": 22800000.0
+            },
+            {
+                "organisation_number": 220949,
+                "fin_period_end_date": "2023-12-31T00:00:00",
+                "assets_own_use": 48400000.0,
+                "assets_long_term_investment": 81600000.0,
+                "defined_net_assets_pension": 1500000.0,
+                "assets_other_assets": 159400000.0,
+                "assets_total_liabilities": 19500000.0
+            },
+            {
+                "organisation_number": 220949,
+                "fin_period_end_date": "2024-12-31T00:00:00",
+                "assets_own_use": 44100000.0,
+                "assets_long_term_investment": 87300000.0,
+                "defined_net_assets_pension": 1500000.0,
+                "assets_other_assets": 147800000.0,
+                "assets_total_liabilities": 26800000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "101",
+                "classification_type": "What",
+                "classification_desc": "General Charitable Purposes"
+            },
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "104",
+                "classification_type": "What",
+                "classification_desc": "Disability"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "106",
+                "classification_type": "What",
+                "classification_desc": "Overseas Aid/famine Relief"
+            },
+            {
+                "classification_code": "201",
+                "classification_type": "Who",
+                "classification_desc": "Children/young People"
+            },
+            {
+                "classification_code": "202",
+                "classification_type": "Who",
+                "classification_desc": "Elderly/old People"
+            },
+            {
+                "classification_code": "203",
+                "classification_type": "Who",
+                "classification_desc": "People With Disabilities"
+            },
+            {
+                "classification_code": "206",
+                "classification_type": "Who",
+                "classification_desc": "Other Defined Groups"
+            },
+            {
+                "classification_code": "207",
+                "classification_type": "Who",
+                "classification_desc": "The General Public/mankind"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "304",
+                "classification_type": "How",
+                "classification_desc": "Provides Human Resources"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR20",
+                "financial_period_end_date": "2020-12-31T00:00:00",
+                "income": 305900000.0,
+                "expenditure": 295300000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 36800000.0,
+                "income_from_govt_grants": 83600000.0,
+                "inc_donations_and_legacies": 147200000.0,
+                "inc_other_trading_activities": 20500000.0,
+                "inc_charitable_activities": 135000000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 31600000.0,
+                "inc_investment": 100000.0,
+                "inc_other": 3100000.0,
+                "inc_total": 305900000.0,
+                "exp_charitable_activities": 245900000.0,
+                "exp_raising_funds": 49400000.0,
+                "exp_governance": 5000000.0,
+                "exp_grants_institution": 94000000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 295300000.0
+            },
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-12-31T00:00:00",
+                "income": 226500000.0,
+                "expenditure": 234700000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 37200000.0,
+                "income_from_govt_grants": 29247619.0,
+                "inc_donations_and_legacies": 111700000.0,
+                "inc_other_trading_activities": 28500000.0,
+                "inc_charitable_activities": 83900000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 33800000.0,
+                "inc_investment": 0.0,
+                "inc_other": 2400000.0,
+                "inc_total": 226500000.0,
+                "exp_charitable_activities": 183500000.0,
+                "exp_raising_funds": 51200000.0,
+                "exp_governance": 2500000.0,
+                "exp_grants_institution": 37300000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 234700000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-12-31T00:00:00",
+                "income": 439000000.0,
+                "expenditure": 366700000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 37300000.0,
+                "income_from_govt_grants": 43954238.0,
+                "inc_donations_and_legacies": 286800000.0,
+                "inc_other_trading_activities": 36300000.0,
+                "inc_charitable_activities": 109600000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 37000000.0,
+                "inc_investment": 1100000.0,
+                "inc_other": 5200000.0,
+                "inc_total": 439000000.0,
+                "exp_charitable_activities": 300100000.0,
+                "exp_raising_funds": 66600000.0,
+                "exp_governance": 3100000.0,
+                "exp_grants_institution": 143000000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 366700000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-12-31T00:00:00",
+                "income": 330600000.0,
+                "expenditure": 322700000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 32177596.0,
+                "income_from_govt_grants": 33917367.0,
+                "inc_donations_and_legacies": 188800000.0,
+                "inc_other_trading_activities": 41200000.0,
+                "inc_charitable_activities": 91900000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 41200000.0,
+                "inc_investment": 4600000.0,
+                "inc_other": 4100000.0,
+                "inc_total": 330600000.0,
+                "exp_charitable_activities": 245500000.0,
+                "exp_raising_funds": 77200000.0,
+                "exp_governance": 2800000.0,
+                "exp_grants_institution": 80100000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 322700000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-12-31T00:00:00",
+                "income": 287100000.0,
+                "expenditure": 310300000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 31985000.0,
+                "income_from_govt_grants": 51771000.0,
+                "inc_donations_and_legacies": 133300000.0,
+                "inc_other_trading_activities": 39300000.0,
+                "inc_charitable_activities": 108800000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 44200000.0,
+                "inc_investment": 4700000.0,
+                "inc_other": 1000000.0,
+                "inc_total": 287100000.0,
+                "exp_charitable_activities": 238000000.0,
+                "exp_raising_funds": 72300000.0,
+                "exp_governance": 2900000.0,
+                "exp_grants_institution": 82900000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 310300000.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 326568,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=326568&subid=0",
+        "all_details": {
+            "organisation_number": 326568,
+            "reg_charity_number": 326568,
+            "group_subsid_suffix": 0,
+            "charity_name": "CHARITY PROJECTS",
+            "charity_type": "Charitable company",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1984-04-18T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-08-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2025-07-31T00:00:00",
+            "latest_income": 51139000.0,
+            "latest_expenditure": 49858000.0,
+            "address_line_one": "6th Floor",
+            "address_line_two": "The White Chapel Building",
+            "address_line_three": "10 Whitechapel High Street",
+            "address_line_four": "London",
+            "address_line_five": null,
+            "address_post_code": "E1 8QS",
+            "phone": "02078202222",
+            "email": "info@comicrelief.com",
+            "web": "www.comicrelief.com",
+            "charity_co_reg_number": "1806414",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-04-14T15:07:24.43",
+            "trustee_names": [
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Dr SUE BLACK",
+                    "trustee_id": 12168754
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "RUPERT OLIVER HENRY MORLEY",
+                    "trustee_id": 12242780
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Matt Hyde",
+                    "trustee_id": 12282078
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Jacqueline Onalo",
+                    "trustee_id": 11155487
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "FIONA CAMPBELL",
+                    "trustee_id": 12467760
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "MARC NOHR",
+                    "trustee_id": 11640307
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Teresa Alps",
+                    "trustee_id": 12950591
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "PHILIP THOMAS",
+                    "trustee_id": 13010577
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Hanah Burgess",
+                    "trustee_id": 11561365
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Elliott John Linger",
+                    "trustee_id": 12879843
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Fazilat Aftab",
+                    "trustee_id": 13021804
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Yolisa Phahle",
+                    "trustee_id": 13021807
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Robert Vincent Williams",
+                    "trustee_id": 13137090
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Mandeep Hothi",
+                    "trustee_id": 12580676
+                },
+                {
+                    "organisation_number": 326568,
+                    "trustee_name": "Dr Sarah Joan Hughes",
+                    "trustee_id": 13171329
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "101",
+                    "classification_type": "What",
+                    "classification_desc": "General Charitable Purposes"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "106",
+                    "classification_type": "What",
+                    "classification_desc": "Overseas Aid/famine Relief"
+                },
+                {
+                    "classification_code": "205",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Charities Or Voluntary Bodies"
+                },
+                {
+                    "classification_code": "206",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Defined Groups"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "310",
+                    "classification_type": "How",
+                    "classification_desc": "Other Charitable Activities"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [],
+            "other_names": [
+                {
+                    "other_name": "COMIC RELIEF",
+                    "name_type": "W"
+                },
+                {
+                    "other_name": "SPORT RELIEF",
+                    "name_type": "W"
+                }
+            ],
+            "constituency_name": [
+                {
+                    "constituency_name": "Bethnal Green and Stepney"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 326568,
+                "fin_period_end_date": "2021-07-31T00:00:00",
+                "assets_own_use": 1707000.0,
+                "assets_long_term_investment": 56992000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 118425000.0,
+                "assets_total_liabilities": 86404000.0
+            },
+            {
+                "organisation_number": 326568,
+                "fin_period_end_date": "2022-07-31T00:00:00",
+                "assets_own_use": 2054000.0,
+                "assets_long_term_investment": 64639000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 87815000.0,
+                "assets_total_liabilities": 60417000.0
+            },
+            {
+                "organisation_number": 326568,
+                "fin_period_end_date": "2023-07-31T00:00:00",
+                "assets_own_use": 2785000.0,
+                "assets_long_term_investment": 65876000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 69836000.0,
+                "assets_total_liabilities": 43528000.0
+            },
+            {
+                "organisation_number": 326568,
+                "fin_period_end_date": "2024-07-31T00:00:00",
+                "assets_own_use": 3067000.0,
+                "assets_long_term_investment": 74308000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 74790000.0,
+                "assets_total_liabilities": 43723000.0
+            },
+            {
+                "organisation_number": 326568,
+                "fin_period_end_date": "2025-07-31T00:00:00",
+                "assets_own_use": 3468000.0,
+                "assets_long_term_investment": 76400000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 76484000.0,
+                "assets_total_liabilities": 45337000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": true
+        },
+        "who_what_how": [
+            {
+                "classification_code": "101",
+                "classification_type": "What",
+                "classification_desc": "General Charitable Purposes"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "106",
+                "classification_type": "What",
+                "classification_desc": "Overseas Aid/famine Relief"
+            },
+            {
+                "classification_code": "205",
+                "classification_type": "Who",
+                "classification_desc": "Other Charities Or Voluntary Bodies"
+            },
+            {
+                "classification_code": "206",
+                "classification_type": "Who",
+                "classification_desc": "Other Defined Groups"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "310",
+                "classification_type": "How",
+                "classification_desc": "Other Charitable Activities"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-07-31T00:00:00",
+                "income": 74079000.0,
+                "expenditure": 86197000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 14229580.0,
+                "inc_donations_and_legacies": 65928000.0,
+                "inc_other_trading_activities": 6928000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 53181.0,
+                "inc_investment": 1223000.0,
+                "inc_other": 0.0,
+                "inc_total": 74079000.0,
+                "exp_charitable_activities": 73230000.0,
+                "exp_raising_funds": 12967000.0,
+                "exp_governance": 150000.0,
+                "exp_grants_institution": 65800000.0,
+                "exp_investment_management": 321000.0,
+                "exp_other": 0.0,
+                "exp_total": 86197000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-07-31T00:00:00",
+                "income": 49991000.0,
+                "expenditure": 44267000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 11805000.0,
+                "inc_donations_and_legacies": 43943000.0,
+                "inc_other_trading_activities": 5744000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 231593.0,
+                "inc_investment": 304000.0,
+                "inc_other": 0.0,
+                "inc_total": 49991000.0,
+                "exp_charitable_activities": 31999000.0,
+                "exp_raising_funds": 12268000.0,
+                "exp_governance": 118000.0,
+                "exp_grants_institution": 25241000.0,
+                "exp_investment_management": 192000.0,
+                "exp_other": 0.0,
+                "exp_total": 44267000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-07-31T00:00:00",
+                "income": 50752000.0,
+                "expenditure": 51322000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 5883000.0,
+                "inc_donations_and_legacies": 44302000.0,
+                "inc_other_trading_activities": 4982000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 947602.0,
+                "inc_investment": 1468000.0,
+                "inc_other": 0.0,
+                "inc_total": 50752000.0,
+                "exp_charitable_activities": 39076000.0,
+                "exp_raising_funds": 12246000.0,
+                "exp_governance": 161000.0,
+                "exp_grants_institution": 33542000.0,
+                "exp_investment_management": 260000.0,
+                "exp_other": 0.0,
+                "exp_total": 51322000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-07-31T00:00:00",
+                "income": 53767000.0,
+                "expenditure": 46226000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 3828000.0,
+                "inc_donations_and_legacies": 46055000.0,
+                "inc_other_trading_activities": 4189000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 864847.0,
+                "inc_investment": 3523000.0,
+                "inc_other": 0.0,
+                "inc_total": 53767000.0,
+                "exp_charitable_activities": 34753000.0,
+                "exp_raising_funds": 11473000.0,
+                "exp_governance": 232000.0,
+                "exp_grants_institution": 28819000.0,
+                "exp_investment_management": 295000.0,
+                "exp_other": 0.0,
+                "exp_total": 46226000.0
+            },
+            {
+                "ar_cycle_reference": "AR25",
+                "financial_period_end_date": "2025-07-31T00:00:00",
+                "income": 51139000.0,
+                "expenditure": 49858000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 1912000.0,
+                "inc_donations_and_legacies": 42721000.0,
+                "inc_other_trading_activities": 4553000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 1263470.0,
+                "inc_investment": 3865000.0,
+                "inc_other": 0.0,
+                "inc_total": 51139000.0,
+                "exp_charitable_activities": 36352000.0,
+                "exp_raising_funds": 13506000.0,
+                "exp_governance": 78000.0,
+                "exp_grants_institution": 30676000.0,
+                "exp_investment_management": 300000.0,
+                "exp_other": 0.0,
+                "exp_total": 49858000.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 213890,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=213890&subid=0",
+        "all_details": {
+            "organisation_number": 213890,
+            "reg_charity_number": 213890,
+            "group_subsid_suffix": 0,
+            "charity_name": "THE SAVE THE CHILDREN FUND",
+            "charity_type": "Charitable company",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1962-10-10T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-01-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2024-12-31T00:00:00",
+            "latest_income": 304834000.0,
+            "latest_expenditure": 308810973.0,
+            "address_line_one": "Save the Children",
+            "address_line_two": "1 St. John's Lane",
+            "address_line_three": "LONDON",
+            "address_line_four": null,
+            "address_line_five": null,
+            "address_post_code": "EC1M 4AR",
+            "phone": "02070126400",
+            "email": "supporter.care@savethechildren.org.uk",
+            "web": "www.savethechildren.org.uk",
+            "charity_co_reg_number": "178159",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2025-08-26T12:38:43.573",
+            "trustee_names": [
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Kajal Odedra",
+                    "trustee_id": 12341177
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Richard Thomas George WINTER",
+                    "trustee_id": 2709117
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Dr Tsitsi Dadirai Chawatama-Kwambana",
+                    "trustee_id": 12189785
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Catherine Ann Doran",
+                    "trustee_id": 12734733
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "TIMOTHY FALLOWFIELD",
+                    "trustee_id": 1772537
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Jason Daniel Graeme Allen",
+                    "trustee_id": 12880053
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Laura Catherine King",
+                    "trustee_id": 12880054
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Stuart Russell McMinnies",
+                    "trustee_id": 13020470
+                },
+                {
+                    "organisation_number": 213890,
+                    "trustee_name": "Dr Tamsyn Sherlle Barton",
+                    "trustee_id": 12847111
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "104",
+                    "classification_type": "What",
+                    "classification_desc": "Disability"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "106",
+                    "classification_type": "What",
+                    "classification_desc": "Overseas Aid/famine Relief"
+                },
+                {
+                    "classification_code": "201",
+                    "classification_type": "Who",
+                    "classification_desc": "Children/young People"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "304",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Human Resources"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                },
+                {
+                    "classification_code": "308",
+                    "classification_type": "How",
+                    "classification_desc": "Sponsors Or Undertakes Research"
+                },
+                {
+                    "classification_code": "309",
+                    "classification_type": "How",
+                    "classification_desc": "Acts As An Umbrella Or Resource Body"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Afghanistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Albania",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Australia",
+                    "continent": "Oceania"
+                },
+                {
+                    "country": "Bangladesh",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Belgium",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Bhutan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Bolivia",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Brazil",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Burkina Faso",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Cambodia",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Central African Republic",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Chile",
+                    "continent": "South America"
+                },
+                {
+                    "country": "China",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Colombia",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Comoros",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Ecuador",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Egypt",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "El Salvador",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Ethiopia",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Finland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Germany",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Greece",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Guatemala",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Guinea",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Haiti",
+                    "continent": "North America"
+                },
+                {
+                    "country": "India",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Indonesia",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Iraq",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Israel",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Ivory Coast",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Japan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Jordan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Kenya",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Laos",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Lebanon",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Liberia",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Malawi",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Mali",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Mexico",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Morocco",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Mozambique",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Burma",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Nepal",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Netherlands",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Nicaragua",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Niger",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Nigeria",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "North Korea",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Norway",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Pakistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Panama",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Peru",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Philippines",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Romania",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Rwanda",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Senegal",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Sierra Leone",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Singapore",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Somalia",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "South Africa",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Sri Lanka",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Sudan",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Switzerland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Syria",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Tajikistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Tanzania",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Thailand",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Turkey",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Turkmenistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Uganda",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Ukraine",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "United States",
+                    "continent": "North America"
+                },
+                {
+                    "country": "Vanuatu",
+                    "continent": "Oceania"
+                },
+                {
+                    "country": "Vietnam",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Yemen",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Serbia",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Congo (Democratic Republic)",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Zambia",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Zimbabwe",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Occupied Palestinian Territories",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "South Sudan",
+                    "continent": "Africa"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [
+                {
+                    "other_name": "SAVE THE CHILDREN",
+                    "name_type": "W"
+                }
+            ],
+            "constituency_name": [
+                {
+                    "constituency_name": "Islington South and Finsbury"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 213890,
+                "fin_period_end_date": "2020-12-31T00:00:00",
+                "assets_own_use": 3373000.0,
+                "assets_long_term_investment": 37932000.0,
+                "defined_net_assets_pension": -2757000.0,
+                "assets_other_assets": 107473000.0,
+                "assets_total_liabilities": 87405000.0
+            },
+            {
+                "organisation_number": 213890,
+                "fin_period_end_date": "2021-12-31T00:00:00",
+                "assets_own_use": 2685000.0,
+                "assets_long_term_investment": 40773000.0,
+                "defined_net_assets_pension": -120000.0,
+                "assets_other_assets": 90995000.0,
+                "assets_total_liabilities": 69856000.0
+            },
+            {
+                "organisation_number": 213890,
+                "fin_period_end_date": "2022-12-31T00:00:00",
+                "assets_own_use": 2434000.0,
+                "assets_long_term_investment": 43088000.0,
+                "defined_net_assets_pension": -64000.0,
+                "assets_other_assets": 97389000.0,
+                "assets_total_liabilities": 73172000.0
+            },
+            {
+                "organisation_number": 213890,
+                "fin_period_end_date": "2023-12-31T00:00:00",
+                "assets_own_use": 2303000.0,
+                "assets_long_term_investment": 45973000.0,
+                "defined_net_assets_pension": -34000.0,
+                "assets_other_assets": 90183000.0,
+                "assets_total_liabilities": 64845000.0
+            },
+            {
+                "organisation_number": 213890,
+                "fin_period_end_date": "2024-12-31T00:00:00",
+                "assets_own_use": 2320000.0,
+                "assets_long_term_investment": 41887000.0,
+                "defined_net_assets_pension": -1943000.0,
+                "assets_other_assets": 106420000.0,
+                "assets_total_liabilities": 78046000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": true
+        },
+        "who_what_how": [
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "104",
+                "classification_type": "What",
+                "classification_desc": "Disability"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "106",
+                "classification_type": "What",
+                "classification_desc": "Overseas Aid/famine Relief"
+            },
+            {
+                "classification_code": "201",
+                "classification_type": "Who",
+                "classification_desc": "Children/young People"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "304",
+                "classification_type": "How",
+                "classification_desc": "Provides Human Resources"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            },
+            {
+                "classification_code": "308",
+                "classification_type": "How",
+                "classification_desc": "Sponsors Or Undertakes Research"
+            },
+            {
+                "classification_code": "309",
+                "classification_type": "How",
+                "classification_desc": "Acts As An Umbrella Or Resource Body"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR20",
+                "financial_period_end_date": "2020-12-31T00:00:00",
+                "income": 288730000.0,
+                "expenditure": 283161000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 65066928.0,
+                "inc_donations_and_legacies": 88443000.0,
+                "inc_other_trading_activities": 6585000.0,
+                "inc_charitable_activities": 188924000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 17328000.0,
+                "inc_investment": 760000.0,
+                "inc_other": 4018000.0,
+                "inc_total": 288730000.0,
+                "exp_charitable_activities": 252118000.0,
+                "exp_raising_funds": 28581000.0,
+                "exp_governance": 1076000.0,
+                "exp_grants_institution": 187776000.0,
+                "exp_investment_management": 93000.0,
+                "exp_other": 2462000.0,
+                "exp_total": 283161000.0
+            },
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-12-31T00:00:00",
+                "income": 240409000.0,
+                "expenditure": 235928000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 40498492.0,
+                "inc_donations_and_legacies": 84412000.0,
+                "inc_other_trading_activities": 7064000.0,
+                "inc_charitable_activities": 144994000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 19379000.0,
+                "inc_investment": 496000.0,
+                "inc_other": 3443000.0,
+                "inc_total": 240409000.0,
+                "exp_charitable_activities": 202555000.0,
+                "exp_raising_funds": 30936000.0,
+                "exp_governance": 1317000.0,
+                "exp_grants_institution": 139411000.0,
+                "exp_investment_management": 145000.0,
+                "exp_other": 2437000.0,
+                "exp_total": 235928000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-12-31T00:00:00",
+                "income": 294356000.0,
+                "expenditure": 286371000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 34940000.0,
+                "inc_donations_and_legacies": 98653000.0,
+                "inc_other_trading_activities": 8850000.0,
+                "inc_charitable_activities": 182901000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 17182000.0,
+                "inc_investment": 866000.0,
+                "inc_other": 3086000.0,
+                "inc_total": 294356000.0,
+                "exp_charitable_activities": 251455000.0,
+                "exp_raising_funds": 32237000.0,
+                "exp_governance": 1205000.0,
+                "exp_grants_institution": 188543000.0,
+                "exp_investment_management": 123000.0,
+                "exp_other": 2679000.0,
+                "exp_total": 286371000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-12-31T00:00:00",
+                "income": 296015000.0,
+                "expenditure": 295425000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 46647000.0,
+                "inc_donations_and_legacies": 93085000.0,
+                "inc_other_trading_activities": 9139000.0,
+                "inc_charitable_activities": 189136000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 18628000.0,
+                "inc_investment": 1469000.0,
+                "inc_other": 3186000.0,
+                "inc_total": 296015000.0,
+                "exp_charitable_activities": 256291000.0,
+                "exp_raising_funds": 36306000.0,
+                "exp_governance": 1211000.0,
+                "exp_grants_institution": 181307000.0,
+                "exp_investment_management": 394000.0,
+                "exp_other": 2828000.0,
+                "exp_total": 295425000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-12-31T00:00:00",
+                "income": 304834000.0,
+                "expenditure": 308810973.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 62256000.0,
+                "inc_donations_and_legacies": 92089197.0,
+                "inc_other_trading_activities": 9708707.0,
+                "inc_charitable_activities": 198559724.0,
+                "inc_endowments": 421046.0,
+                "inc_legacies": 26956767.0,
+                "inc_investment": 1564199.0,
+                "inc_other": 2911960.0,
+                "inc_total": 304833787.0,
+                "exp_charitable_activities": 265103636.0,
+                "exp_raising_funds": 40206477.0,
+                "exp_governance": 957359.0,
+                "exp_grants_institution": 182314000.0,
+                "exp_investment_management": 113540.0,
+                "exp_other": 3500860.0,
+                "exp_total": 308810973.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 1089464,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=1089464&subid=0",
+        "all_details": {
+            "organisation_number": 3987102,
+            "reg_charity_number": 1089464,
+            "group_subsid_suffix": 0,
+            "charity_name": "CANCER RESEARCH UK",
+            "charity_type": "Charitable company",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "2001-11-23T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-04-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2025-03-31T00:00:00",
+            "latest_income": 734753802.0,
+            "latest_expenditure": 714723789.0,
+            "address_line_one": "Cancer Research UK",
+            "address_line_two": "2 Redman Place",
+            "address_line_three": "LONDON",
+            "address_line_four": null,
+            "address_line_five": null,
+            "address_post_code": "E20 1JQ",
+            "phone": "020 7242 0200",
+            "email": "secretariat@cancer.org.uk",
+            "web": "www.cancerresearchuk.org",
+            "charity_co_reg_number": "4325234",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-06-23T10:29:43.82",
+            "trustee_names": [
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "PROFESSOR NICHOLAS CLWYD JONES",
+                    "trustee_id": 12396126
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "JOANNE MARY SHAW",
+                    "trustee_id": 11196731
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Dr Robert James Campbell Easton",
+                    "trustee_id": 12051779
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "PROFESSOR PAMELA RENATE KEARNS PhD FRCPCH",
+                    "trustee_id": 12509565
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Professor Doreen Ann Cantrell FRS",
+                    "trustee_id": 12711123
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "PROFESSOR GERARD IAN EVAN",
+                    "trustee_id": 12711125
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Hitesh Thakrar",
+                    "trustee_id": 12457425
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Rakshit Kapoor",
+                    "trustee_id": 12765293
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Lord Simon Stevens",
+                    "trustee_id": 12836175
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Professor Dame Nancy Jane Rothwell",
+                    "trustee_id": 12972043
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Mark Philip Evans",
+                    "trustee_id": 12975892
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Catherine Eve Smaje",
+                    "trustee_id": 12975893
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Professor Dr Reinier Harm Medema",
+                    "trustee_id": 13015674
+                },
+                {
+                    "organisation_number": 3987102,
+                    "trustee_name": "Sarah Whitney",
+                    "trustee_id": 12237271
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "207",
+                    "classification_type": "Who",
+                    "classification_desc": "The General Public/mankind"
+                },
+                {
+                    "classification_code": "301",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Individuals"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                },
+                {
+                    "classification_code": "308",
+                    "classification_type": "How",
+                    "classification_desc": "Sponsors Or Undertakes Research"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [
+                {
+                    "other_name": "CANCER RESEARCH UNITED KINGDOM",
+                    "name_type": "W"
+                }
+            ],
+            "constituency_name": [
+                {
+                    "constituency_name": "Stratford and Bow"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 3987102,
+                "fin_period_end_date": "2021-03-31T00:00:00",
+                "assets_own_use": 37643373.0,
+                "assets_long_term_investment": 425104058.0,
+                "defined_net_assets_pension": 46295105.0,
+                "assets_other_assets": 361976412.0,
+                "assets_total_liabilities": 579010553.0
+            },
+            {
+                "organisation_number": 3987102,
+                "fin_period_end_date": "2022-03-31T00:00:00",
+                "assets_own_use": 38112918.0,
+                "assets_long_term_investment": 487444010.0,
+                "defined_net_assets_pension": 122350105.0,
+                "assets_other_assets": 326288035.0,
+                "assets_total_liabilities": 596252773.0
+            },
+            {
+                "organisation_number": 3987102,
+                "fin_period_end_date": "2023-03-31T00:00:00",
+                "assets_own_use": 37871252.0,
+                "assets_long_term_investment": 501141623.0,
+                "defined_net_assets_pension": 77203105.0,
+                "assets_other_assets": 348619223.0,
+                "assets_total_liabilities": 583086187.0
+            },
+            {
+                "organisation_number": 3987102,
+                "fin_period_end_date": "2024-03-31T00:00:00",
+                "assets_own_use": 40632508.0,
+                "assets_long_term_investment": 496832297.0,
+                "defined_net_assets_pension": 75049105.0,
+                "assets_other_assets": 355207169.0,
+                "assets_total_liabilities": 565328560.0
+            },
+            {
+                "organisation_number": 3987102,
+                "fin_period_end_date": "2025-03-31T00:00:00",
+                "assets_own_use": 41130240.0,
+                "assets_long_term_investment": 494859210.0,
+                "defined_net_assets_pension": 16325105.0,
+                "assets_other_assets": 381061346.0,
+                "assets_total_liabilities": 569974105.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": true
+        },
+        "who_what_how": [
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "207",
+                "classification_type": "Who",
+                "classification_desc": "The General Public/mankind"
+            },
+            {
+                "classification_code": "301",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Individuals"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            },
+            {
+                "classification_code": "308",
+                "classification_type": "How",
+                "classification_desc": "Sponsors Or Undertakes Research"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-03-31T00:00:00",
+                "income": 582083475.0,
+                "expenditure": 570560852.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 164398.0,
+                "income_from_govt_grants": 15738508.0,
+                "inc_donations_and_legacies": 414524591.0,
+                "inc_other_trading_activities": 47771111.0,
+                "inc_charitable_activities": 97928643.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 213563203.0,
+                "inc_investment": 4556622.0,
+                "inc_other": 17302508.0,
+                "inc_total": 582083475.0,
+                "exp_charitable_activities": 419453652.0,
+                "exp_raising_funds": 68618528.0,
+                "exp_governance": 1632923.0,
+                "exp_grants_institution": 273500000.0,
+                "exp_investment_management": 2297812.0,
+                "exp_other": 82488672.0,
+                "exp_total": 570560852.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-03-31T00:00:00",
+                "income": 668369451.0,
+                "expenditure": 665948138.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 1446942.0,
+                "income_from_govt_grants": 5731257.0,
+                "inc_donations_and_legacies": 426739530.0,
+                "inc_other_trading_activities": 111491337.0,
+                "inc_charitable_activities": 107631961.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 205996709.0,
+                "inc_investment": 5095791.0,
+                "inc_other": 17410832.0,
+                "inc_total": 668369451.0,
+                "exp_charitable_activities": 470842859.0,
+                "exp_raising_funds": 101881810.0,
+                "exp_governance": 1968001.0,
+                "exp_grants_institution": 360368273.0,
+                "exp_investment_management": 2153632.0,
+                "exp_other": 93223469.0,
+                "exp_total": 665948138.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-03-31T00:00:00",
+                "income": 718793137.0,
+                "expenditure": 640845146.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 2700.0,
+                "income_from_govt_grants": 3912857.0,
+                "inc_donations_and_legacies": 490094590.0,
+                "inc_other_trading_activities": 126871816.0,
+                "inc_charitable_activities": 93175241.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 260926994.0,
+                "inc_investment": 6166491.0,
+                "inc_other": 2485000.0,
+                "inc_total": 718793138.0,
+                "exp_charitable_activities": 425012576.0,
+                "exp_raising_funds": 108833326.0,
+                "exp_governance": 5635669.0,
+                "exp_grants_institution": 285627000.0,
+                "exp_investment_management": 3234470.0,
+                "exp_other": 106999244.0,
+                "exp_total": 640845146.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-03-31T00:00:00",
+                "income": 684207447.0,
+                "expenditure": 692424949.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 28650.0,
+                "income_from_govt_grants": 3579084.0,
+                "inc_donations_and_legacies": 463540745.0,
+                "inc_other_trading_activities": 134232909.0,
+                "inc_charitable_activities": 75705684.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 230634438.0,
+                "inc_investment": 8271109.0,
+                "inc_other": 2457000.0,
+                "inc_total": 684207447.0,
+                "exp_charitable_activities": 431898103.0,
+                "exp_raising_funds": 133317287.0,
+                "exp_governance": 7218726.0,
+                "exp_grants_institution": 293029.0,
+                "exp_investment_management": 1909312.0,
+                "exp_other": 127209559.0,
+                "exp_total": 692424949.0
+            },
+            {
+                "ar_cycle_reference": "AR25",
+                "financial_period_end_date": "2025-03-31T00:00:00",
+                "income": 734753802.0,
+                "expenditure": 714723789.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 6325.0,
+                "income_from_govt_grants": 1543552.0,
+                "inc_donations_and_legacies": 530012997.0,
+                "inc_other_trading_activities": 134865435.0,
+                "inc_charitable_activities": 59000260.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 287624420.0,
+                "inc_investment": 8099110.0,
+                "inc_other": 2776000.0,
+                "inc_total": 734753802.0,
+                "exp_charitable_activities": 452798075.0,
+                "exp_raising_funds": 129559795.0,
+                "exp_governance": 6428259.0,
+                "exp_grants_institution": 306997145.0,
+                "exp_investment_management": 351155.0,
+                "exp_other": 132365919.0,
+                "exp_total": 714723789.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 205846,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=205846&subid=0",
+        "all_details": {
+            "organisation_number": 205846,
+            "reg_charity_number": 205846,
+            "group_subsid_suffix": 0,
+            "charity_name": "THE NATIONAL TRUST FOR PLACES OF HISTORIC INTEREST OR NATURAL BEAUTY",
+            "charity_type": "Other",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1962-11-05T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-03-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2025-02-28T00:00:00",
+            "latest_income": 766195000.0,
+            "latest_expenditure": 824377000.0,
+            "address_line_one": "NATIONAL TRUST",
+            "address_line_two": "HEELIS",
+            "address_line_three": "KEMBLE DRIVE",
+            "address_line_four": "SWINDON",
+            "address_line_five": null,
+            "address_post_code": "SN2 2NA",
+            "phone": "01793 817400",
+            "email": "thesecretary@nationaltrust.org.uk",
+            "web": "www.nationaltrust.org.uk",
+            "charity_co_reg_number": null,
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2025-12-16T10:22:45.09",
+            "trustee_names": [
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Zarin Homi Patel",
+                    "trustee_id": 3315911
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Denise Nichola Jagger",
+                    "trustee_id": 3438298
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Alexander Robert Nairne CBE FSA",
+                    "trustee_id": 11629685
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Rene H Olivieri CBE",
+                    "trustee_id": 12637374
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Paul Roberts",
+                    "trustee_id": 12696217
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Patrick Adam Fernesley Figgis",
+                    "trustee_id": 11796418
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Dame Anna Lisbet Rausing DBE",
+                    "trustee_id": 12740410
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Richard Hethersett Huntington",
+                    "trustee_id": 12951375
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Michael Salter-Church MBE",
+                    "trustee_id": 12951380
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Helen Mary Browning OBE DL",
+                    "trustee_id": 13081611
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Scott Damon Beaumont",
+                    "trustee_id": 13081612
+                },
+                {
+                    "organisation_number": 205846,
+                    "trustee_name": "Maninder Grimshaw",
+                    "trustee_id": 13081614
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "112",
+                    "classification_type": "What",
+                    "classification_desc": "Environment/conservation/heritage"
+                },
+                {
+                    "classification_code": "207",
+                    "classification_type": "Who",
+                    "classification_desc": "The General Public/mankind"
+                },
+                {
+                    "classification_code": "305",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Buildings/facilities/open Space"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [
+                {
+                    "other_name": "NATIONAL TRUST",
+                    "name_type": "W"
+                },
+                {
+                    "other_name": "NATIONAL TRUST CYMRU",
+                    "name_type": "W"
+                },
+                {
+                    "other_name": "THE NATIONAL TRUST",
+                    "name_type": "W"
+                }
+            ],
+            "constituency_name": [
+                {
+                    "constituency_name": "Swindon South"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 205846,
+                "fin_period_end_date": "2021-02-28T00:00:00",
+                "assets_own_use": 161569000.0,
+                "assets_long_term_investment": 1473798000.0,
+                "defined_net_assets_pension": -139828000.0,
+                "assets_other_assets": 157523000.0,
+                "assets_total_liabilities": 186463000.0
+            },
+            {
+                "organisation_number": 205846,
+                "fin_period_end_date": "2022-02-28T00:00:00",
+                "assets_own_use": 153300000.0,
+                "assets_long_term_investment": 1611406000.0,
+                "defined_net_assets_pension": 21697000.0,
+                "assets_other_assets": 155192000.0,
+                "assets_total_liabilities": 261850000.0
+            },
+            {
+                "organisation_number": 205846,
+                "fin_period_end_date": "2023-02-28T00:00:00",
+                "assets_own_use": 175379000.0,
+                "assets_long_term_investment": 1562547000.0,
+                "defined_net_assets_pension": -9288000.0,
+                "assets_other_assets": 173671000.0,
+                "assets_total_liabilities": 320912000.0
+            },
+            {
+                "organisation_number": 205846,
+                "fin_period_end_date": "2024-02-29T00:00:00",
+                "assets_own_use": 187257000.0,
+                "assets_long_term_investment": 1575550000.0,
+                "defined_net_assets_pension": -29320000.0,
+                "assets_other_assets": 167213000.0,
+                "assets_total_liabilities": 289277000.0
+            },
+            {
+                "organisation_number": 205846,
+                "fin_period_end_date": "2025-02-28T00:00:00",
+                "assets_own_use": 205534000.0,
+                "assets_long_term_investment": 1543714000.0,
+                "defined_net_assets_pension": -14457000.0,
+                "assets_other_assets": 185726000.0,
+                "assets_total_liabilities": 284081000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "112",
+                "classification_type": "What",
+                "classification_desc": "Environment/conservation/heritage"
+            },
+            {
+                "classification_code": "207",
+                "classification_type": "Who",
+                "classification_desc": "The General Public/mankind"
+            },
+            {
+                "classification_code": "305",
+                "classification_type": "How",
+                "classification_desc": "Provides Buildings/facilities/open Space"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-02-28T00:00:00",
+                "income": 507661000.0,
+                "expenditure": 514543000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 19950000.0,
+                "inc_donations_and_legacies": 63511000.0,
+                "inc_other_trading_activities": 37293000.0,
+                "inc_charitable_activities": 385025000.0,
+                "inc_endowments": 380000.0,
+                "inc_legacies": 44631000.0,
+                "inc_investment": 17255000.0,
+                "inc_other": 4577000.0,
+                "inc_total": 507661000.0,
+                "exp_charitable_activities": 456953000.0,
+                "exp_raising_funds": 57590000.0,
+                "exp_governance": 358000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 12988000.0,
+                "exp_other": 0.0,
+                "exp_total": 514543000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-02-28T00:00:00",
+                "income": 643329000.0,
+                "expenditure": 591942000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 23045000.0,
+                "inc_donations_and_legacies": 81797000.0,
+                "inc_other_trading_activities": 63228000.0,
+                "inc_charitable_activities": 473894000.0,
+                "inc_endowments": 185000.0,
+                "inc_legacies": 63565000.0,
+                "inc_investment": 15837000.0,
+                "inc_other": 8573000.0,
+                "inc_total": 643329000.0,
+                "exp_charitable_activities": 536767000.0,
+                "exp_raising_funds": 55175000.0,
+                "exp_governance": 869000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 5476000.0,
+                "exp_other": 0.0,
+                "exp_total": 591942000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-02-28T00:00:00",
+                "income": 671076000.0,
+                "expenditure": 733294000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 22344000.0,
+                "inc_donations_and_legacies": 91385000.0,
+                "inc_other_trading_activities": 74139000.0,
+                "inc_charitable_activities": 493090000.0,
+                "inc_endowments": 2725000.0,
+                "inc_legacies": 70310000.0,
+                "inc_investment": 19904000.0,
+                "inc_other": 3361000.0,
+                "inc_total": 681879000.0,
+                "exp_charitable_activities": 667610000.0,
+                "exp_raising_funds": 65684000.0,
+                "exp_governance": 910000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 5553000.0,
+                "exp_other": 0.0,
+                "exp_total": 733294000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-02-29T00:00:00",
+                "income": 723814000.0,
+                "expenditure": 767677000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 21190000.0,
+                "inc_donations_and_legacies": 98074000.0,
+                "inc_other_trading_activities": 82145000.0,
+                "inc_charitable_activities": 526107000.0,
+                "inc_endowments": 390000.0,
+                "inc_legacies": 6172000.0,
+                "inc_investment": 13705000.0,
+                "inc_other": 3783000.0,
+                "inc_total": 723814000.0,
+                "exp_charitable_activities": 695892000.0,
+                "exp_raising_funds": 71785000.0,
+                "exp_governance": 1084000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 5535000.0,
+                "exp_other": 0.0,
+                "exp_total": 767677000.0
+            },
+            {
+                "ar_cycle_reference": "AR25",
+                "financial_period_end_date": "2025-02-28T00:00:00",
+                "income": 766195000.0,
+                "expenditure": 824377000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 38663000.0,
+                "inc_donations_and_legacies": 87106000.0,
+                "inc_other_trading_activities": 83957000.0,
+                "inc_charitable_activities": 582474000.0,
+                "inc_endowments": 613000.0,
+                "inc_legacies": 62812000.0,
+                "inc_investment": 8634000.0,
+                "inc_other": 4024000.0,
+                "inc_total": 766195000.0,
+                "exp_charitable_activities": 749037000.0,
+                "exp_raising_funds": 75340000.0,
+                "exp_governance": 945000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 4976000.0,
+                "exp_other": 0.0,
+                "exp_total": 824377000.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 209603,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=209603&subid=0",
+        "all_details": {
+            "organisation_number": 209603,
+            "reg_charity_number": 209603,
+            "group_subsid_suffix": 0,
+            "charity_name": "THE ROYAL NATIONAL LIFEBOAT INSTITUTION",
+            "charity_type": "Other",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1963-03-27T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-01-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2024-12-31T00:00:00",
+            "latest_income": 251300000.0,
+            "latest_expenditure": 250700000.0,
+            "address_line_one": "RNLI",
+            "address_line_two": "West Quay Road",
+            "address_line_three": "Poole",
+            "address_line_four": null,
+            "address_line_five": null,
+            "address_post_code": "BH15 1HZ",
+            "phone": "0300 300 9990",
+            "email": "company_secretary@rnli.org.uk",
+            "web": "www.rnli.org",
+            "charity_co_reg_number": "RC000503",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-03-30T08:54:49.383",
+            "trustee_names": [
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Dr Philip Goodwin",
+                    "trustee_id": 12190897
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Denis Woulfe OBE",
+                    "trustee_id": 12343846
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Fiona Catherine Fell",
+                    "trustee_id": 12490720
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Dr John James Killeen",
+                    "trustee_id": 12490756
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Paddy McLaughlin",
+                    "trustee_id": 12490774
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Mark Gregory Wordsworth",
+                    "trustee_id": 12547374
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Jamshaid Islam",
+                    "trustee_id": 12686318
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Janet Legrand",
+                    "trustee_id": 11401768
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Janet Ann Pamment",
+                    "trustee_id": 13189308
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Joanna Danton",
+                    "trustee_id": 13189309
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Breno Gentil",
+                    "trustee_id": 13189322
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "David Miles Smith",
+                    "trustee_id": 13158630
+                },
+                {
+                    "organisation_number": 209603,
+                    "trustee_name": "Simon Christopher Bowen",
+                    "trustee_id": 13189327
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "101",
+                    "classification_type": "What",
+                    "classification_desc": "General Charitable Purposes"
+                },
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "109",
+                    "classification_type": "What",
+                    "classification_desc": "Arts/culture/heritage/science"
+                },
+                {
+                    "classification_code": "207",
+                    "classification_type": "Who",
+                    "classification_desc": "The General Public/mankind"
+                },
+                {
+                    "classification_code": "301",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Individuals"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "304",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Human Resources"
+                },
+                {
+                    "classification_code": "305",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Buildings/facilities/open Space"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                },
+                {
+                    "classification_code": "308",
+                    "classification_type": "How",
+                    "classification_desc": "Sponsors Or Undertakes Research"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Bangladesh",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Tanzania",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Guernsey",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Isle Of Man",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Jersey",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [
+                {
+                    "other_name": "LIFEBOATS",
+                    "name_type": "W"
+                },
+                {
+                    "other_name": "RNLI",
+                    "name_type": "W"
+                },
+                {
+                    "other_name": "ROYAL NATIONAL LIFEBOAT INSTITUTION FOR THE PRESERVATION OF LIFE FROM SHIPWRECK",
+                    "name_type": "O"
+                },
+                {
+                    "other_name": "ROYAL NATIONAL LIFE-BOAT INSTITUTION FOR THE PRESERVATION OF LIFE FROM SHIPWRECK",
+                    "name_type": "O"
+                }
+            ],
+            "constituency_name": [
+                {
+                    "constituency_name": "Poole"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 209603,
+                "fin_period_end_date": "2020-12-31T00:00:00",
+                "assets_own_use": 468000000.0,
+                "assets_long_term_investment": 268600000.0,
+                "defined_net_assets_pension": -40800000.0,
+                "assets_other_assets": 84100000.0,
+                "assets_total_liabilities": 22500000.0
+            },
+            {
+                "organisation_number": 209603,
+                "fin_period_end_date": "2021-12-31T00:00:00",
+                "assets_own_use": 466000000.0,
+                "assets_long_term_investment": 307700000.0,
+                "defined_net_assets_pension": -34400000.0,
+                "assets_other_assets": 83000000.0,
+                "assets_total_liabilities": 24100000.0
+            },
+            {
+                "organisation_number": 209603,
+                "fin_period_end_date": "2022-12-31T00:00:00",
+                "assets_own_use": 475400000.0,
+                "assets_long_term_investment": 270800000.0,
+                "defined_net_assets_pension": -23300000.0,
+                "assets_other_assets": 78300000.0,
+                "assets_total_liabilities": 25900000.0
+            },
+            {
+                "organisation_number": 209603,
+                "fin_period_end_date": "2023-12-31T00:00:00",
+                "assets_own_use": 481400000.0,
+                "assets_long_term_investment": 256300000.0,
+                "defined_net_assets_pension": -13800000.0,
+                "assets_other_assets": 94100000.0,
+                "assets_total_liabilities": 21700000.0
+            },
+            {
+                "organisation_number": 209603,
+                "fin_period_end_date": "2024-12-31T00:00:00",
+                "assets_own_use": 470400000.0,
+                "assets_long_term_investment": 279200000.0,
+                "defined_net_assets_pension": -5300000.0,
+                "assets_other_assets": 92600000.0,
+                "assets_total_liabilities": 20400000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "101",
+                "classification_type": "What",
+                "classification_desc": "General Charitable Purposes"
+            },
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "109",
+                "classification_type": "What",
+                "classification_desc": "Arts/culture/heritage/science"
+            },
+            {
+                "classification_code": "207",
+                "classification_type": "Who",
+                "classification_desc": "The General Public/mankind"
+            },
+            {
+                "classification_code": "301",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Individuals"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "304",
+                "classification_type": "How",
+                "classification_desc": "Provides Human Resources"
+            },
+            {
+                "classification_code": "305",
+                "classification_type": "How",
+                "classification_desc": "Provides Buildings/facilities/open Space"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            },
+            {
+                "classification_code": "308",
+                "classification_type": "How",
+                "classification_desc": "Sponsors Or Undertakes Research"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR20",
+                "financial_period_end_date": "2020-12-31T00:00:00",
+                "income": 199171000.0,
+                "expenditure": 172549000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 2390699.0,
+                "income_from_govt_grants": 5875100.0,
+                "inc_donations_and_legacies": 178714000.0,
+                "inc_other_trading_activities": 8262000.0,
+                "inc_charitable_activities": 2625000.0,
+                "inc_endowments": 328000.0,
+                "inc_legacies": 131576000.0,
+                "inc_investment": 1595000.0,
+                "inc_other": 7975000.0,
+                "inc_total": 199171000.0,
+                "exp_charitable_activities": 143613000.0,
+                "exp_raising_funds": 28936000.0,
+                "exp_governance": 419000.0,
+                "exp_grants_institution": 879000.0,
+                "exp_investment_management": 493000.0,
+                "exp_other": 0.0,
+                "exp_total": 172549000.0
+            },
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-12-31T00:00:00",
+                "income": 219912000.0,
+                "expenditure": 199803000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 3354923.0,
+                "income_from_govt_grants": 385198.0,
+                "inc_donations_and_legacies": 197775000.0,
+                "inc_other_trading_activities": 13941000.0,
+                "inc_charitable_activities": 4203000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 137597000.0,
+                "inc_investment": 1267000.0,
+                "inc_other": 2726000.0,
+                "inc_total": 219912000.0,
+                "exp_charitable_activities": 157789000.0,
+                "exp_raising_funds": 42014000.0,
+                "exp_governance": 499780.0,
+                "exp_grants_institution": 591000.0,
+                "exp_investment_management": 564000.0,
+                "exp_other": 0.0,
+                "exp_total": 199803000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-12-31T00:00:00",
+                "income": 231800000.0,
+                "expenditure": 233000000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 3468966.0,
+                "income_from_govt_grants": 286907.0,
+                "inc_donations_and_legacies": 207300000.0,
+                "inc_other_trading_activities": 16300000.0,
+                "inc_charitable_activities": 4400000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 140757000.0,
+                "inc_investment": 3300000.0,
+                "inc_other": 500000.0,
+                "inc_total": 231800000.0,
+                "exp_charitable_activities": 177200000.0,
+                "exp_raising_funds": 55800000.0,
+                "exp_governance": 551000.0,
+                "exp_grants_institution": 996000.0,
+                "exp_investment_management": 313000.0,
+                "exp_other": 0.0,
+                "exp_total": 233000000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-12-31T00:00:00",
+                "income": 249600000.0,
+                "expenditure": 242600000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 4711245.0,
+                "income_from_govt_grants": 158222.0,
+                "inc_donations_and_legacies": 222600000.0,
+                "inc_other_trading_activities": 16300000.0,
+                "inc_charitable_activities": 4900000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 156900000.0,
+                "inc_investment": 4600000.0,
+                "inc_other": 1200000.0,
+                "inc_total": 249600000.0,
+                "exp_charitable_activities": 185600000.0,
+                "exp_raising_funds": 57000000.0,
+                "exp_governance": 500000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 200000.0,
+                "exp_other": 0.0,
+                "exp_total": 242600000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-12-31T00:00:00",
+                "income": 251300000.0,
+                "expenditure": 250700000.0,
+                "consolidated_account": null,
+                "charity_only_account": true,
+                "income_from_govt_contracts": 4355897.0,
+                "income_from_govt_grants": 50846.0,
+                "inc_donations_and_legacies": 222400000.0,
+                "inc_other_trading_activities": 18200000.0,
+                "inc_charitable_activities": 5200000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 151300000.0,
+                "inc_investment": 4600000.0,
+                "inc_other": 900000.0,
+                "inc_total": 251300000.0,
+                "exp_charitable_activities": 195300000.0,
+                "exp_raising_funds": 55400000.0,
+                "exp_governance": 1061000.0,
+                "exp_grants_institution": 815000.0,
+                "exp_investment_management": 300000.0,
+                "exp_other": 0.0,
+                "exp_total": 250700000.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 261017,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=261017&subid=0",
+        "all_details": {
+            "organisation_number": 261017,
+            "reg_charity_number": 261017,
+            "group_subsid_suffix": 0,
+            "charity_name": "MACMILLAN CANCER SUPPORT",
+            "charity_type": "Charitable company",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1989-06-21T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-01-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2024-12-31T00:00:00",
+            "latest_income": 245546254.0,
+            "latest_expenditure": 225920085.0,
+            "address_line_one": "3rd Floor",
+            "address_line_two": "Bronze Building",
+            "address_line_three": "The Forge",
+            "address_line_four": "105 Sumner Street",
+            "address_line_five": "London",
+            "address_post_code": null,
+            "phone": "02078407840",
+            "email": "contactus@macmillan.org.uk",
+            "web": "www.macmillan.org.uk",
+            "charity_co_reg_number": "2400969",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-06-17T13:27:15.157",
+            "trustee_names": [
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Mark Morrell Ware",
+                    "trustee_id": 12370259
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Catherine Susannah Howe",
+                    "trustee_id": 12370267
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Nicholas Robson Owen",
+                    "trustee_id": 12453404
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Rachel Higham",
+                    "trustee_id": 12464662
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Dr Jean Elizabeth Abraham",
+                    "trustee_id": 12560197
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Felicia Nyanin",
+                    "trustee_id": 12816729
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Dr Minal Bakhai",
+                    "trustee_id": 13018601
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Dr Anas Nader",
+                    "trustee_id": 13018605
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "SIR RONALD JAMES KERR",
+                    "trustee_id": 11963272
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "David Jonathan Bennett",
+                    "trustee_id": 13097531
+                },
+                {
+                    "organisation_number": 261017,
+                    "trustee_name": "Anne-Francoise Michele Nesmes",
+                    "trustee_id": 13124504
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "201",
+                    "classification_type": "Who",
+                    "classification_desc": "Children/young People"
+                },
+                {
+                    "classification_code": "202",
+                    "classification_type": "Who",
+                    "classification_desc": "Elderly/old People"
+                },
+                {
+                    "classification_code": "203",
+                    "classification_type": "Who",
+                    "classification_desc": "People With Disabilities"
+                },
+                {
+                    "classification_code": "204",
+                    "classification_type": "Who",
+                    "classification_desc": "People Of A Particular Ethnic Or Racial Origin"
+                },
+                {
+                    "classification_code": "205",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Charities Or Voluntary Bodies"
+                },
+                {
+                    "classification_code": "206",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Defined Groups"
+                },
+                {
+                    "classification_code": "207",
+                    "classification_type": "Who",
+                    "classification_desc": "The General Public/mankind"
+                },
+                {
+                    "classification_code": "301",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Individuals"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "304",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Human Resources"
+                },
+                {
+                    "classification_code": "305",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Buildings/facilities/open Space"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                },
+                {
+                    "classification_code": "308",
+                    "classification_type": "How",
+                    "classification_desc": "Sponsors Or Undertakes Research"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Guernsey",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Isle Of Man",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Jersey",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [
+                {
+                    "other_name": "MACMILLAN",
+                    "name_type": "W"
+                },
+                {
+                    "other_name": "CANCER RELIEF MACMILLAN FUND",
+                    "name_type": "O"
+                },
+                {
+                    "other_name": "MACMILLAN CANCER RELIEF",
+                    "name_type": "O"
+                },
+                {
+                    "other_name": "NATIONAL SOCIETY FOR CANCER RELIEF",
+                    "name_type": "O"
+                },
+                {
+                    "other_name": "THE NATIONAL SOCIETY FOR CANCER RELIEF",
+                    "name_type": "O"
+                }
+            ],
+            "constituency_name": []
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 261017,
+                "fin_period_end_date": "2020-12-31T00:00:00",
+                "assets_own_use": 7633000.0,
+                "assets_long_term_investment": 101695000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 107024000.0,
+                "assets_total_liabilities": 138744000.0
+            },
+            {
+                "organisation_number": 261017,
+                "fin_period_end_date": "2021-12-31T00:00:00",
+                "assets_own_use": 7148000.0,
+                "assets_long_term_investment": 101126000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 135327000.0,
+                "assets_total_liabilities": 169483000.0
+            },
+            {
+                "organisation_number": 261017,
+                "fin_period_end_date": "2022-12-31T00:00:00",
+                "assets_own_use": 6709000.0,
+                "assets_long_term_investment": 99288000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 131295000.0,
+                "assets_total_liabilities": 189027000.0
+            },
+            {
+                "organisation_number": 261017,
+                "fin_period_end_date": "2023-12-31T00:00:00",
+                "assets_own_use": 6410439.0,
+                "assets_long_term_investment": 53596201.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 140856748.0,
+                "assets_total_liabilities": 182724340.0
+            },
+            {
+                "organisation_number": 261017,
+                "fin_period_end_date": "2024-12-31T00:00:00",
+                "assets_own_use": 7986672.0,
+                "assets_long_term_investment": 48627174.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 131450709.0,
+                "assets_total_liabilities": 148799766.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "201",
+                "classification_type": "Who",
+                "classification_desc": "Children/young People"
+            },
+            {
+                "classification_code": "202",
+                "classification_type": "Who",
+                "classification_desc": "Elderly/old People"
+            },
+            {
+                "classification_code": "203",
+                "classification_type": "Who",
+                "classification_desc": "People With Disabilities"
+            },
+            {
+                "classification_code": "204",
+                "classification_type": "Who",
+                "classification_desc": "People Of A Particular Ethnic Or Racial Origin"
+            },
+            {
+                "classification_code": "205",
+                "classification_type": "Who",
+                "classification_desc": "Other Charities Or Voluntary Bodies"
+            },
+            {
+                "classification_code": "206",
+                "classification_type": "Who",
+                "classification_desc": "Other Defined Groups"
+            },
+            {
+                "classification_code": "207",
+                "classification_type": "Who",
+                "classification_desc": "The General Public/mankind"
+            },
+            {
+                "classification_code": "301",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Individuals"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "304",
+                "classification_type": "How",
+                "classification_desc": "Provides Human Resources"
+            },
+            {
+                "classification_code": "305",
+                "classification_type": "How",
+                "classification_desc": "Provides Buildings/facilities/open Space"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            },
+            {
+                "classification_code": "308",
+                "classification_type": "How",
+                "classification_desc": "Sponsors Or Undertakes Research"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR20",
+                "financial_period_end_date": "2020-12-31T00:00:00",
+                "income": 194889000.0,
+                "expenditure": 147803000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 7761056.0,
+                "inc_donations_and_legacies": 169013000.0,
+                "inc_other_trading_activities": 16451000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 71816000.0,
+                "inc_investment": 1339000.0,
+                "inc_other": 8086000.0,
+                "inc_total": 194889000.0,
+                "exp_charitable_activities": 89331000.0,
+                "exp_raising_funds": 58472000.0,
+                "exp_governance": 766000.0,
+                "exp_grants_institution": 28511000.0,
+                "exp_investment_management": 638000.0,
+                "exp_other": 0.0,
+                "exp_total": 147803000.0
+            },
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-12-31T00:00:00",
+                "income": 230707000.0,
+                "expenditure": 234055000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 2502000.0,
+                "inc_donations_and_legacies": 209985000.0,
+                "inc_other_trading_activities": 17550000.0,
+                "inc_charitable_activities": 0.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 90405000.0,
+                "inc_investment": 460000.0,
+                "inc_other": 2712000.0,
+                "inc_total": 230707000.0,
+                "exp_charitable_activities": 171574000.0,
+                "exp_raising_funds": 62481000.0,
+                "exp_governance": 834000.0,
+                "exp_grants_institution": 76430000.0,
+                "exp_investment_management": 147000.0,
+                "exp_other": 0.0,
+                "exp_total": 234055000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-12-31T00:00:00",
+                "income": 227145000.0,
+                "expenditure": 251660000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 2326000.0,
+                "inc_donations_and_legacies": 204019000.0,
+                "inc_other_trading_activities": 17226000.0,
+                "inc_charitable_activities": 1352000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 89642000.0,
+                "inc_investment": 2092000.0,
+                "inc_other": 2456000.0,
+                "inc_total": 227145000.0,
+                "exp_charitable_activities": 178708000.0,
+                "exp_raising_funds": 72952000.0,
+                "exp_governance": 992000.0,
+                "exp_grants_institution": 60331000.0,
+                "exp_investment_management": 284000.0,
+                "exp_other": 0.0,
+                "exp_total": 251660000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-12-31T00:00:00",
+                "income": 232537097.0,
+                "expenditure": 265208343.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 953000.0,
+                "inc_donations_and_legacies": 208980307.0,
+                "inc_other_trading_activities": 17841363.0,
+                "inc_charitable_activities": 1799890.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 92498403.0,
+                "inc_investment": 2477326.0,
+                "inc_other": 1438211.0,
+                "inc_total": 232537097.0,
+                "exp_charitable_activities": 184946140.0,
+                "exp_raising_funds": 80262203.0,
+                "exp_governance": 1538675.0,
+                "exp_grants_institution": 50394689.0,
+                "exp_investment_management": 217964.0,
+                "exp_other": 0.0,
+                "exp_total": 265208343.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-12-31T00:00:00",
+                "income": 245546254.0,
+                "expenditure": 225920085.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 595823.0,
+                "inc_donations_and_legacies": 221351616.0,
+                "inc_other_trading_activities": 18436638.0,
+                "inc_charitable_activities": 3180784.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 106056950.0,
+                "inc_investment": 1611595.0,
+                "inc_other": 965621.0,
+                "inc_total": 245546254.0,
+                "exp_charitable_activities": 150451389.0,
+                "exp_raising_funds": 75468696.0,
+                "exp_governance": 1475646.0,
+                "exp_grants_institution": 46510551.0,
+                "exp_investment_management": 142942.0,
+                "exp_other": 0.0,
+                "exp_total": 225920085.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 216250,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=216250&subid=0",
+        "all_details": {
+            "organisation_number": 216250,
+            "reg_charity_number": 216250,
+            "group_subsid_suffix": 0,
+            "charity_name": "BARNARDO'S",
+            "charity_type": "Charitable company",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1963-01-18T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-04-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2025-03-31T00:00:00",
+            "latest_income": 340251582.0,
+            "latest_expenditure": 326609720.0,
+            "address_line_one": "Barnardo House",
+            "address_line_two": "Tanners Lane",
+            "address_line_three": "Barkingside",
+            "address_line_four": "ILFORD",
+            "address_line_five": "ESSEX",
+            "address_post_code": "IG6 1QG",
+            "phone": "0800 008 7005",
+            "email": "supportercare@barnardos.org.uk",
+            "web": "www.barnardos.org.uk",
+            "charity_co_reg_number": "61625",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-01-30T12:24:12.033",
+            "trustee_names": [
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Penelope Anne Thompson",
+                    "trustee_id": 12353447
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Rajinder Singh Verma",
+                    "trustee_id": 12353454
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Briony Marion Ladbury",
+                    "trustee_id": 12382760
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Anne-Cecile France Brigitte Berthier",
+                    "trustee_id": 12467745
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Avis Joy Darzins",
+                    "trustee_id": 12502315
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Meredith Pierce Hunter",
+                    "trustee_id": 12421251
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Henry Chekwube Odogwu",
+                    "trustee_id": 12728816
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Magdalene  Akosua Bayim-Adomako",
+                    "trustee_id": 12728823
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Mark  William Wood",
+                    "trustee_id": 12852926
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Koulla Yiasouma",
+                    "trustee_id": 12852932
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Bridget OBrien",
+                    "trustee_id": 12852943
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "David Miller Kemp",
+                    "trustee_id": 12963353
+                },
+                {
+                    "organisation_number": 216250,
+                    "trustee_name": "Dominic Martin Jordan",
+                    "trustee_id": 13091079
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "104",
+                    "classification_type": "What",
+                    "classification_desc": "Disability"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "201",
+                    "classification_type": "Who",
+                    "classification_desc": "Children/young People"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Guernsey",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Jersey",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [],
+            "constituency_name": [
+                {
+                    "constituency_name": "Ilford North"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 216250,
+                "fin_period_end_date": "2021-03-31T00:00:00",
+                "assets_own_use": 33488000.0,
+                "assets_long_term_investment": 75905000.0,
+                "defined_net_assets_pension": -106780000.0,
+                "assets_other_assets": 96419000.0,
+                "assets_total_liabilities": 69734000.0
+            },
+            {
+                "organisation_number": 216250,
+                "fin_period_end_date": "2022-03-31T00:00:00",
+                "assets_own_use": 30254000.0,
+                "assets_long_term_investment": 80096000.0,
+                "defined_net_assets_pension": -52180000.0,
+                "assets_other_assets": 111718000.0,
+                "assets_total_liabilities": 67490000.0
+            },
+            {
+                "organisation_number": 216250,
+                "fin_period_end_date": "2023-03-31T00:00:00",
+                "assets_own_use": 31045108.0,
+                "assets_long_term_investment": 97959444.0,
+                "defined_net_assets_pension": -79880000.0,
+                "assets_other_assets": 81442000.0,
+                "assets_total_liabilities": 65634855.0
+            },
+            {
+                "organisation_number": 216250,
+                "fin_period_end_date": "2024-03-31T00:00:00",
+                "assets_own_use": 35353717.0,
+                "assets_long_term_investment": 99489748.0,
+                "defined_net_assets_pension": -57680000.0,
+                "assets_other_assets": 66942915.0,
+                "assets_total_liabilities": 67261597.0
+            },
+            {
+                "organisation_number": 216250,
+                "fin_period_end_date": "2025-03-31T00:00:00",
+                "assets_own_use": 31289475.0,
+                "assets_long_term_investment": 111088103.0,
+                "defined_net_assets_pension": -29190000.0,
+                "assets_other_assets": 60600650.0,
+                "assets_total_liabilities": 55451453.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "104",
+                "classification_type": "What",
+                "classification_desc": "Disability"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "201",
+                "classification_type": "Who",
+                "classification_desc": "Children/young People"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-03-31T00:00:00",
+                "income": 280464000.0,
+                "expenditure": 286145000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 167838750.0,
+                "income_from_govt_grants": 49874000.0,
+                "inc_donations_and_legacies": 41764000.0,
+                "inc_other_trading_activities": 30046000.0,
+                "inc_charitable_activities": 179294000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 18570000.0,
+                "inc_investment": 2494000.0,
+                "inc_other": 26866000.0,
+                "inc_total": 280464000.0,
+                "exp_charitable_activities": 212688000.0,
+                "exp_raising_funds": 68757000.0,
+                "exp_governance": 1781000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 276000.0,
+                "exp_other": 4700000.0,
+                "exp_total": 286145000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-03-31T00:00:00",
+                "income": 299503000.0,
+                "expenditure": 278770000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 164600546.0,
+                "income_from_govt_grants": 17735000.0,
+                "inc_donations_and_legacies": 37235000.0,
+                "inc_other_trading_activities": 77790000.0,
+                "inc_charitable_activities": 179685000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 17189000.0,
+                "inc_investment": 2001000.0,
+                "inc_other": 2792000.0,
+                "inc_total": 299503000.0,
+                "exp_charitable_activities": 202437000.0,
+                "exp_raising_funds": 72133000.0,
+                "exp_governance": 3016000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 209000.0,
+                "exp_other": 4200000.0,
+                "exp_total": 278770000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-03-31T00:00:00",
+                "income": 315250409.0,
+                "expenditure": 312350896.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 169375000.0,
+                "income_from_govt_grants": 15115000.0,
+                "inc_donations_and_legacies": 39510798.0,
+                "inc_other_trading_activities": 87886564.0,
+                "inc_charitable_activities": 184490308.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 19212714.0,
+                "inc_investment": 3112590.0,
+                "inc_other": 250149.0,
+                "inc_total": 315250409.0,
+                "exp_charitable_activities": 227040779.0,
+                "exp_raising_funds": 85310117.0,
+                "exp_governance": 3965894.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 245224.0,
+                "exp_other": 0.0,
+                "exp_total": 312350896.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-03-31T00:00:00",
+                "income": 326134178.0,
+                "expenditure": 335719911.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 172197000.0,
+                "income_from_govt_grants": 15115000.0,
+                "inc_donations_and_legacies": 41682833.0,
+                "inc_other_trading_activities": 93070918.0,
+                "inc_charitable_activities": 187312295.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 18449737.0,
+                "inc_investment": 3402037.0,
+                "inc_other": 666095.0,
+                "inc_total": 326134178.0,
+                "exp_charitable_activities": 235860222.0,
+                "exp_raising_funds": 99859689.0,
+                "exp_governance": 4131038.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 383264.0,
+                "exp_other": 0.0,
+                "exp_total": 335719911.0
+            },
+            {
+                "ar_cycle_reference": "AR25",
+                "financial_period_end_date": "2025-03-31T00:00:00",
+                "income": 340251582.0,
+                "expenditure": 326609720.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 181327000.0,
+                "income_from_govt_grants": 10674000.0,
+                "inc_donations_and_legacies": 61786596.0,
+                "inc_other_trading_activities": 91562084.0,
+                "inc_charitable_activities": 188298890.0,
+                "inc_endowments": 5300000.0,
+                "inc_legacies": 15672045.0,
+                "inc_investment": 3251662.0,
+                "inc_other": 652350.0,
+                "inc_total": 345551582.0,
+                "exp_charitable_activities": 221897044.0,
+                "exp_raising_funds": 104712676.0,
+                "exp_governance": 4131980.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 279659.0,
+                "exp_other": 0.0,
+                "exp_total": 326609720.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 214779,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=214779&subid=0",
+        "all_details": {
+            "organisation_number": 214779,
+            "reg_charity_number": 214779,
+            "group_subsid_suffix": 0,
+            "charity_name": "THE SALVATION ARMY",
+            "charity_type": "Trust",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "1963-02-15T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-04-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2025-03-31T00:00:00",
+            "latest_income": 338297000.0,
+            "latest_expenditure": 331868000.0,
+            "address_line_one": "THE SALVATION ARMY",
+            "address_line_two": "1 CHAMPION PARK",
+            "address_line_three": "LONDON",
+            "address_line_four": null,
+            "address_line_five": null,
+            "address_post_code": "SE5 8FJ ",
+            "phone": "02073674501",
+            "email": "info@salvationarmy.org.uk",
+            "web": "www.salvationarmy.org.uk",
+            "charity_co_reg_number": null,
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-03-23T13:36:50.217",
+            "trustee_names": [
+                {
+                    "organisation_number": 214779,
+                    "trustee_name": "THE SALVATION ARMY TRUSTEE COMPANY",
+                    "trustee_id": 2507100
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "101",
+                    "classification_type": "What",
+                    "classification_desc": "General Charitable Purposes"
+                },
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "104",
+                    "classification_type": "What",
+                    "classification_desc": "Disability"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "106",
+                    "classification_type": "What",
+                    "classification_desc": "Overseas Aid/famine Relief"
+                },
+                {
+                    "classification_code": "108",
+                    "classification_type": "What",
+                    "classification_desc": "Religious Activities"
+                },
+                {
+                    "classification_code": "113",
+                    "classification_type": "What",
+                    "classification_desc": "Economic/community Development/employment"
+                },
+                {
+                    "classification_code": "117",
+                    "classification_type": "What",
+                    "classification_desc": "Other Charitable Purposes"
+                },
+                {
+                    "classification_code": "201",
+                    "classification_type": "Who",
+                    "classification_desc": "Children/young People"
+                },
+                {
+                    "classification_code": "202",
+                    "classification_type": "Who",
+                    "classification_desc": "Elderly/old People"
+                },
+                {
+                    "classification_code": "203",
+                    "classification_type": "Who",
+                    "classification_desc": "People With Disabilities"
+                },
+                {
+                    "classification_code": "205",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Charities Or Voluntary Bodies"
+                },
+                {
+                    "classification_code": "207",
+                    "classification_type": "Who",
+                    "classification_desc": "The General Public/mankind"
+                },
+                {
+                    "classification_code": "305",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Buildings/facilities/open Space"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                },
+                {
+                    "classification_code": "308",
+                    "classification_type": "How",
+                    "classification_desc": "Sponsors Or Undertakes Research"
+                },
+                {
+                    "classification_code": "310",
+                    "classification_type": "How",
+                    "classification_desc": "Other Charitable Activities"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Scotland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Northern Ireland",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Guernsey",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Isle Of Man",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Jersey",
+                    "continent": "Europe"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [],
+            "constituency_name": [
+                {
+                    "constituency_name": "Dulwich and West Norwood"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 214779,
+                "fin_period_end_date": "2021-03-31T00:00:00",
+                "assets_own_use": 348028000.0,
+                "assets_long_term_investment": 205283000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 187380000.0,
+                "assets_total_liabilities": 34210000.0
+            },
+            {
+                "organisation_number": 214779,
+                "fin_period_end_date": "2022-03-31T00:00:00",
+                "assets_own_use": 359253000.0,
+                "assets_long_term_investment": 249739000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 211229000.0,
+                "assets_total_liabilities": 44545000.0
+            },
+            {
+                "organisation_number": 214779,
+                "fin_period_end_date": "2023-03-31T00:00:00",
+                "assets_own_use": 401841000.0,
+                "assets_long_term_investment": 249800000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 177734000.0,
+                "assets_total_liabilities": 43571000.0
+            },
+            {
+                "organisation_number": 214779,
+                "fin_period_end_date": "2024-03-31T00:00:00",
+                "assets_own_use": 416991000.0,
+                "assets_long_term_investment": 334020000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 241400000.0,
+                "assets_total_liabilities": 91626000.0
+            },
+            {
+                "organisation_number": 214779,
+                "fin_period_end_date": "2025-03-31T00:00:00",
+                "assets_own_use": 421303000.0,
+                "assets_long_term_investment": 351936000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 191567000.0,
+                "assets_total_liabilities": 51933000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "101",
+                "classification_type": "What",
+                "classification_desc": "General Charitable Purposes"
+            },
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "104",
+                "classification_type": "What",
+                "classification_desc": "Disability"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "106",
+                "classification_type": "What",
+                "classification_desc": "Overseas Aid/famine Relief"
+            },
+            {
+                "classification_code": "108",
+                "classification_type": "What",
+                "classification_desc": "Religious Activities"
+            },
+            {
+                "classification_code": "113",
+                "classification_type": "What",
+                "classification_desc": "Economic/community Development/employment"
+            },
+            {
+                "classification_code": "117",
+                "classification_type": "What",
+                "classification_desc": "Other Charitable Purposes"
+            },
+            {
+                "classification_code": "201",
+                "classification_type": "Who",
+                "classification_desc": "Children/young People"
+            },
+            {
+                "classification_code": "202",
+                "classification_type": "Who",
+                "classification_desc": "Elderly/old People"
+            },
+            {
+                "classification_code": "203",
+                "classification_type": "Who",
+                "classification_desc": "People With Disabilities"
+            },
+            {
+                "classification_code": "205",
+                "classification_type": "Who",
+                "classification_desc": "Other Charities Or Voluntary Bodies"
+            },
+            {
+                "classification_code": "207",
+                "classification_type": "Who",
+                "classification_desc": "The General Public/mankind"
+            },
+            {
+                "classification_code": "305",
+                "classification_type": "How",
+                "classification_desc": "Provides Buildings/facilities/open Space"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            },
+            {
+                "classification_code": "308",
+                "classification_type": "How",
+                "classification_desc": "Sponsors Or Undertakes Research"
+            },
+            {
+                "classification_code": "310",
+                "classification_type": "How",
+                "classification_desc": "Other Charitable Activities"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-03-31T00:00:00",
+                "income": 237788000.0,
+                "expenditure": 199223000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 12295000.0,
+                "inc_donations_and_legacies": 144555000.0,
+                "inc_other_trading_activities": 58561000.0,
+                "inc_charitable_activities": 30610000.0,
+                "inc_endowments": 225000.0,
+                "inc_legacies": 48386000.0,
+                "inc_investment": 2846000.0,
+                "inc_other": 1441000.0,
+                "inc_total": 238013000.0,
+                "exp_charitable_activities": 116959000.0,
+                "exp_raising_funds": 82264000.0,
+                "exp_governance": 573000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 199223000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-03-31T00:00:00",
+                "income": 281954000.0,
+                "expenditure": 226745000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 2611000.0,
+                "inc_donations_and_legacies": 155844000.0,
+                "inc_other_trading_activities": 95099000.0,
+                "inc_charitable_activities": 25576000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 66278000.0,
+                "inc_investment": 3444000.0,
+                "inc_other": 1991000.0,
+                "inc_total": 281954000.0,
+                "exp_charitable_activities": 128843000.0,
+                "exp_raising_funds": 96733000.0,
+                "exp_governance": 552000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 1169000.0,
+                "exp_total": 226745000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-03-31T00:00:00",
+                "income": 280413000.0,
+                "expenditure": 269808000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 1519000.0,
+                "inc_donations_and_legacies": 152043000.0,
+                "inc_other_trading_activities": 106303000.0,
+                "inc_charitable_activities": 16065000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 62753000.0,
+                "inc_investment": 3554000.0,
+                "inc_other": 2448000.0,
+                "inc_total": 280413000.0,
+                "exp_charitable_activities": 159099000.0,
+                "exp_raising_funds": 110661000.0,
+                "exp_governance": 766000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 48000.0,
+                "exp_total": 269808000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-03-31T00:00:00",
+                "income": 327318000.0,
+                "expenditure": 308883000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 1525000.0,
+                "inc_donations_and_legacies": 175431000.0,
+                "inc_other_trading_activities": 112687000.0,
+                "inc_charitable_activities": 22542000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 84328000.0,
+                "inc_investment": 12529000.0,
+                "inc_other": 4129000.0,
+                "inc_total": 327318000.0,
+                "exp_charitable_activities": 178110000.0,
+                "exp_raising_funds": 130725000.0,
+                "exp_governance": 965000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 48000.0,
+                "exp_total": 308883000.0
+            },
+            {
+                "ar_cycle_reference": "AR25",
+                "financial_period_end_date": "2025-03-31T00:00:00",
+                "income": 338297000.0,
+                "expenditure": 331868000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 2008000.0,
+                "inc_donations_and_legacies": 180972000.0,
+                "inc_other_trading_activities": 115420000.0,
+                "inc_charitable_activities": 27036000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 84360000.0,
+                "inc_investment": 9138000.0,
+                "inc_other": 5731000.0,
+                "inc_total": 338297000.0,
+                "exp_charitable_activities": 185635000.0,
+                "exp_raising_funds": 146233000.0,
+                "exp_governance": 1031000.0,
+                "exp_grants_institution": 0.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 0.0,
+                "exp_total": 331868000.0
+            }
+        ]
+    },
+    {
+        "registered_charity_number": 1128267,
+        "suffix": 0,
+        "link": "https://register-of-charities.charitycommission.gov.uk/charity-details/?regid=1128267&subid=0",
+        "all_details": {
+            "organisation_number": 4044343,
+            "reg_charity_number": 1128267,
+            "group_subsid_suffix": 0,
+            "charity_name": "AGE UK",
+            "charity_type": "Charitable company",
+            "insolvent": false,
+            "in_administration": false,
+            "prev_excepted_ind": false,
+            "cif_cdf_ind": null,
+            "cio_dissolution_ind": false,
+            "interim_manager_ind": false,
+            "date_of_interim_manager_appt": null,
+            "reg_status": "R",
+            "date_of_registration": "2009-02-25T00:00:00",
+            "date_of_removal": null,
+            "latest_acc_fin_year_start_date": "2024-04-01T00:00:00",
+            "latest_acc_fin_year_end_date": "2025-03-31T00:00:00",
+            "latest_income": 131786000.0,
+            "latest_expenditure": 135081000.0,
+            "address_line_one": "Age UK",
+            "address_line_two": "7th Floor",
+            "address_line_three": "One America Square",
+            "address_line_four": "17 Crosswall",
+            "address_line_five": "LONDON",
+            "address_post_code": "EC3N 2LB",
+            "phone": "08001698080",
+            "email": "contact@ageuk.org.uk",
+            "web": "www.ageuk.org.uk",
+            "charity_co_reg_number": "6825798",
+            "reporting_status": "Submission Received",
+            "removal_reason": null,
+            "cio_ind": false,
+            "last_modified_time": "2026-06-05T11:50:04.107",
+            "trustee_names": [
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "SHARON JANE ALLEN",
+                    "trustee_id": 2098371
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "ANDREW MICHAEL MORLEY DIXON",
+                    "trustee_id": 3321779
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Julia Scott",
+                    "trustee_id": 12500385
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Dr Carol Winifred Cole",
+                    "trustee_id": 3696033
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Roy Shubhabrata",
+                    "trustee_id": 12462949
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Jackie Freeman",
+                    "trustee_id": 11489687
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Dawn McNally",
+                    "trustee_id": 11182209
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Toby Emil Strauss",
+                    "trustee_id": 11458317
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Nick Ernest Burstin",
+                    "trustee_id": 12704527
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Lynda Thomas",
+                    "trustee_id": 11355948
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Helen Rice",
+                    "trustee_id": 12589771
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Oonagh Smyth",
+                    "trustee_id": 13178877
+                },
+                {
+                    "organisation_number": 4044343,
+                    "trustee_name": "Nilufer Kheraj",
+                    "trustee_id": 11732215
+                }
+            ],
+            "who_what_where": [
+                {
+                    "classification_code": "101",
+                    "classification_type": "What",
+                    "classification_desc": "General Charitable Purposes"
+                },
+                {
+                    "classification_code": "102",
+                    "classification_type": "What",
+                    "classification_desc": "Education/training"
+                },
+                {
+                    "classification_code": "103",
+                    "classification_type": "What",
+                    "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+                },
+                {
+                    "classification_code": "105",
+                    "classification_type": "What",
+                    "classification_desc": "The Prevention Or Relief Of Poverty"
+                },
+                {
+                    "classification_code": "106",
+                    "classification_type": "What",
+                    "classification_desc": "Overseas Aid/famine Relief"
+                },
+                {
+                    "classification_code": "107",
+                    "classification_type": "What",
+                    "classification_desc": "Accommodation/housing"
+                },
+                {
+                    "classification_code": "117",
+                    "classification_type": "What",
+                    "classification_desc": "Other Charitable Purposes"
+                },
+                {
+                    "classification_code": "202",
+                    "classification_type": "Who",
+                    "classification_desc": "Elderly/old People"
+                },
+                {
+                    "classification_code": "205",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Charities Or Voluntary Bodies"
+                },
+                {
+                    "classification_code": "206",
+                    "classification_type": "Who",
+                    "classification_desc": "Other Defined Groups"
+                },
+                {
+                    "classification_code": "301",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Individuals"
+                },
+                {
+                    "classification_code": "302",
+                    "classification_type": "How",
+                    "classification_desc": "Makes Grants To Organisations"
+                },
+                {
+                    "classification_code": "305",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Buildings/facilities/open Space"
+                },
+                {
+                    "classification_code": "306",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Services"
+                },
+                {
+                    "classification_code": "307",
+                    "classification_type": "How",
+                    "classification_desc": "Provides Advocacy/advice/information"
+                },
+                {
+                    "classification_code": "308",
+                    "classification_type": "How",
+                    "classification_desc": "Sponsors Or Undertakes Research"
+                },
+                {
+                    "classification_code": "309",
+                    "classification_type": "How",
+                    "classification_desc": "Acts As An Umbrella Or Resource Body"
+                },
+                {
+                    "classification_code": "310",
+                    "classification_type": "How",
+                    "classification_desc": "Other Charitable Activities"
+                }
+            ],
+            "CharityAoOCountryContinent": [
+                {
+                    "country": "Bangladesh",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Colombia",
+                    "continent": "South America"
+                },
+                {
+                    "country": "Ethiopia",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Haiti",
+                    "continent": "North America"
+                },
+                {
+                    "country": "India",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Jordan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Kenya",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Kyrgyzstan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Lebanon",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Mozambique",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Burma",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Nepal",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Pakistan",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "South Korea",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Tanzania",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Thailand",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Uganda",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Ukraine",
+                    "continent": "Europe"
+                },
+                {
+                    "country": "Zimbabwe",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "South Sudan",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "South Africa",
+                    "continent": "Africa"
+                },
+                {
+                    "country": "Sri Lanka",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Vietnam",
+                    "continent": "Asia"
+                },
+                {
+                    "country": "Yemen",
+                    "continent": "Asia"
+                }
+            ],
+            "CharityAoOLocalAuthority": [],
+            "CharityAoORegion": [
+                {
+                    "region": "Throughout England And Wales"
+                }
+            ],
+            "other_names": [],
+            "constituency_name": [
+                {
+                    "constituency_name": "Cities of London and Westminster"
+                }
+            ]
+        },
+        "assets_liabilities": [
+            {
+                "organisation_number": 4044343,
+                "fin_period_end_date": "2021-03-31T00:00:00",
+                "assets_own_use": 7989000.0,
+                "assets_long_term_investment": 61703000.0,
+                "defined_net_assets_pension": -7989000.0,
+                "assets_other_assets": 25645000.0,
+                "assets_total_liabilities": 27243000.0
+            },
+            {
+                "organisation_number": 4044343,
+                "fin_period_end_date": "2022-03-31T00:00:00",
+                "assets_own_use": 6832000.0,
+                "assets_long_term_investment": 62568000.0,
+                "defined_net_assets_pension": -1213000.0,
+                "assets_other_assets": 38562000.0,
+                "assets_total_liabilities": 26761000.0
+            },
+            {
+                "organisation_number": 4044343,
+                "fin_period_end_date": "2023-03-31T00:00:00",
+                "assets_own_use": 6917000.0,
+                "assets_long_term_investment": 54644000.0,
+                "defined_net_assets_pension": -13000.0,
+                "assets_other_assets": 31238000.0,
+                "assets_total_liabilities": 27140000.0
+            },
+            {
+                "organisation_number": 4044343,
+                "fin_period_end_date": "2024-03-31T00:00:00",
+                "assets_own_use": 7970000.0,
+                "assets_long_term_investment": 46959000.0,
+                "defined_net_assets_pension": -6000.0,
+                "assets_other_assets": 29760000.0,
+                "assets_total_liabilities": 27534000.0
+            },
+            {
+                "organisation_number": 4044343,
+                "fin_period_end_date": "2025-03-31T00:00:00",
+                "assets_own_use": 6849000.0,
+                "assets_long_term_investment": 33833000.0,
+                "defined_net_assets_pension": 0.0,
+                "assets_other_assets": 36148000.0,
+                "assets_total_liabilities": 26395000.0
+            }
+        ],
+        "primary_grants": {
+            "primary_purpose_grant_making": false
+        },
+        "who_what_how": [
+            {
+                "classification_code": "101",
+                "classification_type": "What",
+                "classification_desc": "General Charitable Purposes"
+            },
+            {
+                "classification_code": "102",
+                "classification_type": "What",
+                "classification_desc": "Education/training"
+            },
+            {
+                "classification_code": "103",
+                "classification_type": "What",
+                "classification_desc": "The Advancement Of Health Or Saving Of Lives"
+            },
+            {
+                "classification_code": "105",
+                "classification_type": "What",
+                "classification_desc": "The Prevention Or Relief Of Poverty"
+            },
+            {
+                "classification_code": "106",
+                "classification_type": "What",
+                "classification_desc": "Overseas Aid/famine Relief"
+            },
+            {
+                "classification_code": "107",
+                "classification_type": "What",
+                "classification_desc": "Accommodation/housing"
+            },
+            {
+                "classification_code": "117",
+                "classification_type": "What",
+                "classification_desc": "Other Charitable Purposes"
+            },
+            {
+                "classification_code": "202",
+                "classification_type": "Who",
+                "classification_desc": "Elderly/old People"
+            },
+            {
+                "classification_code": "205",
+                "classification_type": "Who",
+                "classification_desc": "Other Charities Or Voluntary Bodies"
+            },
+            {
+                "classification_code": "206",
+                "classification_type": "Who",
+                "classification_desc": "Other Defined Groups"
+            },
+            {
+                "classification_code": "301",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Individuals"
+            },
+            {
+                "classification_code": "302",
+                "classification_type": "How",
+                "classification_desc": "Makes Grants To Organisations"
+            },
+            {
+                "classification_code": "305",
+                "classification_type": "How",
+                "classification_desc": "Provides Buildings/facilities/open Space"
+            },
+            {
+                "classification_code": "306",
+                "classification_type": "How",
+                "classification_desc": "Provides Services"
+            },
+            {
+                "classification_code": "307",
+                "classification_type": "How",
+                "classification_desc": "Provides Advocacy/advice/information"
+            },
+            {
+                "classification_code": "308",
+                "classification_type": "How",
+                "classification_desc": "Sponsors Or Undertakes Research"
+            },
+            {
+                "classification_code": "309",
+                "classification_type": "How",
+                "classification_desc": "Acts As An Umbrella Or Resource Body"
+            },
+            {
+                "classification_code": "310",
+                "classification_type": "How",
+                "classification_desc": "Other Charitable Activities"
+            }
+        ],
+        "financial_history": [
+            {
+                "ar_cycle_reference": "AR21",
+                "financial_period_end_date": "2021-03-31T00:00:00",
+                "income": 127055000.0,
+                "expenditure": 125143000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 3872824.0,
+                "income_from_govt_grants": 107250.0,
+                "inc_donations_and_legacies": 86866000.0,
+                "inc_other_trading_activities": 23647000.0,
+                "inc_charitable_activities": 6853000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 23078000.0,
+                "inc_investment": 707000.0,
+                "inc_other": 8982000.0,
+                "inc_total": 127055000.0,
+                "exp_charitable_activities": 69255000.0,
+                "exp_raising_funds": 14503000.0,
+                "exp_governance": 510000.0,
+                "exp_grants_institution": 207000.0,
+                "exp_investment_management": 247000.0,
+                "exp_other": 41385000.0,
+                "exp_total": 125143000.0
+            },
+            {
+                "ar_cycle_reference": "AR22",
+                "financial_period_end_date": "2022-03-31T00:00:00",
+                "income": 125972000.0,
+                "expenditure": 115293000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 2791160.0,
+                "income_from_govt_grants": 2272606.0,
+                "inc_donations_and_legacies": 77170000.0,
+                "inc_other_trading_activities": 43782000.0,
+                "inc_charitable_activities": 3891000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 29983000.0,
+                "inc_investment": 649000.0,
+                "inc_other": 480000.0,
+                "inc_total": 125972000.0,
+                "exp_charitable_activities": 62788000.0,
+                "exp_raising_funds": 18453000.0,
+                "exp_governance": 869000.0,
+                "exp_grants_institution": 29142000.0,
+                "exp_investment_management": 811000.0,
+                "exp_other": 34052000.0,
+                "exp_total": 115293000.0
+            },
+            {
+                "ar_cycle_reference": "AR23",
+                "financial_period_end_date": "2023-03-31T00:00:00",
+                "income": 123225000.0,
+                "expenditure": 130516000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 11038.0,
+                "income_from_govt_grants": 2379000.0,
+                "inc_donations_and_legacies": 73696000.0,
+                "inc_other_trading_activities": 46063000.0,
+                "inc_charitable_activities": 2496000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 25883000.0,
+                "inc_investment": 970000.0,
+                "inc_other": 0.0,
+                "inc_total": 123225000.0,
+                "exp_charitable_activities": 72396000.0,
+                "exp_raising_funds": 58120000.0,
+                "exp_governance": 913000.0,
+                "exp_grants_institution": 30948000.0,
+                "exp_investment_management": 584202.0,
+                "exp_other": 0.0,
+                "exp_total": 130516000.0
+            },
+            {
+                "ar_cycle_reference": "AR24",
+                "financial_period_end_date": "2024-03-31T00:00:00",
+                "income": 121698000.0,
+                "expenditure": 128074000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": 959.0,
+                "income_from_govt_grants": 80000.0,
+                "inc_donations_and_legacies": 68123000.0,
+                "inc_other_trading_activities": 49068000.0,
+                "inc_charitable_activities": 3427000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 27564000.0,
+                "inc_investment": 1080000.0,
+                "inc_other": 0.0,
+                "inc_total": 121698000.0,
+                "exp_charitable_activities": 65153000.0,
+                "exp_raising_funds": 22499000.0,
+                "exp_governance": 1150000.0,
+                "exp_grants_institution": 23051000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 40422000.0,
+                "exp_total": 128074000.0
+            },
+            {
+                "ar_cycle_reference": "AR25",
+                "financial_period_end_date": "2025-03-31T00:00:00",
+                "income": 131786000.0,
+                "expenditure": 135081000.0,
+                "consolidated_account": true,
+                "charity_only_account": null,
+                "income_from_govt_contracts": null,
+                "income_from_govt_grants": 80000.0,
+                "inc_donations_and_legacies": 66772000.0,
+                "inc_other_trading_activities": 60123000.0,
+                "inc_charitable_activities": 4168000.0,
+                "inc_endowments": 0.0,
+                "inc_legacies": 25790000.0,
+                "inc_investment": 723000.0,
+                "inc_other": 0.0,
+                "inc_total": 131786000.0,
+                "exp_charitable_activities": 68043000.0,
+                "exp_raising_funds": 14148000.0,
+                "exp_governance": 1588000.0,
+                "exp_grants_institution": 28643000.0,
+                "exp_investment_management": 0.0,
+                "exp_other": 52890000.0,
+                "exp_total": 135081000.0
+            }
+        ]
     }
 ]

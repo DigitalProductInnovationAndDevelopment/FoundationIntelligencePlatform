@@ -517,3 +517,274 @@ def consolidate_datasets(philea_members, hinchilla_members):
             
     logger.info(f"Consolidation complete. Resulting dataset has {len(consolidated)} members.")
     return consolidated
+
+
+def consolidate_uk_datasets(charity_records, threesixty_records):
+    """
+    Consolidates Charity Commission (Register of Charities) and 360Giving datasets.
+    Aligns them based on their official UK charity registration number.
+    Returns:
+        (charities_list, grants_list) in flat relational schema.
+    """
+    import re
+    from preprocessing.extract_geo_topic import extract_tags, extract_geo
+
+    def parse_charity_number_from_org_id(org_id):
+        if not org_id or not isinstance(org_id, str):
+            return None
+        # Match GB-CHC-XXXXX or numeric sequences
+        match = re.search(r'GB-CHC-(\d+)', org_id)
+        if match:
+            return int(match.group(1))
+        match = re.search(r'\b(\d+)\b', org_id)
+        if match:
+            return int(match.group(1))
+        return None
+
+    # Step 1: Group 360Giving records by charity number
+    ts_by_number = {}
+    for ts in threesixty_records:
+        org_id = ts.get("org_id")
+        charity_num = parse_charity_number_from_org_id(org_id)
+        if charity_num:
+            ts_by_number[charity_num] = ts
+
+    # Step 2: Build consolidated charities map
+    consolidated_charities = {}
+    grants_by_id = {}
+
+    def parse_grant(g, default_funder_id=None, default_recipient_id=None):
+        if not isinstance(g, dict):
+            return None
+        g_data = g.get("data") if isinstance(g.get("data"), dict) else g
+        grant_id = g.get("grant_id") or g_data.get("id") or g_data.get("grant_id")
+        if not grant_id:
+            return None
+            
+        # Funder
+        fund_orgs = g_data.get("fundingOrganization")
+        fund_org = fund_orgs[0] if isinstance(fund_orgs, list) and fund_orgs else g_data.get("fundingOrg") or {}
+        funding_id = parse_charity_number_from_org_id(fund_org.get("id")) or default_funder_id
+        
+        # Recipient
+        rec_orgs = g_data.get("recipientOrganization")
+        rec_org = rec_orgs[0] if isinstance(rec_orgs, list) and rec_orgs else g_data.get("recipientOrg") or {}
+        recipient_id = parse_charity_number_from_org_id(rec_org.get("id") or rec_org.get("charityNumber")) or default_recipient_id
+        recipient_name = rec_org.get("name") or "Unknown Recipient"
+        
+        # Financials
+        raw_amount = g_data.get("amountAwarded") or g_data.get("amount") or 0.0
+        currency = g_data.get("currency") or "GBP"
+        try:
+            amount_eur = float(raw_amount)
+        except (ValueError, TypeError):
+            amount_eur = 0.0
+            
+        if currency.upper() == "GBP":
+            amount_eur *= GBP_TO_EUR_RATE
+        elif currency.upper() == "USD":
+            amount_eur *= 0.92
+            
+        desc = g_data.get("description") or g_data.get("title") or ""
+        date_str = g_data.get("awardDate") or g_data.get("date") or ""
+        
+        # Location
+        recipient_lat = None
+        recipient_lng = None
+        recipient_loc = g_data.get("recipientLocation") or {}
+        if isinstance(recipient_loc, dict):
+            recipient_lat = recipient_loc.get("latitude") or recipient_loc.get("lat")
+            recipient_lng = recipient_loc.get("longitude") or recipient_loc.get("lng")
+        elif isinstance(recipient_loc, list) and len(recipient_loc) >= 2:
+            recipient_lat = recipient_loc[0]
+            recipient_lng = recipient_loc[1]
+            
+        region = g_data.get("recipientRegion", {}).get("name") if isinstance(g_data.get("recipientRegion"), dict) else g_data.get("recipientRegion") or ""
+        
+        return {
+            "grant_id": grant_id,
+            "funding_charity_id": funding_id,
+            "recipient_name": recipient_name,
+            "recipient_charity_id": recipient_id,
+            "amount_eur": amount_eur,
+            "currency": currency,
+            "description": desc,
+            "date": date_str,
+            "recipient_latitude": recipient_lat,
+            "recipient_longitude": recipient_lng,
+            "recipient_region": region
+        }
+
+    # Process all official Charity Commission records
+    for cc in charity_records:
+        reg_no = cc.get("registered_charity_number")
+        if not reg_no:
+            continue
+        reg_no = int(reg_no)
+        suffix = cc.get("suffix", 0)
+
+        # Get details
+        all_details = cc.get("all_details") or {}
+        charity_name = all_details.get("charity_name", f"Charity {reg_no}")
+        website = all_details.get("web") or ""
+        email = all_details.get("email") or ""
+        phone = all_details.get("phone") or ""
+        
+        # Flatten address
+        address_parts = [
+            all_details.get("address_line_one"),
+            all_details.get("address_line_two"),
+            all_details.get("address_line_three"),
+            all_details.get("address_line_four"),
+            all_details.get("address_line_five"),
+            all_details.get("address_post_code")
+        ]
+        address = ", ".join([p for p in address_parts if p]).strip()
+
+        income = all_details.get("latest_income")
+        expenditure = all_details.get("latest_expenditure")
+
+        # Fallback to financial history if direct fields are missing
+        if (income is None or expenditure is None) and cc.get("financial_history"):
+            history = cc["financial_history"]
+            sorted_history = sorted(
+                history,
+                key=lambda x: x.get("financial_period_end_date", ""),
+                reverse=True
+            )
+            if sorted_history:
+                latest_period = sorted_history[0]
+                if income is None:
+                    income = latest_period.get("income")
+                if expenditure is None:
+                    expenditure = latest_period.get("expenditure")
+
+        # Map details to flat schema
+        charity_profile = {
+            "charity_id": reg_no,
+            "name": charity_name,
+            "type": all_details.get("charity_type") or "Charity",
+            "website": website,
+            "email": email,
+            "address": address,
+            "city": all_details.get("address_line_four") or "",
+            "state": all_details.get("address_line_three") or "",
+            "country": "United Kingdom",
+            "latitude": None,
+            "longitude": None,
+            "annual_income": income,
+            "annual_expenditure": expenditure,
+            "thematic_focus": [],
+            "geographic_focus": {},
+            "raw_cc_data": cc
+        }
+
+        # Check if we have 360Giving info for this charity (funder details/grants)
+        if reg_no in ts_by_number:
+            ts = ts_by_number[reg_no]
+            ts_detail = ts.get("detail") or {}
+            
+            # Enrich fields if missing
+            if not charity_profile["website"] and ts_detail.get("website"):
+                charity_profile["website"] = ts_detail.get("website")
+            if not charity_profile["email"] and ts_detail.get("email"):
+                charity_profile["email"] = ts_detail.get("email")
+
+            # Extract grants made by this charity
+            grants_made = ts.get("grants_made") or []
+            for g in grants_made:
+                parsed = parse_grant(g, default_funder_id=reg_no)
+                if parsed:
+                    grants_by_id[parsed["grant_id"]] = parsed
+
+            # Extract grants received by this charity
+            grants_received = ts.get("grants_received") or []
+            for g in grants_received:
+                parsed = parse_grant(g, default_recipient_id=reg_no)
+                if parsed:
+                    grants_by_id[parsed["grant_id"]] = parsed
+
+        consolidated_charities[reg_no] = charity_profile
+
+    # Process remaining 360Giving organisations that are NOT in the Charity Commission dataset
+    for reg_no, ts in ts_by_number.items():
+        if reg_no not in consolidated_charities:
+            ts_detail = ts.get("detail") or {}
+            charity_name = ts_detail.get("name") or ts.get("name") or f"Charity {reg_no}"
+            
+            charity_profile = {
+                "charity_id": reg_no,
+                "name": charity_name,
+                "type": "Funder",
+                "website": ts_detail.get("website") or "",
+                "email": ts_detail.get("email") or "",
+                "address": ts_detail.get("address") or "",
+                "city": "",
+                "state": "",
+                "country": "United Kingdom",
+                "latitude": None,
+                "longitude": None,
+                "annual_income": None,
+                "annual_expenditure": None,
+                "thematic_focus": [],
+                "geographic_focus": {},
+                "raw_cc_data": {}
+            }
+
+            # Extract grants made
+            grants_made = ts.get("grants_made") or []
+            for g in grants_made:
+                parsed = parse_grant(g, default_funder_id=reg_no)
+                if parsed:
+                    grants_by_id[parsed["grant_id"]] = parsed
+
+            # Extract grants received
+            grants_received = ts.get("grants_received") or []
+            for g in grants_received:
+                parsed = parse_grant(g, default_recipient_id=reg_no)
+                if parsed:
+                    grants_by_id[parsed["grant_id"]] = parsed
+
+            consolidated_charities[reg_no] = charity_profile
+
+    grants_list = list(grants_by_id.values())
+
+    # Step 3: Run classification on the consolidated list of charities
+    charities_list = list(consolidated_charities.values())
+    extract_tags(charities_list)
+    extract_geo(charities_list)
+
+    # Serialize complex fields to match database format
+    # In SQLite, we store thematic_focus as JSON arrays and geographic_focus as JSON objects
+    for c in charities_list:
+        c["thematic_focus"] = json.dumps(c.get("tags_focus", []))
+        c["geographic_focus"] = json.dumps(c.get("geo_locations", {}))
+        c["latitude"] = c.get("raw_cc_data", {}).get("position", {}).get("lat") if c.get("raw_cc_data") else None
+        c["longitude"] = c.get("raw_cc_data", {}).get("position", {}).get("lng") if c.get("raw_cc_data") else None
+        if c["latitude"] is not None:
+            try:
+                c["latitude"] = float(c["latitude"])
+            except (ValueError, TypeError):
+                c["latitude"] = None
+        if c["longitude"] is not None:
+            try:
+                c["longitude"] = float(c["longitude"])
+            except (ValueError, TypeError):
+                c["longitude"] = None
+
+    # Step 4: Classify the grants as well
+    for g in grants_list:
+        g_mock = {
+            "name": g["recipient_name"],
+            "description": g["description"]
+        }
+        extract_tags([g_mock])
+        extract_geo([g_mock])
+        
+        g_tags = [t["tag"] for t in g_mock.get("tags_focus", [])]
+        g["tags"] = json.dumps(g_tags)
+        
+        g_geo = g_mock.get("geo_locations", {})
+        g["geographic_focus"] = json.dumps(g_geo)
+
+    return charities_list, grants_list

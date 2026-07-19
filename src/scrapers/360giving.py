@@ -326,15 +326,18 @@ def get_grants_received(org_id, limit=None, offset=None):
     return ThreeSixtyGivingAPI().get_grants_received(org_id, limit=limit, offset=offset)
 
 
-def scrape(org_ids=None, all_organisations=False, scrape_grants=False, limit=None, sleep_time=1.0, timeout=10.0):
+def scrape(org_ids=None, all_organisations=False, scrape_grants=False, limit=None, sleep_time=1.0, timeout=10.0, completed_org_ids=None):
     """
     Scrapes data from the 360Giving API.
     Can either yield/fetch a bulk list of organisations or details for specific org IDs.
     """
     client = ThreeSixtyGivingAPI(timeout=timeout)
     results = []
+    completed_org_ids = completed_org_ids or set()
 
     if org_ids:
+        # Filter out completed ones
+        org_ids = [o for o in org_ids if o not in completed_org_ids]
         # Fetch details for specific list of orgs
         logging.info(f"Fetching details for {len(org_ids)} specified organisation IDs.")
         for idx, org_id in enumerate(org_ids):
@@ -371,6 +374,8 @@ def scrape(org_ids=None, all_organisations=False, scrape_grants=False, limit=Non
         try:
             # When scraping all orgs in bulk, fetch their basic info
             orgs_list = list(client.iter_organisations(limit=100, max_results=limit))
+            # Filter out completed ones
+            orgs_list = [o for o in orgs_list if o.get("org_id") not in completed_org_ids]
             
             # If scrape_grants is set, fetch full details + grants for each discovered organisation
             if scrape_grants:
