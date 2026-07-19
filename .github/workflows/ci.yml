@@ -40,4 +40,5 @@ jobs:
       env:
         GEMINI_API_KEY: "dummy_key"
       run: |
-        PYTHONPATH=src python -m unittest discover -s src/tests
+        PYTHONPATH=src pytest src/tests --cov=bff --cov-fail-under=70
+
