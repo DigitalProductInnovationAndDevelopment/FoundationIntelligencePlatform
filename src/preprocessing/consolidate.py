@@ -4,6 +4,11 @@ import re
 import logging
 from urllib.parse import urlparse
 
+try:
+    from preprocessing.quality import is_informative_value, is_placeholder_value
+except ModuleNotFoundError:
+    from quality import is_informative_value, is_placeholder_value
+
 # Configure logger
 logger = logging.getLogger("consolidate")
 if not logger.handlers:
@@ -20,7 +25,7 @@ def _extract_number(val_str):
     Extracts a numeric float value from a string, ignoring currency symbols and years.
     Handles standard number formats (thousands separators, decimals).
     """
-    if not val_str or "not publicly available" in val_str.lower() or "not disclosed" in val_str.lower():
+    if not val_str or is_placeholder_value(val_str):
         return None
     
     # Remove year patterns like (2024) or [2022] or (2023-24) to avoid matching the year as the number
@@ -290,18 +295,24 @@ def normalize_to_clean_schema(member, source_name):
             
     # Standalone Hinchilla financial conversion (or general Hinchilla standardization)
     annual_giving = p_info.get("annual_giving", "")
+    annual_income = p_info.get("annual_income", "")
+    annual_expenditure = p_info.get("annual_expenditure", "")
     average_grant = p_info.get("average_grant", "")
     grant_range = p_info.get("grant_range", "")
     expenditure = p_info.get("expenditure", "")
     
     if source_name == "Hinchilla":
         annual_giving = convert_gbp_to_eur(annual_giving)
+        annual_income = convert_gbp_to_eur(annual_income)
+        annual_expenditure = convert_gbp_to_eur(annual_expenditure)
         average_grant = convert_gbp_to_eur(average_grant)
         grant_range = convert_gbp_to_eur(grant_range)
         expenditure = convert_gbp_to_eur(expenditure)
         
     funding_info = {
         "annual_giving": annual_giving,
+        "annual_income": annual_income,
+        "annual_expenditure": annual_expenditure,
         "average_grant": average_grant,
         "grant_range": grant_range,
         "funding_model": p_info.get("funding_model", ""),
@@ -309,6 +320,8 @@ def normalize_to_clean_schema(member, source_name):
         "success_rate": p_info.get("success_rate", ""),
         "decision_time": p_info.get("decision_time", ""),
         "expenditure": expenditure,
+        "number_of_grants": p_info.get("number_of_grants", ""),
+        "quick_stats": p_info.get("quick_stats", {}),
         "charity_number": p_info.get("charityNumber", "") or p_info.get("charity_number", ""),
         "application_portal": p_info.get("applicationPortal", "") or p_info.get("application_portal", ""),
         "sources": p_info.get("sources", [])
@@ -350,9 +363,9 @@ def merge_members(p_member, h_member):
     
     # Helper to resolve field value and check discrepancies
     def resolve_field(field_name, p_val, h_val, is_financial=False):
-        if not p_val or p_val.lower() in ["not publicly available", "not disclosed", ""]:
-            return h_val if h_val else p_val
-        if not h_val or h_val.lower() in ["not publicly available", "not disclosed", ""]:
+        if not is_informative_value(p_val):
+            return h_val if is_informative_value(h_val) else p_val
+        if not is_informative_value(h_val):
             return p_val
             
         # Both are non-empty. Compare.
@@ -422,7 +435,11 @@ def merge_members(p_member, h_member):
     
     # Union metadata
     for key in ["success_rate", "decision_time", "charity_number", "application_portal"]:
-        if h_fund.get(key):
+        if is_informative_value(h_fund.get(key)):
+            p_fund[key] = h_fund[key]
+
+    for key in ["annual_income", "annual_expenditure", "number_of_grants", "quick_stats"]:
+        if is_informative_value(h_fund.get(key)) and not is_informative_value(p_fund.get(key)):
             p_fund[key] = h_fund[key]
             
     # Text merge (prefer longer)
