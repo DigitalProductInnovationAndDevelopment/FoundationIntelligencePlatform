@@ -168,3 +168,9 @@ Thumbs.db
 # Project custom ignores
 response.html
 detail_response.txt
+
+# Local data directory ignores
+src/data/*.db
+src/data/preprocessed/
+src/data/pipeline_status.json
+src/data/pipeline_run.log

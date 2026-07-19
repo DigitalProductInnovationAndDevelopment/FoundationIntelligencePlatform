@@ -45,7 +45,8 @@ MASTER_TAGS = [
     "Digital Transformation",
     "Scientific Research and Technology Transfer",
     "Innovation",
-    "tech-enablement"
+    "tech-enablement",
+    "Diversity & Inclusion"
 ]
 
 # 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 14 Hauptkategorien inkl. tech-enablement)
@@ -132,7 +133,34 @@ KEYWORD_MAPPING = {
     "tech-enablement": [
         r"tech\w*", r"technolog\w*", r"digital\w*", r"software", r"data science", r"artificial intelligence", r"ai\b",
         r"\bit\b(?=\s+(systems?|services?|infrastructure|department|team|strategy|support))"
+    ],
+    "Diversity & Inclusion": [
+        r"diversit\w+", r"inclusion", r"inclusive", r"equality", r"accessibility", r"minority groups?",
+        r"lgbtq\w*", r"ethnic minorities", r"gender equality", r"neurodivergent", r"racial harmony", r"gender justice"
     ]
+}
+
+# 4. Native Charity Commission classifications mapped to MASTER_TAGS
+NATIVE_CLASSIFICATIONS_TO_TAGS = {
+    "The Prevention Or Relief Of Poverty": "Socio-economic Development, Poverty",
+    "Overseas Aid/famine Relief": "Humanitarian & Disaster Relief",
+    "Human Rights/religious Or Racial Harmony/equality Or Diversity": [
+        "Human/Civil Rights",
+        "Diversity & Inclusion"
+    ],
+    "Children/young People": "Youth/Children Development",
+    "Other Charities Or Voluntary Bodies": "Civil society, Voluntarism & Non-Profit Sector",
+    "Sponsors Or Undertakes Research": "Sciences & Research",
+    "General Charitable Purposes": "Civil society, Voluntarism & Non-Profit Sector",
+    "Education/training": "Education",
+    "The Advancement Of Health Or Saving Of Lives": "Health",
+    "Accommodation/housing": "Socio-economic Development, Poverty",
+    "Economic/community Development/employment": "Socio-economic Development, Poverty",
+    "Arts/culture/heritage/science": ["Arts & Culture", "Sciences & Research"],
+    "Animals": "Environment/Climate",
+    "Environment/conservation/heritage": "Environment/Climate",
+    "Disaster Relief": "Humanitarian & Disaster Relief",
+    "Amateur Sport": "Health"
 }
 
 GEO_TAXONOMY = {
@@ -428,7 +456,7 @@ def extract_tags(members):
                     pattern = r'(?<![a-z])' + re.escape(tag_clean) + r'(?![a-z])'
                     if re.search(pattern, zone_clean):
                         found_tags.add(original_tag)
-                        # Löschen, um Doppel-Treffer zu vermeiden
+                        # Löschen, um Doppel-Treffer to vermeiden
                         zone_clean = zone_clean.replace(tag_clean, " ")
                 else:
                     found_tags.add(original_tag)
@@ -438,37 +466,72 @@ def extract_tags(members):
         final_tags = [TAG_NORMALIZATION.get(t, t) for t in found_tags]
         
         return sorted(list(set(final_tags)))
-    
-    parsed_results = {}
+
     for member in members:
-        member_name = member.get("name", "Unknown")
-        info = member.get("philea_info", {})
-        if not isinstance(info, dict):
-            info = {}
+        tags_dict = {}  # tag -> source
+        
+        # 1. Native categories mapping (exact match)
+        who_what_how_native = member.get("who_what_how")
+        who_what_where_native = member.get("all_details", {}).get("who_what_where") if isinstance(member.get("all_details"), dict) else None
+        
+        classifications = []
+        if isinstance(who_what_how_native, list):
+            classifications.extend(who_what_how_native)
+        if isinstance(who_what_where_native, list):
+            classifications.extend(who_what_where_native)
             
-        tags = extract_tags_robust(info.get("Programme Areas", ""))
-        source = "exact_match"
-        if not tags:  # Fallback auf die Freitext-Analyse, wenn keine Tags gefunden wurden
-            tags = extract_tags_final(info.get("Programme Areas", ""))
-            source = "regex_fallback"
-        if not tags:  # Letzte Chance: Manchmal stehen die Tags nicht unter "Programme Areas", sondern nur im allgemeinen "About"-Text
-            tags = extract_tags_final(info.get("About", ""))
-            source = "regex_fallback"
-        if not tags:
-            tags = extract_tags_final(info.get("Mission", ""))
-            source = "regex_fallback"
-            
-        parsed_results[member_name] = (tags, source)
-    
-    logging.info(f"Total processed members for tags: {len(parsed_results)}")
-    empty_count = sum(1 for tags, src in parsed_results.values() if not tags)
-    logging.info(f"Number of members without tags: {empty_count}")
-    
-    for member in members:
-        member_name = member.get("name", "Unknown")
-        tags_list, source = parsed_results.get(member_name, ([], "exact_match"))
+        for cls in classifications:
+            if isinstance(cls, dict) and "classification_desc" in cls:
+                desc = cls["classification_desc"]
+                if desc in NATIVE_CLASSIFICATIONS_TO_TAGS:
+                    mapped = NATIVE_CLASSIFICATIONS_TO_TAGS[desc]
+                    if isinstance(mapped, list):
+                        for m_tag in mapped:
+                            tags_dict[m_tag] = "exact_match"
+                    else:
+                        tags_dict[mapped] = "exact_match"
+
+        # 2. Free-text classification fallback
+        text_sources = []
+        
+        # Pull text from legacy fields
+        philea_info = member.get("philea_info", {})
+        if isinstance(philea_info, dict):
+            p_areas = philea_info.get("Programme Areas", "")
+            if p_areas:
+                # Try Philea exact robust match first
+                robust_tags = extract_tags_robust(p_areas)
+                for rt in robust_tags:
+                    tags_dict[rt] = "exact_match"
+                text_sources.append(p_areas)
+            if philea_info.get("About"):
+                text_sources.append(philea_info.get("About"))
+            if philea_info.get("Mission"):
+                text_sources.append(philea_info.get("Mission"))
+                
+        # Pull text from Charity Commission fields
+        if isinstance(member.get("all_details"), dict):
+            details = member["all_details"]
+            if details.get("charity_name"):
+                text_sources.append(details["charity_name"])
+                
+        # Generic fields
+        if member.get("name"):
+            text_sources.append(member.get("name"))
+        if member.get("description"):
+            text_sources.append(member.get("description"))
+
+        # Run text fallback to find tags not matched via native mappings
+        combined_text = " ".join([t for t in text_sources if t])
+        if combined_text:
+            regex_tags = extract_tags_final(combined_text)
+            for rt in regex_tags:
+                if rt not in tags_dict:
+                    tags_dict[rt] = "regex_fallback"
+
+        # Format and save
         member["tags_focus"] = sorted(
-            [{"tag": t, "source": source} for t in tags_list],
+            [{"tag": t, "source": src} for t, src in tags_dict.items()],
             key=lambda x: x["tag"]
         )
         
@@ -717,36 +780,60 @@ def extract_geo(members):
         if not isinstance(info, dict):
             info = {}
             
+        geos = {} # macro -> set of countries
+        
+        def merge_geos_dict(target, source):
+            for macro, countries in source.items():
+                if macro not in target:
+                    target[macro] = set()
+                target[macro].update(countries)
+
+        # 1. Native Area of Operation from Charity Commission
+        all_details = member.get("all_details")
+        if isinstance(all_details, dict):
+            aoo_countries = all_details.get("CharityAoOCountryContinent")
+            if isinstance(aoo_countries, list):
+                for entry in aoo_countries:
+                    if isinstance(entry, dict) and "country" in entry:
+                        c_name = entry["country"]
+                        for norm_c in ALL_COUNTRIES:
+                            if norm_c.lower() == c_name.lower():
+                                macro = COUNTRY_TO_MACRO[norm_c]
+                                if macro not in geos:
+                                    geos[macro] = set()
+                                geos[macro].add(norm_c)
+
+        # 2. Legacy / Text-based extraction
         raw_geo_text = info.get("Geographic Focus", "")
-        geos = {}
         if raw_geo_text and raw_geo_text.strip() and raw_geo_text.strip() != "$e":
             robust = extract_geos_robust(raw_geo_text)
             final_geos = extract_geos_final(raw_geo_text)
-            geos = dict(robust)
-            for macro, countries in final_geos.items():
-                if macro not in geos:
-                    geos[macro] = []
-                geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
+            merge_geos_dict(geos, robust)
+            merge_geos_dict(geos, final_geos)
         
-        # If no geolocations could be extracted from Geographic Focus, fall back to other fields
+        # If no geolocations could be extracted, fall back to other fields
         if not geos:
             fallback_text = collect_fallback_text(member, info)
             if fallback_text:
                 robust = extract_geos_robust(fallback_text)
-                final_geos = extract_geos_final(fallback_text)
-                geos = dict(robust)
-                for macro, countries in final_geos.items():
-                    if macro not in geos:
-                        geos[macro] = []
-                    geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
-                geos = filter_ambiguous_fallback_geos(geos, fallback_text)
+                final_geos = extract_geo_topic_final_geos = extract_geos_final(fallback_text)
+                merge_geos_dict(geos, robust)
+                merge_geos_dict(geos, final_geos)
+                
+                geos_filtered = filter_ambiguous_fallback_geos({k: list(v) for k, v in geos.items()}, fallback_text)
                 fallback_geos = extract_geos_from_fallback_gazetteer(fallback_text)
-                for macro, countries in fallback_geos.items():
-                    if macro not in geos:
-                        geos[macro] = []
-                    geos[macro] = sorted(list(set(geos[macro]) | set(countries)))
+                
+                geos = {k: set(v) for k, v in geos_filtered.items()}
+                merge_geos_dict(geos, fallback_geos)
+                
+        # 3. Default mapping for UK registered charities
+        if member.get("registered_charity_number") and not geos:
+            uk_macro = COUNTRY_TO_MACRO["United Kingdom"]
+            if uk_macro not in geos:
+                geos[uk_macro] = set()
+            geos[uk_macro].add("United Kingdom")
         
-        parsed_geo_results[member_name] = geos
+        parsed_geo_results[member_name] = {k: sorted(list(v)) for k, v in geos.items() if v}
     
     # Zurückschreiben in dein Haupt-Objekt
     for member in members:

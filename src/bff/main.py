@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from bff.auth import router as auth_router
 from bff.charity import router as charity_router
 from bff.proxy import router as proxy_router
+from bff.admin import router as admin_router
 from bff.utils.logging import logger
 
 app = FastAPI(
@@ -64,6 +65,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router)
 app.include_router(charity_router)
 app.include_router(proxy_router)
+app.include_router(admin_router)
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():

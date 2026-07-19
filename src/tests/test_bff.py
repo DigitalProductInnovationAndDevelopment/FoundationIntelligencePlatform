@@ -328,6 +328,133 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(response.status_code, 307)
         self.assertEqual(response.headers.get("location"), "/docs")
 
+    def test_list_charities_new_filters(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch.object(self.test_repo, "get_all", return_value=[]) as mock_get_all:
+            response = self.client.get(
+                "/api/charities?tag=Education&region=Europe",
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            mock_get_all.assert_called_once_with(
+                search=None,
+                reg_status=None,
+                tag="Education",
+                region="Europe",
+                skip=0,
+                limit=20
+            )
+
+    def test_get_grants_map(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        mock_map_data = [{"region": "London", "total_amount_eur": 100000.0, "grants_count": 5}]
+        with patch.object(self.test_repo, "get_grants_map", return_value=mock_map_data) as mock_grants_map:
+            response = self.client.get(
+                "/api/charities/grants/map",
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), mock_map_data)
+            mock_grants_map.assert_called_once()
+
+    def test_get_charity_grants_success(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.get(
+            "/api/charities/1001/grants?role=all",
+            cookies={"session_id": session_cookie}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["grant_id"], "MOCK-G1")
+
+    def test_get_pipeline_status_success(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.get(
+            "/api/admin/pipeline/status",
+            cookies={"session_id": session_cookie}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("status", data)
+
+    @patch("bff.admin.run_pipeline_task")
+    def test_trigger_pipeline_success(self, mock_run_task):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch("bff.admin.read_status", return_value={"status": "idle"}):
+            response = self.client.post(
+                "/api/admin/pipeline/trigger",
+                json={"source": "quick_consolidate"},
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "running")
+            mock_run_task.assert_called_once_with("quick_consolidate")
+
+    def test_get_pipeline_logs_success(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch("os.path.exists", return_value=True):
+            with patch("builtins.open", unittest.mock.mock_open(read_data="Line 1\nLine 2\n")):
+                response = self.client.get(
+                    "/api/admin/pipeline/logs",
+                    cookies={"session_id": session_cookie}
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), {"logs": "Line 1\nLine 2\n"})
+
+    def test_get_sankey_data_success(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.get(
+            "/api/charities/1001/sankey",
+            cookies={"session_id": session_cookie}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("nodes", data)
+        self.assertIn("links", data)
+        
+        nodes = data["nodes"]
+        self.assertTrue(any(n["id"] == "Grants Received" for n in nodes))
+        self.assertTrue(any(n["id"] == "Charity" for n in nodes))
+        
+        links = data["links"]
+        self.assertTrue(any(l["source"] == "Grants Received" and l["target"] == "Charity" for l in links))
+
 
 if __name__ == "__main__":
     unittest.main()

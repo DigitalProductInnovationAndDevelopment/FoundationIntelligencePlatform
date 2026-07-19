@@ -115,3 +115,43 @@ class CharityStats(BaseModel):
     removed_charities: int
     average_income: float
     average_expenditure: float
+
+class GrantMapItem(BaseModel):
+    region: str
+    total_amount_eur: float
+    grants_count: int
+
+class GrantDetail(BaseModel):
+    grant_id: str
+    funding_charity_id: Optional[int] = None
+    recipient_name: str
+    recipient_charity_id: Optional[int] = None
+    amount_eur: float
+    currency: str
+    description: str
+    date: str
+    recipient_region: str
+    tags: List[str] = []
+
+class PipelineStatus(BaseModel):
+    status: str = Field(..., description="idle, running, success, failed")
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    last_run_source: Optional[str] = None
+    error: Optional[str] = None
+
+class PipelineTrigger(BaseModel):
+    source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants")
+
+class SankeyNode(BaseModel):
+    id: str
+    label: str
+
+class SankeyLink(BaseModel):
+    source: str
+    target: str
+    value: float
+
+class SankeyData(BaseModel):
+    nodes: List[SankeyNode]
+    links: List[SankeyLink]

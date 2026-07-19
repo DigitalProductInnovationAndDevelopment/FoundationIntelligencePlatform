@@ -139,7 +139,13 @@ class TestPhileaPreprocessor(unittest.TestCase):
             }
         ]
         extract_tags(members_robust)
-        self.assertEqual(sorted(members_robust[0]["tags_focus"]), ["Education", "tech-enablement"])
+        self.assertEqual(
+            members_robust[0]["tags_focus"],
+            [
+                {"tag": "Education", "source": "exact_match"},
+                {"tag": "tech-enablement", "source": "exact_match"}
+            ]
+        )
 
         # 2. Fallback path: from free text keywords
         members_fallback = [
@@ -151,7 +157,10 @@ class TestPhileaPreprocessor(unittest.TestCase):
             }
         ]
         extract_tags(members_fallback)
-        self.assertEqual(members_fallback[0]["tags_focus"], ["tech-enablement"])
+        self.assertEqual(
+            members_fallback[0]["tags_focus"],
+            [{"tag": "tech-enablement", "source": "regex_fallback"}]
+        )
 
     def test_extract_geo_taxonomy_matching(self):
         members = [
