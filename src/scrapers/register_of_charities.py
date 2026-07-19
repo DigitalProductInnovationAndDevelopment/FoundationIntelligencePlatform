@@ -50,6 +50,10 @@ class CharityCommissionAPI:
         self.backoff_factor = backoff_factor
         
         self.session = requests.Session()
+        self.session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "application/json"
+            })
         if self.api_key:
             self.session.headers.update({
                 "Ocp-Apim-Subscription-Key": self.api_key,
