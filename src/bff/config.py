@@ -20,3 +20,7 @@ DB_PATH = os.environ.get("DB_PATH", DEFAULT_DB_PATH)
 # Basic Mock Authentication credentials
 BFF_ADMIN_USER = os.environ.get("BFF_ADMIN_USER", "admin")
 BFF_ADMIN_PASSWORD = os.environ.get("BFF_ADMIN_PASSWORD", "password")
+
+# Claude API Configuration (used by the Foundation News summary endpoint)
+ANTHROPIC_AUTH_TOKEN = os.environ.get("ANTHROPIC_AUTH_TOKEN")
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL")
