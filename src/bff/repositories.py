@@ -18,6 +18,7 @@ class CharityRepository(ABC):
         reg_status: Optional[str] = None, 
         tag: Optional[str] = None,
         region: Optional[str] = None,
+        size: Optional[str] = None,
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -100,6 +101,7 @@ class JSONCharityRepository(CharityRepository):
         reg_status: Optional[str] = None, 
         tag: Optional[str] = None,
         region: Optional[str] = None,
+        size: Optional[str] = None,
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -136,6 +138,21 @@ class JSONCharityRepository(CharityRepository):
                 c for c in filtered
                 if any(region_lower in r.lower() for r in c.get("geo_locations", {}).keys())
             ]
+
+        # Filter by size
+        if size:
+            size_lower = size.lower()
+            temp = []
+            for c in filtered:
+                income, expenditure = self._get_financials(c)
+                exp = expenditure or 0.0
+                if size_lower == "small" and exp < 1000000:
+                    temp.append(c)
+                elif size_lower == "medium" and exp >= 1000000 and exp <= 10000000:
+                    temp.append(c)
+                elif size_lower == "large" and exp > 10000000:
+                    temp.append(c)
+            filtered = temp
 
         # Map to baseline models
         results = []
@@ -258,6 +275,7 @@ class SQLiteCharityRepository(CharityRepository):
         reg_status: Optional[str] = None, 
         tag: Optional[str] = None,
         region: Optional[str] = None,
+        size: Optional[str] = None,
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -286,8 +304,27 @@ class SQLiteCharityRepository(CharityRepository):
             params.append(f'%"{tag}"%')
             
         if region:
-            query += " AND geographic_focus LIKE ?"
-            params.append(f'%"Europe (Western / General)":%') # Match macro regions structure
+            query += """ AND (
+                state LIKE ? 
+                OR city LIKE ? 
+                OR address LIKE ? 
+                OR geographic_focus LIKE ? 
+                OR charity_id IN (
+                    SELECT funding_charity_id FROM grants WHERE recipient_region LIKE ?
+                )
+                OR charity_id IN (
+                    SELECT recipient_charity_id FROM grants WHERE recipient_region LIKE ?
+                )
+            )"""
+            region_pat = f"%{region}%"
+            params.extend([region_pat, region_pat, region_pat, region_pat, region_pat, region_pat])
+
+        if size == "small":
+            query += " AND annual_expenditure < 1000000"
+        elif size == "medium":
+            query += " AND annual_expenditure >= 1000000 AND annual_expenditure <= 10000000"
+        elif size == "large":
+            query += " AND annual_expenditure > 10000000"
             
         query += " LIMIT ? OFFSET ?"
         params.extend([limit, skip])

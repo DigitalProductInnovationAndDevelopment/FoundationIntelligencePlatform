@@ -53,16 +53,15 @@ def run_pipeline(args):
     db_file = os.path.join(PROJECT_ROOT, "data/charities.db")
 
     if source == "register_of_charities":
-        existing = load_existing_raw(raw_cc_path)
-        completed_numbers = {int(x["registered_charity_number"]) for x in existing if "registered_charity_number" in x}
+        existing = [] if args.fresh else load_existing_raw(raw_cc_path)
+        completed_numbers = set() if args.fresh else {int(x["registered_charity_number"]) for x in existing if "registered_charity_number" in x}
         
         # Seed charity numbers if none are provided
         reg_numbers = args.reg_numbers
         search_term = args.search
         if not reg_numbers and not search_term:
-            # Default Seed list: Oxfam (202918), British Red Cross (220949), Comic Relief (326568)
-            reg_numbers = [202918, 220949, 326568]
-            logger.info(f"No specific reg-numbers or search provided. Using default seeds: {reg_numbers}")
+            search_term = "foundation"
+            logger.info(f"No specific reg-numbers or search provided. Defaulting to dynamic search term: '{search_term}' to discover candidates.")
 
         if args.skip_scrape:
             logger.info(f"Skipping scraping phase. Loading existing raw data from: {raw_cc_path}")
@@ -88,15 +87,14 @@ def run_pipeline(args):
             logger.info(f"Charity Commission scraping complete. Raw records saved to: {raw_cc_path}")
 
     elif source == "360giving":
-        existing = load_existing_raw(raw_ts_path)
-        completed_org_ids = {x["org_id"] for x in existing if "org_id" in x}
+        existing = [] if args.fresh else load_existing_raw(raw_ts_path)
+        completed_org_ids = set() if args.fresh else {x["org_id"] for x in existing if "org_id" in x}
         
         org_ids = args.org_ids
         all_orgs = args.all_orgs
         if not org_ids and not all_orgs:
-            # Seed 360Giving orgs: Oxfam (GB-CHC-202918), Red Cross (GB-CHC-220949)
-            org_ids = ["GB-CHC-202918", "GB-CHC-220949"]
-            logger.info(f"No specific org IDs or all-orgs flag provided. Using default seeds: {org_ids}")
+            all_orgs = True
+            logger.info("No specific org IDs or all-orgs flag provided. Defaulting to all-orgs dynamic publisher list to discover candidates.")
 
         if args.skip_scrape:
             logger.info(f"Skipping scraping phase. Loading existing raw data from: {raw_ts_path}")
@@ -257,6 +255,11 @@ if __name__ == "__main__":
         "--skip-contact-crawler",
         action="store_true",
         help="Skip crawling missing contact info (email/address) from websites."
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Run scraping from scratch, clearing the completed cache."
     )
     args = parser.parse_args()
     run_pipeline(args)

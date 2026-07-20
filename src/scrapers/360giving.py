@@ -372,10 +372,12 @@ def scrape(org_ids=None, all_organisations=False, scrape_grants=False, limit=Non
     elif all_organisations:
         logging.info("Listing all organisations...")
         try:
-            # When scraping all orgs in bulk, fetch their basic info
-            orgs_list = list(client.iter_organisations(limit=100, max_results=limit))
+            # When scraping all orgs in bulk, fetch their basic info (up to 200 candidates to bypass completed cache)
+            orgs_list = list(client.iter_organisations(limit=100, max_results=200))
             # Filter out completed ones
             orgs_list = [o for o in orgs_list if o.get("org_id") not in completed_org_ids]
+            if limit:
+                orgs_list = orgs_list[:limit]
             
             # If scrape_grants is set, fetch full details + grants for each discovered organisation
             if scrape_grants:

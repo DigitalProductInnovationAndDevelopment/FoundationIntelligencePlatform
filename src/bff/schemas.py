@@ -141,7 +141,9 @@ class PipelineStatus(BaseModel):
     error: Optional[str] = None
 
 class PipelineTrigger(BaseModel):
-    source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants")
+    source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants, full_run")
+    limit: Optional[int] = None
+    fresh: Optional[bool] = False
 
 class SankeyNode(BaseModel):
     id: str

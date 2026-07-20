@@ -64,7 +64,7 @@ def write_status(status: str, source: str, error: Optional[str] = None):
     except Exception as e:
         logger.error(f"Failed to write pipeline status: {e}")
 
-def run_pipeline_task(mode: str):
+def run_pipeline_task(mode: str, limit: Optional[int] = None, fresh: bool = False):
     """Orchestrates pipeline execution as a background thread task."""
     write_status(status="running", source=mode)
     
@@ -78,10 +78,36 @@ def run_pipeline_task(mode: str):
     if mode == "quick_consolidate":
         commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
     elif mode == "refresh_charities":
-        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "register_of_charities", "--limit", "5"])
+        cmd = [python_bin, "src/pipelines/run_pipeline.py", "--source", "register_of_charities"]
+        if limit:
+            cmd += ["--limit", str(limit)]
+        if fresh:
+            cmd += ["--fresh"]
+        commands.append(cmd)
         commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
     elif mode == "refresh_grants":
-        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "360giving", "--limit", "5"])
+        cmd = [python_bin, "src/pipelines/run_pipeline.py", "--source", "360giving"]
+        if limit:
+            cmd += ["--limit", str(limit)]
+        if fresh:
+            cmd += ["--fresh"]
+        commands.append(cmd)
+        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
+    elif mode == "full_run":
+        cmd_cc = [python_bin, "src/pipelines/run_pipeline.py", "--source", "register_of_charities"]
+        if limit:
+            cmd_cc += ["--limit", str(limit)]
+        if fresh:
+            cmd_cc += ["--fresh"]
+        commands.append(cmd_cc)
+        
+        cmd_ts = [python_bin, "src/pipelines/run_pipeline.py", "--source", "360giving"]
+        if limit:
+            cmd_ts += ["--limit", str(limit)]
+        if fresh:
+            cmd_ts += ["--fresh"]
+        commands.append(cmd_ts)
+        
         commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
         
     try:
@@ -128,13 +154,13 @@ async def trigger_pipeline(
             detail="Pipeline execution is already in progress."
         )
         
-    if payload.source not in ["quick_consolidate", "refresh_charities", "refresh_grants"]:
+    if payload.source not in ["quick_consolidate", "refresh_charities", "refresh_grants", "full_run"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported execution mode: {payload.source}"
         )
         
-    background_tasks.add_task(run_pipeline_task, payload.source)
+    background_tasks.add_task(run_pipeline_task, payload.source, payload.limit, payload.fresh or False)
     
     return {
         "status": "running",

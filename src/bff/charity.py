@@ -16,13 +16,14 @@ async def list_charities(
     reg_status: Optional[str] = None,
     tag: Optional[str] = None,
     region: Optional[str] = None,
+    size: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     repo: CharityRepository = Depends(get_charity_repository)
 ):
     """
     Returns a paginated list of charities, filtered by name, registration status,
-    thematic tag, or geographic focus region.
+    thematic tag, geographic focus region, or annual giving size.
     Requires a valid session cookie/token.
     """
     return await repo.get_all(
@@ -30,6 +31,7 @@ async def list_charities(
         reg_status=reg_status, 
         tag=tag, 
         region=region, 
+        size=size,
         skip=skip, 
         limit=limit
     )

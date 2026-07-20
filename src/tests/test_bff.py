@@ -347,6 +347,30 @@ class TestBFF(unittest.TestCase):
                 reg_status=None,
                 tag="Education",
                 region="Europe",
+                size=None,
+                skip=0,
+                limit=20
+            )
+
+    def test_list_charities_size_filter(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch.object(self.test_repo, "get_all", return_value=[]) as mock_get_all:
+            response = self.client.get(
+                "/api/charities?size=medium",
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            mock_get_all.assert_called_once_with(
+                search=None,
+                reg_status=None,
+                tag=None,
+                region=None,
+                size="medium",
                 skip=0,
                 limit=20
             )
@@ -415,7 +439,25 @@ class TestBFF(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
-            mock_run_task.assert_called_once_with("quick_consolidate")
+            mock_run_task.assert_called_once_with("quick_consolidate", None, False)
+
+    @patch("bff.admin.run_pipeline_task")
+    def test_trigger_pipeline_full_run_success(self, mock_run_task):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch("bff.admin.read_status", return_value={"status": "idle"}):
+            response = self.client.post(
+                "/api/admin/pipeline/trigger",
+                json={"source": "full_run", "limit": 10, "fresh": True},
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "running")
+            mock_run_task.assert_called_once_with("full_run", 10, True)
 
     def test_get_pipeline_logs_success(self):
         login_resp = self.client.post(
