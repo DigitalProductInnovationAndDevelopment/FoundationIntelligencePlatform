@@ -157,3 +157,16 @@ class SankeyLink(BaseModel):
 class SankeyData(BaseModel):
     nodes: List[SankeyNode]
     links: List[SankeyLink]
+
+# Foundation News Schemas
+class NewsSource(BaseModel):
+    title: str
+    link: str
+    source: str
+    published: str
+    note: str = ""  # e.g. "page content too short or blocked, falling back to RSS title only"
+
+class NewsSummary(BaseModel):
+    foundation: str
+    summary: str
+    sources: List[NewsSource] = []
