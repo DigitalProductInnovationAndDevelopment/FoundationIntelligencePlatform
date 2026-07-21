@@ -21,14 +21,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger("run_pipeline")
 
-from scrapers.register_of_charities import scrape as scrape_cc, save_data as save_raw_cc
+from scrapers.register_of_charities import scrape as scrape_cc, save_data as save_raw_cc, search_charity_name
 import importlib
+import re
 giving = importlib.import_module("scrapers.360giving")
 scrape_ts = giving.scrape
 save_raw_ts = giving.save_data
+
+def parse_charity_number(org_id):
+    if not org_id or not isinstance(org_id, str):
+        return None
+    match = re.search(r'GB-CHC-(\d+)', org_id)
+    if match:
+        num = int(match.group(1))
+        if 100000 <= num <= 9999999:
+            return num
+    match = re.search(r'\b(\d+)\b', org_id)
+    if match:
+        num = int(match.group(1))
+        if 100000 <= num <= 9999999:
+            return num
+    return None
+
+
 from preprocessing.consolidate import consolidate_uk_datasets
 from preprocessing.extract_impressum import crawl_impressum
 import data.db_loader as db_loader
+from data.db_loader import insert_charities, insert_grants
+import sqlite3
 
 def load_existing_raw(path):
     if os.path.exists(path):
@@ -59,9 +79,117 @@ def run_pipeline(args):
         # Seed charity numbers if none are provided
         reg_numbers = args.reg_numbers
         search_term = args.search
-        if not reg_numbers and not search_term:
-            search_term = "foundation"
-            logger.info(f"No specific reg-numbers or search provided. Defaulting to dynamic search term: '{search_term}' to discover candidates.")
+        
+        target_tuples = []
+        
+        if reg_numbers:
+            # User provided specific registered numbers
+            for item in reg_numbers:
+                if isinstance(item, tuple):
+                    target_tuples.append((int(item[0]), int(item[1])))
+                else:
+                    target_tuples.append((int(item), 0))
+                    
+        elif not search_term:
+            # Dynamic seeding from 360Giving with fallback name search
+            logger.info("No specific reg-numbers or search provided. Seeding from 360Giving...")
+            
+            # 1. Load existing or auto-generate 360Giving results
+            ts_records = []
+            if os.path.exists(raw_ts_path):
+                ts_records = load_existing_raw(raw_ts_path)
+            
+            if not ts_records:
+                logger.info(f"360Giving data at {raw_ts_path} is missing or empty. Auto-generating organisation list...")
+                try:
+                    ts_records = scrape_ts(
+                        all_organisations=True,
+                        scrape_grants=False,
+                        limit=None,
+                        sleep_time=args.sleep,
+                        timeout=args.timeout
+                    )
+                    if ts_records:
+                        save_raw_ts(ts_records, raw_ts_path)
+                        logger.info(f"Successfully auto-generated and saved 360Giving list to {raw_ts_path}")
+                except Exception as e:
+                    logger.error(f"Failed to auto-generate 360Giving list: {e}")
+            
+            # 2. Extract charity numbers from 360Giving records
+            ts_numbers = []
+            for record in ts_records:
+                org_id = record.get("org_id") or (record.get("summary", {}).get("org_id") if isinstance(record.get("summary"), dict) else None)
+                if org_id:
+                    num = parse_charity_number(org_id)
+                    if num is not None:
+                        ts_numbers.append(num)
+            
+            # Deduplicate while preserving order
+            seen_nums = set()
+            deduped_ts_numbers = []
+            for num in ts_numbers:
+                if num not in seen_nums:
+                    seen_nums.add(num)
+                    deduped_ts_numbers.append(num)
+            
+            # Filter against already completed numbers
+            new_ts_numbers = [num for num in deduped_ts_numbers if num not in completed_numbers]
+            logger.info(f"Found {len(deduped_ts_numbers)} unique charity numbers in 360Giving data ({len(new_ts_numbers)} are new/unscraped).")
+            
+            # Add to target_tuples up to the limit
+            if args.limit is not None:
+                seeded_nums = new_ts_numbers[:args.limit]
+                remaining_limit = args.limit - len(seeded_nums)
+            else:
+                seeded_nums = new_ts_numbers
+                remaining_limit = None
+                
+            for num in seeded_nums:
+                target_tuples.append((num, 0))
+                
+            # 3. If limit allows or no limit set, query the fallback name search
+            if remaining_limit is None or remaining_limit > 0:
+                fallback_term = "foundation"
+                logger.info(f"Running fallback search for term '{fallback_term}' to find additional candidates...")
+                try:
+                    search_results = search_charity_name(fallback_term)
+                    if search_results:
+                        discovered_tuples = []
+                        for item in search_results:
+                            reg_no = item.get("reg_charity_number") or item.get("registeredCharityNumber") or item.get("charityNumber") or item.get("regno")
+                            suffix = item.get("group_subsid_suffix") if item.get("group_subsid_suffix") is not None else (item.get("suffix") or 0)
+                            if reg_no:
+                                discovered_tuples.append((int(reg_no), int(suffix)))
+                                
+                        # Filter discovered numbers to avoid duplicates with seeded numbers or completed numbers
+                        new_discovered = []
+                        for t in discovered_tuples:
+                            if t[0] not in completed_numbers and t[0] not in seen_nums:
+                                if t not in new_discovered:
+                                    new_discovered.append(t)
+                                    
+                        logger.info(f"Fallback search discovered {len(discovered_tuples)} charities ({len(new_discovered)} are new/unscraped/non-seeded).")
+                        
+                        if remaining_limit is not None:
+                            target_tuples.extend(new_discovered[:remaining_limit])
+                        else:
+                            target_tuples.extend(new_discovered)
+                except Exception as e:
+                    logger.error(f"Failed fallback search: {e}")
+                    
+        else:
+            # User provided specific search term (but not reg-numbers)
+            logger.info(f"Searching for charities with name matching: '{search_term}'")
+            try:
+                search_results = search_charity_name(search_term)
+                if search_results:
+                    for item in search_results:
+                        reg_no = item.get("reg_charity_number") or item.get("registeredCharityNumber") or item.get("charityNumber") or item.get("regno")
+                        suffix = item.get("group_subsid_suffix") if item.get("group_subsid_suffix") is not None else (item.get("suffix") or 0)
+                        if reg_no:
+                            target_tuples.append((int(reg_no), int(suffix)))
+            except Exception as e:
+                logger.error(f"Failed to search for charity name '{search_term}': {e}")
 
         if args.skip_scrape:
             logger.info(f"Skipping scraping phase. Loading existing raw data from: {raw_cc_path}")
@@ -69,8 +197,7 @@ def run_pipeline(args):
         else:
             logger.info("Step 1: Scraping Charity Commission API...")
             new_records = scrape_cc(
-                registered_numbers=reg_numbers,
-                search_name=search_term,
+                registered_numbers=target_tuples,
                 limit=args.limit,
                 sleep_time=args.sleep,
                 timeout=args.timeout,
@@ -177,6 +304,180 @@ def run_pipeline(args):
         db_loader.main(db_path=db_file, preprocessed_dir=os.path.dirname(charities_jsonl_path))
         logger.info(f"SQLite database successfully loaded at: {db_file}")
 
+    elif source == "full_run":
+        # 1. Initialize SQLite Database & retrieve completed list
+        conn = db_loader.create_connection(db_file)
+        completed_numbers = set()
+        
+        if args.fresh:
+            logger.info("Fresh flag set. Dropping and re-creating database tables...")
+            db_loader.create_tables(conn)
+        else:
+            # Query existing charity_ids from DB
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charities';")
+                    if cursor.fetchone():
+                        cursor.execute("SELECT charity_id FROM charities;")
+                        completed_numbers = {int(row[0]) for row in cursor.fetchall()}
+                        logger.info(f"Loaded {len(completed_numbers)} completed charity numbers from SQLite database cache.")
+                except Exception as e:
+                    logger.warning(f"Could not read completed numbers from database: {e}")
+
+        # 2. Build target list of (reg_no, suffix) to scrape
+        target_tuples = []
+        reg_numbers = args.reg_numbers
+        search_term = args.search
+        
+        if reg_numbers:
+            # User provided specific registered numbers
+            for item in reg_numbers:
+                if isinstance(item, tuple):
+                    target_tuples.append((int(item[0]), int(item[1])))
+                else:
+                    target_tuples.append((int(item), 0))
+                    
+        else:
+            # No specific reg-numbers, so use search (fallback to "foundation" if search_term is empty)
+            term_to_search = search_term or "foundation"
+            if not search_term:
+                logger.info(f"No specific reg-numbers or search provided. Seeding from Charity Commission for term '{term_to_search}'...")
+            else:
+                logger.info(f"Searching for charities with name matching: '{term_to_search}'")
+                
+            try:
+                search_results = search_charity_name(term_to_search)
+                if search_results:
+                    discovered_tuples = []
+                    for item in search_results:
+                        reg_no = item.get("reg_charity_number") or item.get("registeredCharityNumber") or item.get("charityNumber") or item.get("regno")
+                        suffix = item.get("group_subsid_suffix") if item.get("group_subsid_suffix") is not None else (item.get("suffix") or 0)
+                        if reg_no:
+                            discovered_tuples.append((int(reg_no), int(suffix)))
+                            
+                    seen_nums = set()
+                    deduped_tuples = []
+                    for t in discovered_tuples:
+                        if t[0] not in seen_nums:
+                            seen_nums.add(t[0])
+                            deduped_tuples.append(t)
+                            
+                    new_discovered = [t for t in deduped_tuples if t[0] not in completed_numbers]
+                    logger.info(f"Search discovered {len(discovered_tuples)} charities ({len(new_discovered)} are new/unscraped).")
+                    
+                    if args.limit is not None:
+                        target_tuples = new_discovered[:args.limit]
+                    else:
+                        target_tuples = new_discovered
+            except Exception as e:
+                logger.error(f"Failed search for term '{term_to_search}': {e}")
+
+        # 3. Process candidates foundation-by-foundation sequentially
+        if not target_tuples:
+            logger.info("No foundations to process.")
+            if conn:
+                conn.close()
+            return
+            
+        logger.info(f"Found {len(target_tuples)} target foundations to process.")
+        
+        # Load raw files once to merge with
+        raw_cc_existing = load_existing_raw(raw_cc_path)
+        raw_ts_existing = load_existing_raw(raw_ts_path)
+        
+        cc_raw_map = {int(x["registered_charity_number"]): x for x in raw_cc_existing if "registered_charity_number" in x}
+        ts_raw_map = {x["org_id"]: x for x in raw_ts_existing if "org_id" in x}
+        
+        for idx, (reg_no, suffix) in enumerate(target_tuples, 1):
+            if reg_no in completed_numbers and not args.fresh:
+                logger.info(f"[{idx}/{len(target_tuples)}] Skipping Charity {reg_no} (already processed in database).")
+                continue
+                
+            logger.info("--------------------------------------------------")
+            logger.info(f"[{idx}/{len(target_tuples)}] Processing Charity {reg_no} (Suffix: {suffix})")
+            logger.info("--------------------------------------------------")
+            
+            # Step A: Scrape Charity Commission
+            logger.info(f"[{idx}/{len(target_tuples)}] Step A: Fetching Charity Commission details...")
+            cc_records = scrape_cc(
+                registered_numbers=[(reg_no, suffix)],
+                sleep_time=args.sleep,
+                timeout=args.timeout
+            )
+            
+            # Step B: Scrape 360Giving details/grants
+            logger.info(f"[{idx}/{len(target_tuples)}] Step B: Fetching 360Giving grants...")
+            ts_records = scrape_ts(
+                org_ids=[f"GB-CHC-{reg_no}"],
+                scrape_grants=True,
+                sleep_time=args.sleep,
+                timeout=args.timeout
+            )
+            
+            # If no data at all was scraped, skip to next
+            if not cc_records and not ts_records:
+                logger.warning(f"[{idx}/{len(target_tuples)}] Scrapers returned no data for Charity {reg_no}. Skipping.")
+                continue
+                
+            # Step C: Consolidate
+            logger.info(f"[{idx}/{len(target_tuples)}] Step C: Consolidating and mapping datasets...")
+            charities_list, grants_list = consolidate_uk_datasets(cc_records, ts_records)
+            
+            if not charities_list:
+                logger.warning(f"[{idx}/{len(target_tuples)}] Consolidation produced no charity profiles for {reg_no}. Skipping.")
+                continue
+                
+            # Step D: Impressum Crawler
+            if not args.skip_contact_crawler:
+                logger.info(f"[{idx}/{len(target_tuples)}] Step D: Checking website Impressum...")
+                for c in charities_list:
+                    email_missing = not c.get("email") or str(c.get("email")).strip() == ""
+                    address_missing = not c.get("address") or str(c.get("address")).strip() == ""
+                    
+                    if (email_missing or address_missing) and c.get("website"):
+                        website = c["website"]
+                        if not website.startswith(("http://", "https://")):
+                            website = "https://" + website
+                        logger.info(f"Crawling missing contact info for {c['name']} ({website})")
+                        try:
+                            impressum = crawl_impressum(website, timeout=8)
+                            if impressum:
+                                if email_missing and impressum.get("generic_email"):
+                                    c["email"] = impressum["generic_email"]
+                                    logger.info(f"  -> Found email: {impressum['generic_email']}")
+                                if address_missing and impressum.get("address"):
+                                    c["address"] = impressum["address"]
+                                    logger.info(f"  -> Found address: {impressum['address']}")
+                        except Exception as e:
+                            logger.warning(f"  -> Failed to crawl {c['name']}: {e}")
+
+            # Step E: Insert into SQLite immediately
+            if conn:
+                logger.info(f"[{idx}/{len(target_tuples)}] Step E: Writing records incrementally to SQLite database...")
+                try:
+                    insert_charities(conn, charities_list)
+                    insert_grants(conn, grants_list)
+                except Exception as e:
+                    logger.error(f"Failed to write to database for charity {reg_no}: {e}")
+                    
+            # Step F: Update raw cache files in background to preserve sync
+            for rec in cc_records:
+                if "registered_charity_number" in rec:
+                    cc_raw_map[int(rec["registered_charity_number"])] = rec
+            for rec in ts_records:
+                if "org_id" in rec:
+                    ts_raw_map[rec["org_id"]] = rec
+                    
+            save_raw_cc(list(cc_raw_map.values()), raw_cc_path)
+            save_raw_ts(list(ts_raw_map.values()), raw_ts_path)
+            
+            logger.info(f"[{idx}/{len(target_tuples)}] Foundation {reg_no} successfully integrated.")
+            
+        if conn:
+            conn.close()
+            logger.info("Database connection closed.")
+
     else:
         logger.error(f"Unsupported pipeline source: {source}")
         sys.exit(1)
@@ -190,7 +491,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--source",
         type=str,
-        choices=["360giving", "register_of_charities", "consolidate"],
+        choices=["360giving", "register_of_charities", "consolidate", "full_run"],
         default="consolidate",
         help="Pipeline phase to execute."
     )

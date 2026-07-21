@@ -19,6 +19,11 @@ class CharityRepository(ABC):
         tag: Optional[str] = None,
         region: Optional[str] = None,
         size: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        foundation_regions: Optional[List[str]] = None,
+        funding_regions: Optional[List[str]] = None,
+        min_annual_giving: Optional[float] = None,
+        min_avg_grant_size: Optional[float] = None,
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -102,6 +107,11 @@ class JSONCharityRepository(CharityRepository):
         tag: Optional[str] = None,
         region: Optional[str] = None,
         size: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        foundation_regions: Optional[List[str]] = None,
+        funding_regions: Optional[List[str]] = None,
+        min_annual_giving: Optional[float] = None,
+        min_avg_grant_size: Optional[float] = None,
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -123,16 +133,39 @@ class JSONCharityRepository(CharityRepository):
                 if c.get("all_details", {}).get("reg_status", "").upper() == reg_status_upper
             ]
 
-        # Filter by tag (thematic focus)
-        if tag:
+        # Filter by tags (multiple choice, match ANY)
+        if tags:
+            tags_lower = [t.lower() for t in tags]
+            filtered = [
+                c for c in filtered
+                if any(any(tl in t.get("tag", "").lower() for tl in tags_lower) for t in c.get("tags_focus", []))
+            ]
+        elif tag:
             tag_lower = tag.lower()
             filtered = [
                 c for c in filtered
                 if any(tag_lower in t.get("tag", "").lower() for t in c.get("tags_focus", []))
             ]
 
-        # Filter by region
-        if region:
+        # Filter by foundation regions (multiple choice, match ANY)
+        if foundation_regions:
+            fr_lower = [r.lower() for r in foundation_regions]
+            filtered = [
+                c for c in filtered
+                if any(any(fr in key.lower() for fr in fr_lower) for key in c.get("geo_locations", {}).keys())
+                or any(any(fr in str(val).lower() for fr in fr_lower) for val in [c.get("all_details", {}).get("city"), c.get("all_details", {}).get("state"), c.get("all_details", {}).get("address_line_one")])
+            ]
+
+        # Filter by funding regions (multiple choice, match ANY)
+        if funding_regions:
+            fur_lower = [r.lower() for r in funding_regions]
+            filtered = [
+                c for c in filtered
+                if any(any(fur in key.lower() for fur in fur_lower) for key in c.get("geo_locations", {}).keys())
+            ]
+
+        # Filter by legacy region
+        if not foundation_regions and not funding_regions and region:
             region_lower = region.lower()
             filtered = [
                 c for c in filtered
@@ -140,7 +173,12 @@ class JSONCharityRepository(CharityRepository):
             ]
 
         # Filter by size
-        if size:
+        if min_annual_giving is not None:
+            filtered = [
+                c for c in filtered
+                if (self._get_financials(c)[1] or 0.0) >= min_annual_giving
+            ]
+        elif size:
             size_lower = size.lower()
             temp = []
             for c in filtered:
@@ -153,6 +191,14 @@ class JSONCharityRepository(CharityRepository):
                 elif size_lower == "large" and exp > 10000000:
                     temp.append(c)
             filtered = temp
+
+        # Filter by average grant size
+        if min_avg_grant_size is not None and min_avg_grant_size > 0:
+            # Simple heuristic for JSON repo mock filtering: if expenditure is non-zero, let's assume it matches
+            filtered = [
+                c for c in filtered
+                if (self._get_financials(c)[1] or 0.0) >= min_avg_grant_size
+            ]
 
         # Map to baseline models
         results = []
@@ -276,12 +322,17 @@ class SQLiteCharityRepository(CharityRepository):
         tag: Optional[str] = None,
         region: Optional[str] = None,
         size: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        foundation_regions: Optional[List[str]] = None,
+        funding_regions: Optional[List[str]] = None,
+        min_annual_giving: Optional[float] = None,
+        min_avg_grant_size: Optional[float] = None,
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        
+
         query = """
             SELECT charity_id, name, type, website, email, address, city, state, country, 
                    latitude, longitude, annual_income, annual_expenditure, thematic_focus, 
@@ -299,11 +350,32 @@ class SQLiteCharityRepository(CharityRepository):
             query += " AND json_extract(raw_cc_data, '$.all_details.reg_status') = ?"
             params.append(reg_status.upper())
             
-        if tag:
+        if tags:
+            tag_conds = []
+            for t in tags:
+                tag_conds.append("thematic_focus LIKE ?")
+                params.append(f'%"{t}"%')
+            query += " AND (" + " OR ".join(tag_conds) + ")"
+        elif tag:
             query += " AND thematic_focus LIKE ?"
             params.append(f'%"{tag}"%')
             
-        if region:
+        if foundation_regions:
+            fr_conds = []
+            for r in foundation_regions:
+                fr_conds.append("(state LIKE ? OR city LIKE ? OR address LIKE ?)")
+                r_pat = f"%{r}%"
+                params.extend([r_pat, r_pat, r_pat])
+            query += " AND (" + " OR ".join(fr_conds) + ")"
+
+        if funding_regions:
+            fur_conds = []
+            for r in funding_regions:
+                fur_conds.append("charity_id IN (SELECT funding_charity_id FROM grants WHERE recipient_region LIKE ?)")
+                params.append(f"%{r}%")
+            query += " AND (" + " OR ".join(fur_conds) + ")"
+
+        if not foundation_regions and not funding_regions and region:
             query += """ AND (
                 state LIKE ? 
                 OR city LIKE ? 
@@ -319,12 +391,24 @@ class SQLiteCharityRepository(CharityRepository):
             region_pat = f"%{region}%"
             params.extend([region_pat, region_pat, region_pat, region_pat, region_pat, region_pat])
 
-        if size == "small":
+        if min_annual_giving is not None:
+            query += " AND annual_expenditure >= ?"
+            params.append(min_annual_giving)
+        elif size == "small":
             query += " AND annual_expenditure < 1000000"
         elif size == "medium":
             query += " AND annual_expenditure >= 1000000 AND annual_expenditure <= 10000000"
         elif size == "large":
             query += " AND annual_expenditure > 10000000"
+
+        if min_avg_grant_size is not None and min_avg_grant_size > 0:
+            query += """ AND charity_id IN (
+                SELECT funding_charity_id 
+                FROM grants 
+                GROUP BY funding_charity_id 
+                HAVING AVG(amount_eur) >= ?
+            )"""
+            params.append(min_avg_grant_size)
             
         query += " LIMIT ? OFFSET ?"
         params.extend([limit, skip])
@@ -524,15 +608,9 @@ class SQLiteCharityRepository(CharityRepository):
         return {"nodes": nodes, "links": links}
 
 
-# Global repository instance
-_repo_instance: Optional[CharityRepository] = None
-
 def get_charity_repository() -> CharityRepository:
     """Dependency provider for the CharityRepository. Prefers SQLite if DB exists, falls back to JSON."""
-    global _repo_instance
-    if _repo_instance is None:
-        if os.path.exists(DB_PATH):
-            _repo_instance = SQLiteCharityRepository()
-        else:
-            _repo_instance = JSONCharityRepository()
-    return _repo_instance
+    if os.path.exists(DB_PATH):
+        return SQLiteCharityRepository()
+    else:
+        return JSONCharityRepository()

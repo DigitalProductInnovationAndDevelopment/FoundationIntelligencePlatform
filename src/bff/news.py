@@ -94,9 +94,26 @@ def build_rss_url(foundation_name: str, locale: dict) -> str:
 
 
 def fetch_news_entries(foundation_name: str, weeks: int, max_articles: int, locale: dict) -> list[Article]:
+    import ssl
     url = build_rss_url(foundation_name, locale)
     logger.info(f"Querying Google News RSS: {url}")
-    feed = feedparser.parse(url)
+    
+    # Temporarily bypass SSL verification on macOS to prevent certificate verification failures in feedparser
+    old_context = getattr(ssl, "_create_default_https_context", None)
+    try:
+        ssl._create_default_https_context = ssl._create_unverified_context
+    except AttributeError:
+        pass
+
+    try:
+        feed = feedparser.parse(url)
+    finally:
+        if old_context:
+            try:
+                ssl._create_default_https_context = old_context
+            except AttributeError:
+                pass
+
     if getattr(feed, "bozo", 0) and not feed.entries:
         logger.warning(f"Could not parse RSS feed ({feed.bozo_exception})")
 

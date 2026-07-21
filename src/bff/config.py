@@ -1,5 +1,23 @@
 import os
 
+# Load .env file manually if it exists in the project root to ensure credentials are populated
+BFF_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(BFF_DIR)
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
+env_path = os.path.join(PROJECT_ROOT, ".env")
+if os.path.exists(env_path):
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip().strip("'\"")
+                if key and not os.environ.get(key):
+                    os.environ[key] = val
+
 # JWT Configuration
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bff_super_secret_signing_key_for_session_tokens_2026")
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")

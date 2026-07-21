@@ -105,7 +105,7 @@ class CharityDetail(BaseModel):
     link: Optional[str] = None
     all_details: CharityAllDetails
     assets_liabilities: List[CharityAssetsLiabilitiesItem] = []
-    primary_grants: Optional[List[Any]] = None
+    primary_grants: Optional[Any] = None
     who_what_how: Optional[List[Any]] = []
     financial_history: List[CharityFinancialHistoryItem] = []
 
@@ -144,6 +144,10 @@ class PipelineTrigger(BaseModel):
     source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants, full_run")
     limit: Optional[int] = None
     fresh: Optional[bool] = False
+    search_term: Optional[str] = None
+    reg_numbers: Optional[List[int]] = None
+    skip_contact_crawler: Optional[bool] = False
+
 
 class SankeyNode(BaseModel):
     id: str

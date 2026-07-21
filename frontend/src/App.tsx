@@ -1,28 +1,29 @@
 import { useState, useEffect, useRef } from "react";
-import { 
-  Building2, 
-  TrendingUp, 
-  Activity, 
-  Database, 
-  LogOut, 
-  Search, 
-  SlidersHorizontal, 
-  Terminal, 
-  Sparkles, 
+import {
+  Building2,
+  TrendingUp,
+  Activity,
+  Database,
+  LogOut,
+  Search,
+  SlidersHorizontal,
+  Terminal,
+  Sparkles,
   ArrowRight,
   TrendingDown,
   DollarSign,
-  Play
+  Play,
+  Newspaper
 } from "lucide-react";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  AreaChart, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
   Area,
   Sankey
 } from "recharts";
@@ -145,9 +146,117 @@ const MOCK_TRENDS_DATA = [
   { month: "Nov", income: 360, expenditure: 345 }
 ];
 
+const renderMarkdown = (text: string) => {
+  if (!text) return null;
+
+  const lines = text.split("\n");
+  let inList = false;
+  const elements: React.ReactNode[] = [];
+  let listItems: React.ReactNode[] = [];
+
+  const parseInlineStyles = (lineText: string) => {
+    const segments = lineText.split("**");
+    return segments.map((seg, idx) => {
+      if (idx % 2 === 1) {
+        return <strong key={idx} style={{ color: "var(--text-primary)", fontWeight: "700" }}>{seg}</strong>;
+      }
+      return seg;
+    });
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("###")) {
+      if (inList) {
+        elements.push(<ul key={`list-${idx}`} style={{ margin: "8px 0 16px 20px", display: "flex", flexDirection: "column", gap: "6px", listStyleType: "disc" }}>{listItems}</ul>);
+        listItems = [];
+        inList = false;
+      }
+      elements.push(
+        <h4 key={idx} style={{ fontSize: "14px", fontWeight: "700", marginTop: "16px", marginBottom: "8px", color: "var(--nl-unicorn)" }}>
+          {parseInlineStyles(trimmed.slice(3).trim())}
+        </h4>
+      );
+    } else if (trimmed.startsWith("##")) {
+      if (inList) {
+        elements.push(<ul key={`list-${idx}`} style={{ margin: "8px 0 16px 20px", display: "flex", flexDirection: "column", gap: "6px", listStyleType: "disc" }}>{listItems}</ul>);
+        listItems = [];
+        inList = false;
+      }
+      elements.push(
+        <h3 key={idx} style={{ fontSize: "16px", fontWeight: "700", marginTop: "20px", marginBottom: "10px", color: "var(--nl-unicorn)" }}>
+          {parseInlineStyles(trimmed.slice(2).trim())}
+        </h3>
+      );
+    } else if (trimmed.startsWith("#")) {
+      if (inList) {
+        elements.push(<ul key={`list-${idx}`} style={{ margin: "8px 0 16px 20px", display: "flex", flexDirection: "column", gap: "6px", listStyleType: "disc" }}>{listItems}</ul>);
+        listItems = [];
+        inList = false;
+      }
+      elements.push(
+        <h2 key={idx} style={{ fontSize: "18px", fontWeight: "700", marginTop: "24px", marginBottom: "12px", color: "var(--nl-unicorn)" }}>
+          {parseInlineStyles(trimmed.replace(/^#\s*/, "").trim())}
+        </h2>
+      );
+    } else if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
+      inList = true;
+      listItems.push(
+        <li key={idx} style={{ fontSize: "13.5px", lineHeight: "1.5", color: "var(--text-secondary)" }}>
+          {parseInlineStyles(trimmed.slice(2).trim())}
+        </li>
+      );
+    } else if (!trimmed) {
+      if (inList) {
+        elements.push(<ul key={`list-${idx}`} style={{ margin: "8px 0 16px 20px", display: "flex", flexDirection: "column", gap: "6px", listStyleType: "disc" }}>{listItems}</ul>);
+        listItems = [];
+        inList = false;
+      }
+    } else {
+      if (inList) {
+        elements.push(<ul key={`list-${idx}`} style={{ margin: "8px 0 16px 20px", display: "flex", flexDirection: "column", gap: "6px", listStyleType: "disc" }}>{listItems}</ul>);
+        listItems = [];
+        inList = false;
+      }
+      elements.push(
+        <p key={idx} style={{ margin: "0 0 12px 0", fontSize: "13.5px", lineHeight: "1.6", color: "var(--text-secondary)" }}>
+          {parseInlineStyles(line)}
+        </p>
+      );
+    }
+  });
+
+  if (inList && listItems.length > 0) {
+    elements.push(<ul key="list-trailing" style={{ margin: "8px 0 16px 20px", display: "flex", flexDirection: "column", gap: "6px", listStyleType: "disc" }}>{listItems}</ul>);
+  }
+
+  return <div className="markdown-content">{elements}</div>;
+};
+
+const ANNUAL_GIVING_STEPS = [0, 100000, 500000, 1000000, 5000000, 10000000, 50000000, 100000000, 500000000];
+const ANNUAL_GIVING_LABELS = ["£0", "£100k", "£500k", "£1M", "£5M", "£10M", "£50M", "£100M", "£500M"];
+
+const AVG_GRANT_SIZE_STEPS = [0, 1000, 5000, 10000, 50000, 100000, 250000, 500000, 1000000];
+const AVG_GRANT_SIZE_LABELS = ["£0", "£1k", "£5k", "£10k", "£50k", "£100k", "£250k", "£500k", "£1M"];
+
+const SECTORS = [
+  { value: "Social/Human Services", label: "Social Services" },
+  { value: "Environment/Climate", label: "Climate & Environment" },
+  { value: "Youth/Children Development", label: "Children & Youth" },
+  { value: "Food, Agriculture & Nutrition", label: "Food & Nutrition" },
+  { value: "tech-enablement", label: "Tech Enablement" },
+  { value: "Sciences & Research", label: "Sciences & Research" },
+  { value: "Health", label: "Health" },
+  { value: "Arts & Culture", label: "Arts & Culture" },
+  { value: "Humanitarian & Disaster Relief", label: "Humanitarian & Disaster" }
+];
+
+const REGIONS = ["London", "South East", "North West", "West Midlands", "South West", "Scotland", "Wales", "Northern Ireland"];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<"overview" | "directory" | "admin">("overview");
-  
+
   // Data states
   const [stats, setStats] = useState<KPIStats>(MOCK_STATS);
   const [charities, setCharities] = useState<Charity[]>(MOCK_CHARITIES);
@@ -156,15 +265,24 @@ export default function App() {
   const [selectedCharityDetail, setSelectedCharityDetail] = useState<any>(null);
   const [charityGrants, setCharityGrants] = useState<GrantDetail[]>([]);
   const [sankeyData, setSankeyData] = useState<SankeyData | null>(null);
-  
+
+  // News summarizer states
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsSummary, setNewsSummary] = useState<any | null>(null);
+  const [newsError, setNewsError] = useState<string | null>(null);
+
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTag, setSelectedTag] = useState<string>("");
-  const [selectedRegion, setSelectedRegion] = useState<string>("");
-  const [selectedSize, setSelectedSize] = useState<string>("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedFoundationRegions, setSelectedFoundationRegions] = useState<string[]>([]);
+  const [selectedRecipientRegions, setSelectedRecipientRegions] = useState<string[]>([]);
+  const [annualGivingIndex, setAnnualGivingIndex] = useState<number>(0);
+  const [avgGrantSizeIndex, setAvgGrantSizeIndex] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [isBffOnline, setIsBffOnline] = useState(false);
-  
+  const [initialLoading, setInitialLoading] = useState(true);
+
+
   // Admin & pipeline states
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>({
     status: "idle",
@@ -177,7 +295,11 @@ export default function App() {
   const [isTriggering, setIsTriggering] = useState(false);
   const [pipelineLimit, setPipelineLimit] = useState<number>(20);
   const [pipelineFresh, setPipelineFresh] = useState<boolean>(false);
+  const [enableImpressum, setEnableImpressum] = useState<boolean>(true);
+  const [pipelineSearch, setPipelineSearch] = useState<string>("");
+  const [pipelineIds, setPipelineIds] = useState<string>("");
   const logsEndRef = useRef<HTMLDivElement>(null);
+
 
   // Fetch initial configuration on mount
   useEffect(() => {
@@ -188,15 +310,21 @@ export default function App() {
     fetchStats();
     fetchCharities();
     fetchMapData();
-  }, [selectedTag, selectedRegion, selectedSize]);
+  }, [selectedTags, selectedFoundationRegions, selectedRecipientRegions, annualGivingIndex, avgGrantSizeIndex]);
 
   useEffect(() => {
     if (selectedCharity) {
+      setNewsSummary(null);
+      setNewsError(null);
+      setNewsLoading(false);
       fetchCharityDetail(selectedCharity.registered_charity_number);
       fetchCharityGrants(selectedCharity.registered_charity_number);
       fetchSankeyData(selectedCharity.registered_charity_number);
     } else {
       setSelectedCharityDetail(null);
+      setNewsSummary(null);
+      setNewsError(null);
+      setNewsLoading(false);
     }
   }, [selectedCharity]);
 
@@ -233,32 +361,46 @@ export default function App() {
       if (resp.ok) {
         setIsBffOnline(true);
         console.log("Logged in to BFF successfully.");
+        return true;
       }
     } catch (e) {
       console.error("Auto login failed", e);
     }
+    return false;
   };
 
   const checkBffHealth = async () => {
+    setInitialLoading(true);
     try {
       const resp = await fetch(`${API_BASE}/health`);
       if (resp.ok) {
-        setIsBffOnline(true);
         console.log("BFF Backend is online. Authenticating...");
-        await autoLogin();
-        // Load initial live dataset
-        fetchStats();
-        fetchCharities();
-        fetchMapData();
+        const loggedIn = await autoLogin();
+        if (loggedIn) {
+          setIsBffOnline(true);
+          // Load initial live dataset
+          await Promise.all([
+            fetchStats(true),
+            fetchCharities(true),
+            fetchMapData(true)
+          ]);
+          setInitialLoading(false);
+          return;
+        }
       }
+      setIsBffOnline(false);
+      console.warn("BFF offline. Falling back to mock dataset.");
     } catch {
       setIsBffOnline(false);
       console.warn("BFF offline. Falling back to mock dataset.");
+    } finally {
+      setInitialLoading(false);
     }
   };
 
-  const fetchStats = async () => {
-    if (!isBffOnline) return;
+  const fetchStats = async (forceOnline?: boolean) => {
+    const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
+    if (!isOnline) return;
     try {
       const resp = await fetch(`${API_BASE}/api/charities/stats`, { credentials: "include" });
       if (resp.ok) {
@@ -270,22 +412,22 @@ export default function App() {
     }
   };
 
-  const fetchCharities = async () => {
+  const fetchCharities = async (forceOnline?: boolean) => {
+    const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
     setLoading(true);
-    if (!isBffOnline) {
+    if (!isOnline) {
       // Offline local filtering of mocks
       let filtered = [...MOCK_CHARITIES];
       if (searchTerm) {
         filtered = filtered.filter(c => c.charity_name.toLowerCase().includes(searchTerm.toLowerCase()));
       }
-      if (selectedSize) {
-        filtered = filtered.filter(c => {
-          const exp = c.latest_expenditure || 0;
-          if (selectedSize === "small") return exp < 1000000;
-          if (selectedSize === "medium") return exp >= 1000000 && exp <= 10000000;
-          if (selectedSize === "large") return exp > 10000000;
-          return true;
-        });
+      const minGiving = ANNUAL_GIVING_STEPS[annualGivingIndex];
+      if (minGiving > 0) {
+        filtered = filtered.filter(c => (c.latest_expenditure || 0) >= minGiving);
+      }
+      const minAvgGrant = AVG_GRANT_SIZE_STEPS[avgGrantSizeIndex];
+      if (minAvgGrant > 0) {
+        filtered = filtered.filter(c => ((c.latest_expenditure || 0) / 10) >= minAvgGrant);
       }
       setCharities(filtered);
       setLoading(false);
@@ -294,10 +436,24 @@ export default function App() {
     try {
       let url = `${API_BASE}/api/charities?limit=50`;
       if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
-      if (selectedTag) url += `&tag=${encodeURIComponent(selectedTag)}`;
-      if (selectedRegion) url += `&region=${encodeURIComponent(selectedRegion)}`;
-      if (selectedSize) url += `&size=${encodeURIComponent(selectedSize)}`;
-      
+      if (selectedTags.length > 0) {
+        url += `&tags=${encodeURIComponent(selectedTags.join(","))}`;
+      }
+      if (selectedFoundationRegions.length > 0) {
+        url += `&foundation_regions=${encodeURIComponent(selectedFoundationRegions.join(","))}`;
+      }
+      if (selectedRecipientRegions.length > 0) {
+        url += `&funding_regions=${encodeURIComponent(selectedRecipientRegions.join(","))}`;
+      }
+      const minGiving = ANNUAL_GIVING_STEPS[annualGivingIndex];
+      if (minGiving > 0) {
+        url += `&min_annual_giving=${minGiving}`;
+      }
+      const minAvgGrant = AVG_GRANT_SIZE_STEPS[avgGrantSizeIndex];
+      if (minAvgGrant > 0) {
+        url += `&min_avg_grant_size=${minAvgGrant}`;
+      }
+
       const resp = await fetch(url, { credentials: "include" });
       if (resp.ok) {
         const data = await resp.json();
@@ -347,8 +503,47 @@ export default function App() {
     }
   };
 
-  const fetchMapData = async () => {
-    if (!isBffOnline) return;
+  const fetchFoundationNews = async (name: string) => {
+    setNewsLoading(true);
+    setNewsError(null);
+    setNewsSummary(null);
+
+    if (!isBffOnline) {
+      // Mock news fallback
+      setTimeout(() => {
+        setNewsSummary({
+          foundation: name,
+          summary: `Here is a mock summary of recent news for "${name}". The foundation has been actively expanding its socio-economic support programs in the UK. They announced a new partnership with local food banks to address food insecurity. Furthermore, they are investing in digital transformation initiatives to streamline grant-making processes for small charities.`,
+          sources: [
+            { title: "Netlight News: Insecurity Partnership", link: "https://example.com/news1", source: "Netlight Post", published: "Mon, 20 Jul 2026 10:00:00 GMT" },
+            { title: "Charity Digital: Streamlining Grants", link: "https://example.com/news2", source: "Charity Daily", published: "Sun, 19 Jul 2026 14:30:00 GMT" }
+          ]
+        });
+        setNewsLoading(false);
+      }, 1500);
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/news/${encodeURIComponent(name)}/summary`, { credentials: "include" });
+      if (resp.ok) {
+        const data = await resp.json();
+        setNewsSummary(data);
+      } else {
+        const errorDetail = await resp.json();
+        setNewsError(errorDetail.detail || "Failed to load news summary from backend.");
+      }
+    } catch (e: any) {
+      console.error("Failed to fetch news summary", e);
+      setNewsError("An error occurred while connecting to the news service.");
+    } finally {
+      setNewsLoading(false);
+    }
+  };
+
+  const fetchMapData = async (forceOnline?: boolean) => {
+    const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
+    if (!isOnline) return;
     try {
       const resp = await fetch(`${API_BASE}/api/charities/grants/map`, { credentials: "include" });
       if (resp.ok) {
@@ -421,13 +616,13 @@ export default function App() {
         // Parse names directly to index integers for Recharts Sankey
         const nodeMap = new Map();
         data.nodes.forEach((n: any, idx: number) => nodeMap.set(n.id, idx));
-        
+
         const formattedLinks = data.links.map((l: any) => ({
           source: nodeMap.get(l.source),
           target: nodeMap.get(l.target),
           value: l.value
         }));
-        
+
         setSankeyData({
           nodes: data.nodes.map((n: any) => ({ name: n.label })),
           links: formattedLinks
@@ -446,7 +641,7 @@ export default function App() {
         const data = await resp.json();
         setPipelineStatus(data);
       }
-      
+
       const logResp = await fetch(`${API_BASE}/api/admin/pipeline/logs`, { credentials: "include" });
       if (logResp.ok) {
         const logData = await logResp.json();
@@ -459,9 +654,19 @@ export default function App() {
 
   const triggerPipeline = async (source: string) => {
     setIsTriggering(true);
+
+    // Enforce max limit of 100 on full runs
+    if (source === "full_run" && pipelineLimit > 100) {
+      alert("Limit für Full Runs liegt bei maximal 100, um API-Sperren zu verhindern.");
+      setIsTriggering(false);
+      return;
+    }
+
+    const regNumbers = pipelineIds ? pipelineIds.split(",").map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : undefined;
+
     if (!isBffOnline) {
       // Simulate run in logs
-      setLogs(prev => prev + `\n[Simulating] Triggered run mode: ${source} (Limit: ${pipelineLimit}, Fresh: ${pipelineFresh ? "Yes" : "No"})...\n`);
+      setLogs(prev => prev + `\n[Simulating] Triggered run mode: ${source} (Limit: ${pipelineLimit}, Fresh: ${pipelineFresh ? "Yes" : "No"}, Impressum: ${enableImpressum ? "Yes" : "No"})...\n`);
       let count = 1;
       const interval = setInterval(() => {
         setLogs(prev => prev + `[Step ${count}/3] Crawling raw data seeds...\n`);
@@ -478,17 +683,20 @@ export default function App() {
       const resp = await fetch(`${API_BASE}/api/admin/pipeline/trigger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           source: source,
           limit: source === "quick_consolidate" ? undefined : pipelineLimit,
-          fresh: source === "quick_consolidate" ? undefined : pipelineFresh
+          fresh: source === "quick_consolidate" ? undefined : pipelineFresh,
+          search_term: pipelineSearch ? pipelineSearch.trim() : undefined,
+          reg_numbers: regNumbers && regNumbers.length > 0 ? regNumbers : undefined,
+          skip_contact_crawler: !enableImpressum
         }),
         credentials: "include"
       });
       if (resp.ok) {
         const data = await resp.json();
         setPipelineStatus(data);
-        setLogs(prev => prev + `\n[System] Predefined execution triggered successfully: ${source} (Limit: ${pipelineLimit}, Fresh: ${pipelineFresh ? "Yes" : "No"})\n`);
+        setLogs(prev => prev + `\n[System] Predefined execution triggered successfully: ${source} (Limit: ${pipelineLimit}, Fresh: ${pipelineFresh ? "Yes" : "No"}, Impressum: ${enableImpressum ? "Yes" : "No"})\n`);
       } else {
         const errorData = await resp.json();
         alert(`Failed to trigger: ${errorData.detail || "Unknown error"}`);
@@ -500,11 +708,81 @@ export default function App() {
     }
   };
 
+
   const formatCurrency = (val: number) => {
     if (val >= 1000000) return `£${(val / 1000000).toFixed(1)}M`;
     if (val >= 1000) return `£${(val / 1000).toFixed(0)}k`;
     return `£${val}`;
   };
+
+  if (initialLoading) {
+    return (
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100vh",
+        width: "100vw",
+        background: "var(--bg-main, #0f111a)",
+        color: "var(--text-main, #ffffff)",
+        fontFamily: "'Inter', sans-serif",
+        gap: "24px"
+      }}>
+        {/* Modern glowing spinner */}
+        <div style={{
+          position: "relative",
+          width: "64px",
+          height: "64px",
+        }}>
+          <div style={{
+            boxSizing: "border-box",
+            display: "block",
+            position: "absolute",
+            width: "64px",
+            height: "64px",
+            border: "6px solid var(--accent-sunny, #ffbb00)",
+            borderRadius: "50%",
+            animation: "spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite",
+            borderColor: "var(--accent-sunny, #ffbb00) transparent transparent transparent"
+          }} />
+          <div style={{
+            boxSizing: "border-box",
+            display: "block",
+            position: "absolute",
+            width: "64px",
+            height: "64px",
+            border: "6px solid rgba(255, 187, 0, 0.1)",
+            borderRadius: "50%"
+          }} />
+        </div>
+        
+        {/* Loading text */}
+        <div style={{
+          fontSize: "18px",
+          fontWeight: "600",
+          letterSpacing: "0.5px",
+          color: "var(--text-main, #ffffff)",
+          animation: "pulse 2s infinite"
+        }}>
+          Connecting to Foundation Intelligence...
+        </div>
+        
+        {/* Style injection for spin & pulse keyframes */}
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -513,26 +791,26 @@ export default function App() {
         <div>
           <div className="sidebar-logo">
             <Activity size={24} />
-            <span>CharityHub</span>
+            <span>Netlight x TUM</span>
             {!isBffOnline && <span style={{ fontSize: "10px", color: "var(--nl-sunny)", background: "var(--nl-sunny-glow)", padding: "2px 6px", borderRadius: "4px" }}>Offline</span>}
           </div>
-          
+
           <nav className="sidebar-nav">
-            <button 
+            <button
               className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
               onClick={() => setActiveTab("overview")}
             >
               <TrendingUp size={18} />
               <span>Overview</span>
             </button>
-            <button 
+            <button
               className={`nav-item ${activeTab === "directory" ? "active" : ""}`}
               onClick={() => setActiveTab("directory")}
             >
               <Building2 size={18} />
               <span>Charities Directory</span>
             </button>
-            <button 
+            <button
               className={`nav-item ${activeTab === "admin" ? "active" : ""}`}
               onClick={() => setActiveTab("admin")}
             >
@@ -541,7 +819,7 @@ export default function App() {
             </button>
           </nav>
         </div>
-        
+
         <div className="sidebar-footer">
           <div className="user-profile">
             <div className="user-avatar">NL</div>
@@ -561,20 +839,15 @@ export default function App() {
       <main className="main-content">
         <header className="header-bar">
           <h1 className="header-title">
-            {activeTab === "overview" && "Financial Overview Dashboard"}
+            {activeTab === "overview" && "Foundation Intelligence Platform"}
             {activeTab === "directory" && "Charities Registry Directory"}
             {activeTab === "admin" && "Administrative Pipeline Monitor"}
           </h1>
-          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-            <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-              Amplify Social Impact Data
-            </span>
-          </div>
         </header>
 
         {/* Dynamic Pages */}
         <div className="page-container">
-          
+
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <div className="flex-col-gap">
@@ -587,7 +860,7 @@ export default function App() {
                     <span className="kpi-value">{stats.total_charities}</span>
                   </div>
                 </div>
-                
+
                 <div className="glass-card kpi-card">
                   <div className="kpi-icon accent-sunny"><DollarSign size={24} /></div>
                   <div className="kpi-value-container">
@@ -621,10 +894,10 @@ export default function App() {
                   <div style={{ display: "flex", flexGrow: "1", position: "relative", justifyContent: "center", alignItems: "center" }}>
                     {/* SVG outline of the UK */}
                     <svg viewBox="0 0 400 500" style={{ height: "350px", width: "100%", opacity: 0.85 }}>
-                      <path 
-                        d="M150,100 L160,80 L180,60 L200,80 L220,110 L240,130 L220,150 L200,160 L180,180 L170,220 L190,260 L180,280 L160,300 L150,330 L160,360 L180,380 L190,420 L160,430 L140,410 L120,380 L100,360 L80,350 L70,320 L100,300 L120,290 L110,240 L130,220 L140,180 L130,160 L140,130 Z" 
-                        fill="var(--nl-ash-dark)" 
-                        stroke="var(--border-glass)" 
+                      <path
+                        d="M150,100 L160,80 L180,60 L200,80 L220,110 L240,130 L220,150 L200,160 L180,180 L170,220 L190,260 L180,280 L160,300 L150,330 L160,360 L180,380 L190,420 L160,430 L140,410 L120,380 L100,360 L80,350 L70,320 L100,300 L120,290 L110,240 L130,220 L140,180 L130,160 L140,130 Z"
+                        fill="var(--nl-ash-dark)"
+                        stroke="var(--border-glass)"
                         strokeWidth="1.5"
                       />
                       {/* Pulse indicators on active regions */}
@@ -637,26 +910,26 @@ export default function App() {
                         else if (reg.region.includes("South East")) { x = 210; y = 405; }
                         else if (reg.region.includes("Scotland")) { x = 170; y = 140; }
                         else if (reg.region.includes("Wales")) { x = 130; y = 340; }
-                        
+
                         const size = Math.max(12, Math.min(30, reg.total_amount_eur / 5000000));
-                        
+
                         return (
                           <g key={idx} cursor="pointer" onClick={() => setSelectedRegion(reg.region)}>
-                            <circle 
-                              cx={x} 
-                              cy={y} 
-                              r={size} 
-                              fill="var(--nl-unicorn-glow)" 
-                              stroke="var(--nl-unicorn)" 
+                            <circle
+                              cx={x}
+                              cy={y}
+                              r={size}
+                              fill="var(--nl-unicorn-glow)"
+                              stroke="var(--nl-unicorn)"
                               strokeWidth="2"
                             />
-                            <circle 
-                              cx={x} 
-                              cy={y} 
-                              r={size + 4} 
-                              fill="none" 
-                              stroke="var(--nl-unicorn)" 
-                              strokeWidth="1" 
+                            <circle
+                              cx={x}
+                              cy={y}
+                              r={size + 4}
+                              fill="none"
+                              stroke="var(--nl-unicorn)"
+                              strokeWidth="1"
                               opacity="0.35"
                               className="pulse-ring"
                             />
@@ -667,7 +940,7 @@ export default function App() {
                         );
                       })}
                     </svg>
-                    
+
                     <div style={{ position: "absolute", bottom: "10px", left: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
                         <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--nl-unicorn)", display: "inline-block" }}></span>
@@ -685,12 +958,12 @@ export default function App() {
                       <AreaChart data={MOCK_TRENDS_DATA}>
                         <defs>
                           <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="colorExpenditure" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2} />
+                            <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
@@ -732,15 +1005,15 @@ export default function App() {
                   <SlidersHorizontal size={16} />
                   Filters
                 </h3>
-                
+
                 <div className="filter-group" style={{ marginTop: "12px" }}>
                   <span className="filter-label">Search Name</span>
                   <div style={{ position: "relative" }}>
                     <Search size={14} style={{ position: "absolute", left: "10px", top: "12px", color: "var(--text-muted)" }} />
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Charity name..." 
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Charity name..."
                       style={{ paddingLeft: "32px" }}
                       value={searchTerm}
                       onChange={(e) => { setSearchTerm(e.target.value); fetchCharities(); }}
@@ -750,57 +1023,158 @@ export default function App() {
 
                 <div className="filter-group" style={{ marginTop: "12px" }}>
                   <span className="filter-label">Thematic Sector</span>
-                  <select 
-                    className="form-input"
-                    value={selectedTag}
-                    onChange={(e) => setSelectedTag(e.target.value)}
-                  >
-                    <option value="">All Sectors</option>
-                    <option value="Social/Human Services">Social Services</option>
-                    <option value="Environment/Climate">Climate & Environment</option>
-                    <option value="Youth/Children Development">Children & Youth</option>
-                    <option value="Food, Agriculture & Nutrition">Food & Nutrition</option>
-                    <option value="tech-enablement">Tech Enablement</option>
-                  </select>
+                  <div style={{
+                    maxHeight: "150px",
+                    overflowY: "auto",
+                    border: "1px solid var(--border-glass)",
+                    borderRadius: "6px",
+                    padding: "8px",
+                    backgroundColor: "rgba(0, 0, 0, 0.15)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
+                  }}>
+                    {SECTORS.map((sec) => (
+                      <label key={sec.value} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTags.includes(sec.value)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTags([...selectedTags, sec.value]);
+                            } else {
+                              setSelectedTags(selectedTags.filter(t => t !== sec.value));
+                            }
+                          }}
+                          style={{ cursor: "pointer", accentColor: "var(--nl-unicorn)" }}
+                        />
+                        <span>{sec.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="filter-group" style={{ marginTop: "12px" }}>
-                  <span className="filter-label">Geographic Region</span>
-                  <select 
-                    className="form-input"
-                    value={selectedRegion}
-                    onChange={(e) => setSelectedRegion(e.target.value)}
-                  >
-                    <option value="">All Regions</option>
-                    <option value="London">London</option>
-                    <option value="South East">South East</option>
-                    <option value="North West">North West</option>
-                    <option value="West Midlands">West Midlands</option>
-                    <option value="South West">South West</option>
-                    <option value="Scotland">Scotland</option>
-                    <option value="Wales">Wales</option>
-                    <option value="Northern Ireland">Northern Ireland</option>
-                  </select>
+                  <span className="filter-label">Foundation Location</span>
+                  <div style={{
+                    maxHeight: "130px",
+                    overflowY: "auto",
+                    border: "1px solid var(--border-glass)",
+                    borderRadius: "6px",
+                    padding: "8px",
+                    backgroundColor: "rgba(0, 0, 0, 0.15)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
+                  }}>
+                    {REGIONS.map((reg) => (
+                      <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFoundationRegions.includes(reg)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedFoundationRegions([...selectedFoundationRegions, reg]);
+                            } else {
+                              setSelectedFoundationRegions(selectedFoundationRegions.filter(r => r !== reg));
+                            }
+                          }}
+                          style={{ cursor: "pointer", accentColor: "var(--nl-unicorn)" }}
+                        />
+                        <span>{reg}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="filter-group" style={{ marginTop: "12px" }}>
-                  <span className="filter-label">Size (Annual Giving)</span>
-                  <select 
-                    className="form-input"
-                    value={selectedSize}
-                    onChange={(e) => setSelectedSize(e.target.value)}
-                  >
-                    <option value="">All Sizes</option>
-                    <option value="small">Small (&lt; €1M)</option>
-                    <option value="medium">Medium (€1M - €10M)</option>
-                    <option value="large">Large (&gt; €10M)</option>
-                  </select>
+                  <span className="filter-label">Donation Destination</span>
+                  <div style={{
+                    maxHeight: "130px",
+                    overflowY: "auto",
+                    border: "1px solid var(--border-glass)",
+                    borderRadius: "6px",
+                    padding: "8px",
+                    backgroundColor: "rgba(0, 0, 0, 0.15)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
+                  }}>
+                    {REGIONS.map((reg) => (
+                      <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRecipientRegions.includes(reg)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedRecipientRegions([...selectedRecipientRegions, reg]);
+                            } else {
+                              setSelectedRecipientRegions(selectedRecipientRegions.filter(r => r !== reg));
+                            }
+                          }}
+                          style={{ cursor: "pointer", accentColor: "var(--nl-unicorn)" }}
+                        />
+                        <span>{reg}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
-                <button 
-                  className="btn btn-secondary" 
+                <div className="filter-group" style={{ marginTop: "12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="filter-label" style={{ margin: 0 }}>Min Annual Giving</span>
+                    <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--nl-unicorn)" }}>
+                      {ANNUAL_GIVING_LABELS[annualGivingIndex]}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max={ANNUAL_GIVING_STEPS.length - 1}
+                    value={annualGivingIndex}
+                    onChange={(e) => setAnnualGivingIndex(parseInt(e.target.value))}
+                    style={{
+                      width: "100%",
+                      accentColor: "var(--nl-unicorn)",
+                      cursor: "pointer",
+                      marginTop: "4px"
+                    }}
+                  />
+                </div>
+
+                <div className="filter-group" style={{ marginTop: "12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="filter-label" style={{ margin: 0 }}>Min Avg Grant Size</span>
+                    <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--nl-unicorn)" }}>
+                      {AVG_GRANT_SIZE_LABELS[avgGrantSizeIndex]}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max={AVG_GRANT_SIZE_STEPS.length - 1}
+                    value={avgGrantSizeIndex}
+                    onChange={(e) => setAvgGrantSizeIndex(parseInt(e.target.value))}
+                    style={{
+                      width: "100%",
+                      accentColor: "var(--nl-unicorn)",
+                      cursor: "pointer",
+                      marginTop: "4px"
+                    }}
+                  />
+                </div>
+
+                <button
+                  className="btn btn-secondary"
                   style={{ marginTop: "16px" }}
-                  onClick={() => { setSearchTerm(""); setSelectedTag(""); setSelectedRegion(""); setSelectedSize(""); }}
+                  onClick={() => {
+                    setSearchTerm("");
+                    setSelectedTags([]);
+                    setSelectedFoundationRegions([]);
+                    setSelectedRecipientRegions([]);
+                    setAnnualGivingIndex(0);
+                    setAvgGrantSizeIndex(0);
+                  }}
                 >
                   Reset Filters
                 </button>
@@ -813,8 +1187,8 @@ export default function App() {
                 ) : (
                   <div className="charity-grid">
                     {charities.map((ch, idx) => (
-                      <div 
-                        key={idx} 
+                      <div
+                        key={idx}
                         className="glass-card charity-card"
                         onClick={() => setSelectedCharity(ch)}
                       >
@@ -845,77 +1219,101 @@ export default function App() {
                 <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Predefined Pipeline Controls</h3>
                   <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
-                    Safely trigger the execution of scraping, crawling, or database reload operations. 
+                    Safely trigger the execution of scraping, crawling, or database reload operations.
                     These predefined modes run asynchronously and log metrics to protect against rate limits.
                   </p>
-                  
+
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: "12px" }}>
-                      <button 
-                        className="btn btn-primary" 
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <button
+                        className="btn btn-primary"
                         style={{ flexGrow: "1" }}
                         disabled={isTriggering || pipelineStatus.status === "running"}
                         onClick={() => triggerPipeline("full_run")}
                       >
                         <Play size={16} />
-                        Trigger Full Run
-                      </button>
-                      <button 
-                        className="btn btn-secondary" 
-                        style={{ flexGrow: "1" }}
-                        disabled={isTriggering || pipelineStatus.status === "running"}
-                        onClick={() => triggerPipeline("quick_consolidate")}
-                      >
-                        <Database size={16} />
-                        Quick Consolidate
+                        Trigger Pipeline
                       </button>
                     </div>
 
-                    <div style={{ display: "flex", gap: "12px" }}>
-                      <button 
-                        className="btn btn-secondary" 
-                        style={{ flexGrow: "1" }}
-                        disabled={isTriggering || pipelineStatus.status === "running"}
-                        onClick={() => triggerPipeline("refresh_charities")}
-                      >
-                        <Activity size={16} />
-                        Scrape Charity Seeds
-                      </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "12px", borderTop: "1px solid var(--border-glass)", paddingTop: "16px" }}>
                       
-                      <button 
-                        className="btn btn-secondary" 
-                        style={{ flexGrow: "1" }}
-                        disabled={isTriggering || pipelineStatus.status === "running"}
-                        onClick={() => triggerPipeline("refresh_grants")}
-                      >
-                        <Sparkles size={16} />
-                        Scrape 360Giving Seeds
-                      </button>
-                    </div>
-
-                    <div style={{ display: "flex", gap: "16px", marginTop: "12px", borderTop: "1px solid var(--border-glass)", paddingTop: "16px" }}>
-                      <div className="filter-group" style={{ flex: 1 }}>
-                        <span className="filter-label">Scraping Limit (Foundations)</span>
-                        <input 
-                          type="number" 
-                          className="form-input" 
-                          value={pipelineLimit} 
-                          onChange={(e) => setPipelineLimit(parseInt(e.target.value) || 20)}
-                          min="1"
-                          max="200"
-                        />
-                      </div>
-                      <div className="filter-group" style={{ flex: 1, justifyContent: "center" }}>
-                        <label className="checkbox-label" style={{ marginTop: "20px" }}>
-                          <input 
-                            type="checkbox" 
-                            className="checkbox-input" 
-                            checked={pipelineFresh} 
-                            onChange={(e) => setPipelineFresh(e.target.checked)}
+                      {/* Limit & Impressum Scraper */}
+                      <div style={{ display: "flex", gap: "16px" }}>
+                        <div className="filter-group" style={{ flex: 1 }}>
+                          <span className="filter-label">Scraping Limit (Foundations)</span>
+                          <input
+                            type="number"
+                            className="form-input"
+                            value={pipelineLimit}
+                            onChange={(e) => setPipelineLimit(Math.min(100, Math.max(1, parseInt(e.target.value) || 20)))}
+                            min="1"
+                            max="100"
                           />
-                          Fresh Run (From Scratch)
-                        </label>
+                          <span style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                            Maximum limit is 100
+                          </span>
+                        </div>
+                        
+                        <div className="filter-group" style={{ flex: 1, justifyContent: "center" }}>
+                          <label className="checkbox-label" style={{ marginTop: "20px" }}>
+                            <input
+                              type="checkbox"
+                              className="checkbox-input"
+                              checked={enableImpressum}
+                              onChange={(e) => setEnableImpressum(e.target.checked)}
+                            />
+                            Run Impressum Scraper (Standard)
+                          </label>
+                        </div>
                       </div>
+
+                      {/* Search term & Forced IDs */}
+                      <div style={{ display: "flex", gap: "16px" }}>
+                        <div className="filter-group" style={{ flex: 1 }}>
+                          <span className="filter-label">Search Term / Name Search</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. foundation"
+                            value={pipelineSearch}
+                            onChange={(e) => setPipelineSearch(e.target.value)}
+                          />
+                          <span style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                            Force-scrapes charities by name search
+                          </span>
+                        </div>
+
+                        <div className="filter-group" style={{ flex: 1 }}>
+                          <span className="filter-label">Specific Charity IDs (comma-separated)</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. 219907, 283322"
+                            value={pipelineIds}
+                            onChange={(e) => setPipelineIds(e.target.value)}
+                          />
+                          <span style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                            Force-scrapes specific charity numbers
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Fresh run flag */}
+                      <div style={{ display: "flex", gap: "16px" }}>
+                        <div className="filter-group" style={{ flex: 1 }}>
+                          <label className="checkbox-label">
+                            <input
+                              type="checkbox"
+                              className="checkbox-input"
+                              checked={pipelineFresh}
+                              onChange={(e) => setPipelineFresh(e.target.checked)}
+                            />
+                            Fresh Run (From Scratch)
+                          </label>
+                        </div>
+                      </div>
+
                     </div>
                   </div>
                 </div>
@@ -923,7 +1321,7 @@ export default function App() {
                 {/* Status Indicator Panel */}
                 <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Pipeline Execution Status</h3>
-                  
+
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "var(--text-secondary)" }}>Pipeline State:</span>
@@ -957,9 +1355,9 @@ export default function App() {
                 <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
                   Understand how information flows from upstream APIs into the central consolidated database. Each step depends on the previous to yield rich, linked dashboards.
                 </p>
-                
+
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "24px", justifyContent: "space-between", alignItems: "center", marginTop: "12px", padding: "16px", backgroundColor: "rgba(0,0,0,0.02)", borderRadius: "8px" }}>
-                  
+
                   {/* Step 1 */}
                   <div style={{ flex: "1 1 200px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: "3px solid var(--primary-color)", paddingLeft: "12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1057,7 +1455,7 @@ export default function App() {
                 <span className="charity-card-id">#{selectedCharity.registered_charity_number}</span>
                 <h2 style={{ fontSize: "22px", fontWeight: "700", marginTop: "4px" }}>{selectedCharity.charity_name}</h2>
               </div>
-              <button 
+              <button
                 className="btn btn-secondary"
                 style={{ padding: "6px 12px" }}
                 onClick={() => { setSelectedCharity(null); setSankeyData(null); }}
@@ -1184,7 +1582,7 @@ export default function App() {
                 <div style={{ width: "100%", height: "200px", padding: "10px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={[...selectedCharityDetail.financial_history].sort((a: any, b: any) => 
+                      data={[...selectedCharityDetail.financial_history].sort((a: any, b: any) =>
                         new Date(a.financial_period_end_date || "").getTime() - new Date(b.financial_period_end_date || "").getTime()
                       ).map((h: any) => ({
                         year: h.financial_period_end_date ? new Date(h.financial_period_end_date).getFullYear().toString() : "N/A",
@@ -1195,12 +1593,12 @@ export default function App() {
                     >
                       <defs>
                         <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="year" fontSize={11} tickLine={false} />
@@ -1213,6 +1611,69 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* Recent News Summarizer Section */}
+            <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-secondary)", margin: 0 }}>AI News Research & Summaries</h3>
+                <button
+                  className={`btn ${newsLoading ? "btn-secondary" : "btn-primary"}`}
+                  onClick={() => fetchFoundationNews(selectedCharity.charity_name)}
+                  disabled={newsLoading}
+                  style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 16px", fontSize: "13px" }}
+                >
+                  {newsLoading ? (
+                    <>
+                      <span className="spinner-mini"></span>
+                      Researching News...
+                    </>
+                  ) : (
+                    <>
+                      <Newspaper size={16} />
+                      Fetch Latest News Summary
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {newsLoading && (
+                <div style={{ padding: "24px", textAlign: "center", color: "var(--text-secondary)", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                  <div className="spinner"></div>
+                  <span style={{ fontSize: "13px", fontWeight: "500" }}>Scraping RSS feeds, downloading news articles, and generating Claude summary...</span>
+                </div>
+              )}
+
+              {newsError && (
+                <div style={{ padding: "16px", color: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: "var(--radius-md)", border: "1px solid rgba(239, 68, 68, 0.2)", fontSize: "13px" }}>
+                  <strong>News Error:</strong> {newsError}
+                </div>
+              )}
+
+              {newsSummary && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
+                  <div style={{ color: "var(--text-primary)" }}>
+                    {renderMarkdown(newsSummary.summary)}
+                  </div>
+                  {newsSummary.sources && newsSummary.sources.length > 0 && (
+                    <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "12px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: "8px" }}>Sources Cited:</span>
+                      <ul style={{ margin: 0, paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {newsSummary.sources.map((src: any, idx: number) => (
+                          <li key={idx} style={{ fontSize: "12px" }}>
+                            <a href={src.link} target="_blank" rel="noopener noreferrer" style={{ color: "var(--nl-unicorn)", textDecoration: "underline" }}>
+                              {src.title}
+                            </a>
+                            <span style={{ color: "var(--text-secondary)", marginLeft: "6px" }}>
+                              ({src.source} • {new Date(src.published).toLocaleDateString()})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Individual Grants Transaction Table */}
             <div>

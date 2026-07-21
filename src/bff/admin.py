@@ -3,7 +3,7 @@ import json
 import subprocess
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from typing import Optional
+from typing import Optional, List
 from bff.auth import get_current_user_token
 from bff.schemas import PipelineStatus, PipelineTrigger
 from bff.utils.logging import logger
@@ -64,7 +64,14 @@ def write_status(status: str, source: str, error: Optional[str] = None):
     except Exception as e:
         logger.error(f"Failed to write pipeline status: {e}")
 
-def run_pipeline_task(mode: str, limit: Optional[int] = None, fresh: bool = False):
+def run_pipeline_task(
+    mode: str,
+    limit: Optional[int] = None,
+    fresh: bool = False,
+    search_term: Optional[str] = None,
+    reg_numbers: Optional[List[int]] = None,
+    skip_contact_crawler: bool = False
+):
     """Orchestrates pipeline execution as a background thread task."""
     write_status(status="running", source=mode)
     
@@ -75,40 +82,46 @@ def run_pipeline_task(mode: str, limit: Optional[int] = None, fresh: bool = Fals
         python_bin = "python"
         
     commands = []
+    
+    # Helper to build scraper commands with shared args
+    def build_scraper_cmd(scraper_source):
+        cmd = [python_bin, "src/pipelines/run_pipeline.py", "--source", scraper_source]
+        if limit:
+            cmd += ["--limit", str(limit)]
+        if fresh:
+            cmd += ["--fresh"]
+        return cmd
+
+    # Helper to build consolidate command
+    def build_consolidate_cmd():
+        cmd = [python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate"]
+        if skip_contact_crawler:
+            cmd += ["--skip-contact-crawler"]
+        return cmd
+
     if mode == "quick_consolidate":
-        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
+        commands.append(build_consolidate_cmd())
     elif mode == "refresh_charities":
-        cmd = [python_bin, "src/pipelines/run_pipeline.py", "--source", "register_of_charities"]
-        if limit:
-            cmd += ["--limit", str(limit)]
-        if fresh:
-            cmd += ["--fresh"]
+        cmd = build_scraper_cmd("register_of_charities")
+        if search_term:
+            cmd += ["--search", search_term]
+        if reg_numbers:
+            cmd += ["--reg-numbers"] + [str(n) for n in reg_numbers]
         commands.append(cmd)
-        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
+        commands.append(build_consolidate_cmd())
     elif mode == "refresh_grants":
-        cmd = [python_bin, "src/pipelines/run_pipeline.py", "--source", "360giving"]
-        if limit:
-            cmd += ["--limit", str(limit)]
-        if fresh:
-            cmd += ["--fresh"]
+        cmd = build_scraper_cmd("360giving")
         commands.append(cmd)
-        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
+        commands.append(build_consolidate_cmd())
     elif mode == "full_run":
-        cmd_cc = [python_bin, "src/pipelines/run_pipeline.py", "--source", "register_of_charities"]
-        if limit:
-            cmd_cc += ["--limit", str(limit)]
-        if fresh:
-            cmd_cc += ["--fresh"]
-        commands.append(cmd_cc)
-        
-        cmd_ts = [python_bin, "src/pipelines/run_pipeline.py", "--source", "360giving"]
-        if limit:
-            cmd_ts += ["--limit", str(limit)]
-        if fresh:
-            cmd_ts += ["--fresh"]
-        commands.append(cmd_ts)
-        
-        commands.append([python_bin, "src/pipelines/run_pipeline.py", "--source", "consolidate", "--skip-contact-crawler"])
+        cmd = build_scraper_cmd("full_run")
+        if search_term:
+            cmd += ["--search", search_term]
+        if reg_numbers:
+            cmd += ["--reg-numbers"] + [str(n) for n in reg_numbers]
+        if skip_contact_crawler:
+            cmd += ["--skip-contact-crawler"]
+        commands.append(cmd)
         
     try:
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
@@ -160,7 +173,15 @@ async def trigger_pipeline(
             detail=f"Unsupported execution mode: {payload.source}"
         )
         
-    background_tasks.add_task(run_pipeline_task, payload.source, payload.limit, payload.fresh or False)
+    background_tasks.add_task(
+        run_pipeline_task,
+        payload.source,
+        payload.limit,
+        payload.fresh or False,
+        payload.search_term,
+        payload.reg_numbers,
+        payload.skip_contact_crawler or False
+    )
     
     return {
         "status": "running",
@@ -169,6 +190,7 @@ async def trigger_pipeline(
         "last_run_source": payload.source,
         "error": None
     }
+
 
 
 @router.get("/pipeline/logs")

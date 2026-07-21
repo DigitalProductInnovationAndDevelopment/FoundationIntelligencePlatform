@@ -17,6 +17,11 @@ async def list_charities(
     tag: Optional[str] = None,
     region: Optional[str] = None,
     size: Optional[str] = None,
+    tags: Optional[str] = None,
+    foundation_regions: Optional[str] = None,
+    funding_regions: Optional[str] = None,
+    min_annual_giving: Optional[float] = None,
+    min_avg_grant_size: Optional[float] = None,
     skip: int = 0,
     limit: int = 20,
     repo: CharityRepository = Depends(get_charity_repository)
@@ -26,12 +31,22 @@ async def list_charities(
     thematic tag, geographic focus region, or annual giving size.
     Requires a valid session cookie/token.
     """
+    # Parse comma-separated strings to list of strings
+    tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    foundation_regions_list = [r.strip() for r in foundation_regions.split(",") if r.strip()] if foundation_regions else None
+    funding_regions_list = [r.strip() for r in funding_regions.split(",") if r.strip()] if funding_regions else None
+
     return await repo.get_all(
         search=search, 
         reg_status=reg_status, 
         tag=tag, 
         region=region, 
         size=size,
+        tags=tags_list,
+        foundation_regions=foundation_regions_list,
+        funding_regions=funding_regions_list,
+        min_annual_giving=min_annual_giving,
+        min_avg_grant_size=min_avg_grant_size,
         skip=skip, 
         limit=limit
     )

@@ -348,6 +348,11 @@ class TestBFF(unittest.TestCase):
                 tag="Education",
                 region="Europe",
                 size=None,
+                tags=None,
+                foundation_regions=None,
+                funding_regions=None,
+                min_annual_giving=None,
+                min_avg_grant_size=None,
                 skip=0,
                 limit=20
             )
@@ -371,6 +376,11 @@ class TestBFF(unittest.TestCase):
                 tag=None,
                 region=None,
                 size="medium",
+                tags=None,
+                foundation_regions=None,
+                funding_regions=None,
+                min_annual_giving=None,
+                min_avg_grant_size=None,
                 skip=0,
                 limit=20
             )
@@ -439,7 +449,7 @@ class TestBFF(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
-            mock_run_task.assert_called_once_with("quick_consolidate", None, False)
+            mock_run_task.assert_called_once_with("quick_consolidate", None, False, None, None, False)
 
     @patch("bff.admin.run_pipeline_task")
     def test_trigger_pipeline_full_run_success(self, mock_run_task):
@@ -457,7 +467,7 @@ class TestBFF(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
-            mock_run_task.assert_called_once_with("full_run", 10, True)
+            mock_run_task.assert_called_once_with("full_run", 10, True, None, None, False)
 
     def test_get_pipeline_logs_success(self):
         login_resp = self.client.post(
@@ -655,6 +665,32 @@ class TestAdminPipelineExtra(unittest.TestCase):
         from bff.admin import write_status
         with patch("builtins.open", side_effect=IOError("ReadOnly")):
             write_status("success", "quick_consolidate")
+
+    def test_news_summary_endpoint(self):
+        from bff.news import Article
+        mock_articles = [
+            Article(
+                title="Netlight Open Source",
+                link="http://netlight.com/news1",
+                source="Netlight News",
+                published="2026-07-20",
+                text="Foundations news detail",
+                note="Article content"
+            )
+        ]
+        with patch("bff.news.fetch_news_entries", return_value=mock_articles):
+            with patch("bff.news.enrich_articles", return_value=mock_articles):
+                with patch("bff.news.summarize_with_claude", return_value="This is a summary."):
+                    response = self.client.get(
+                        "/api/news/Netlight%20Foundation/summary",
+                        cookies={"session_id": self.session_cookie}
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    json_data = response.json()
+                    self.assertEqual(json_data["foundation"], "Netlight Foundation")
+                    self.assertEqual(json_data["summary"], "This is a summary.")
+                    self.assertEqual(len(json_data["sources"]), 1)
+                    self.assertEqual(json_data["sources"][0]["title"], "Netlight Open Source")
 
 
 if __name__ == "__main__":
