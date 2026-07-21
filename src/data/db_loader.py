@@ -88,6 +88,69 @@ def create_tables(conn):
         conn.rollback()
         raise e
 
+def insert_charities(conn, charities_list):
+    """Inserts or replaces charity profiles in the charities table."""
+    cursor = conn.cursor()
+    for c in charities_list:
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO charities (
+                charity_id, name, type, website, email, address, city, state, country,
+                latitude, longitude, annual_income, annual_expenditure, thematic_focus,
+                geographic_focus, raw_cc_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                c["charity_id"],
+                c["name"],
+                c.get("type"),
+                c.get("website"),
+                c.get("email"),
+                c.get("address"),
+                c.get("city"),
+                c.get("state"),
+                c.get("country"),
+                c.get("latitude"),
+                c.get("longitude"),
+                c.get("annual_income"),
+                c.get("annual_expenditure"),
+                c.get("thematic_focus"),
+                c.get("geographic_focus"),
+                json.dumps(c.get("raw_cc_data", {}))
+            )
+        )
+    conn.commit()
+
+def insert_grants(conn, grants_list):
+    """Inserts or replaces grant details in the grants table."""
+    cursor = conn.cursor()
+    for g in grants_list:
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO grants (
+                grant_id, funding_charity_id, recipient_name, recipient_charity_id,
+                amount_eur, currency, description, date, recipient_latitude,
+                recipient_longitude, recipient_region, tags, geographic_focus
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                g["grant_id"],
+                g["funding_charity_id"],
+                g["recipient_name"],
+                g.get("recipient_charity_id"),
+                g.get("amount_eur"),
+                g.get("currency"),
+                g.get("description"),
+                g.get("date"),
+                g.get("recipient_latitude"),
+                g.get("recipient_longitude"),
+                g.get("recipient_region"),
+                g.get("tags"),
+                g.get("geographic_focus")
+            )
+        )
+    conn.commit()
+
 def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path):
     """Load JSON Lines records from raw files into SQLite database."""
     cursor = conn.cursor()

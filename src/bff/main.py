@@ -6,6 +6,7 @@ from bff.auth import router as auth_router
 from bff.charity import router as charity_router
 from bff.proxy import router as proxy_router
 from bff.admin import router as admin_router
+from bff.news import router as news_router
 from bff.utils.logging import logger
 
 app = FastAPI(
@@ -66,6 +67,7 @@ app.include_router(auth_router)
 app.include_router(charity_router)
 app.include_router(proxy_router)
 app.include_router(admin_router)
+app.include_router(news_router)
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
