@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
+from data.db_loader import validate_database
 
 class CharityRepository(ABC):
     """
@@ -609,8 +610,10 @@ class SQLiteCharityRepository(CharityRepository):
 
 
 def get_charity_repository() -> CharityRepository:
-    """Dependency provider for the CharityRepository. Prefers SQLite if DB exists, falls back to JSON."""
-    if os.path.exists(DB_PATH):
+    """Prefer a structurally valid SQLite DB and otherwise fall back safely to JSON."""
+    is_valid, reason = validate_database(DB_PATH)
+    if is_valid:
         return SQLiteCharityRepository()
-    else:
-        return JSONCharityRepository()
+    if os.path.exists(DB_PATH):
+        logger.warning(f"Ignoring unusable SQLite database at {DB_PATH}: {reason}")
+    return JSONCharityRepository()

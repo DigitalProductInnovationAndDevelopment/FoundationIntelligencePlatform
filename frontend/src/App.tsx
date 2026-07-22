@@ -3,12 +3,10 @@ import {
   Building2,
   TrendingUp,
   Activity,
-  Database,
   LogOut,
   Search,
   SlidersHorizontal,
   Terminal,
-  Sparkles,
   ArrowRight,
   TrendingDown,
   DollarSign,
@@ -281,6 +279,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isBffOnline, setIsBffOnline] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
 
   // Admin & pipeline states
@@ -311,6 +311,13 @@ export default function App() {
     fetchCharities();
     fetchMapData();
   }, [selectedTags, selectedFoundationRegions, selectedRecipientRegions, annualGivingIndex, avgGrantSizeIndex]);
+
+  useEffect(() => {
+    const debounce = window.setTimeout(() => {
+      fetchCharities();
+    }, 350);
+    return () => window.clearTimeout(debounce);
+  }, [searchTerm]);
 
   useEffect(() => {
     if (selectedCharity) {
@@ -359,12 +366,15 @@ export default function App() {
         credentials: "include"
       });
       if (resp.ok) {
+        setAuthError(null);
         setIsBffOnline(true);
         console.log("Logged in to BFF successfully.");
         return true;
       }
+      setAuthError("The backend is reachable, but automatic demo authentication failed.");
     } catch (e) {
       console.error("Auto login failed", e);
+      setAuthError("The backend is reachable, but automatic demo authentication failed.");
     }
     return false;
   };
@@ -378,6 +388,7 @@ export default function App() {
         const loggedIn = await autoLogin();
         if (loggedIn) {
           setIsBffOnline(true);
+          setApiError(null);
           // Load initial live dataset
           await Promise.all([
             fetchStats(true),
@@ -389,9 +400,11 @@ export default function App() {
         }
       }
       setIsBffOnline(false);
+      setApiError("Backend unavailable. Values marked as illustrative are local prototype data.");
       console.warn("BFF offline. Falling back to mock dataset.");
     } catch {
       setIsBffOnline(false);
+      setApiError("Backend unavailable. Values marked as illustrative are local prototype data.");
       console.warn("BFF offline. Falling back to mock dataset.");
     } finally {
       setInitialLoading(false);
@@ -406,9 +419,12 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setStats(data);
+      } else {
+        setApiError(`Statistics request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch stats", e);
+      setApiError("Statistics are temporarily unavailable.");
     }
   };
 
@@ -458,9 +474,13 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setCharities(data);
+        setApiError(null);
+      } else {
+        setApiError(`Directory request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch charities", e);
+      setApiError("The organization directory is temporarily unavailable.");
     } finally {
       setLoading(false);
     }
@@ -497,9 +517,12 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setSelectedCharityDetail(data);
+      } else {
+        setApiError(`Organization detail request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch charity details", e);
+      setApiError("Organization details are temporarily unavailable.");
     }
   };
 
@@ -549,9 +572,12 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setMapData(data);
+      } else {
+        setApiError(`Map-data request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch map metrics", e);
+      setApiError("Map data is temporarily unavailable.");
     }
   };
 
@@ -847,6 +873,16 @@ export default function App() {
 
         {/* Dynamic Pages */}
         <div className="page-container">
+          {(authError || apiError) && (
+            <div className="data-notice data-notice-error" role="status">
+              {authError || apiError}
+            </div>
+          )}
+          {!isBffOnline && (
+            <div className="data-notice data-notice-warning" role="status">
+              Illustrative prototype mode — displayed values are local examples, not live source data.
+            </div>
+          )}
 
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
@@ -914,7 +950,7 @@ export default function App() {
                         const size = Math.max(12, Math.min(30, reg.total_amount_eur / 5000000));
 
                         return (
-                          <g key={idx} cursor="pointer" onClick={() => setSelectedRegion(reg.region)}>
+                          <g key={idx}>
                             <circle
                               cx={x}
                               cy={y}
@@ -1016,7 +1052,7 @@ export default function App() {
                       placeholder="Charity name..."
                       style={{ paddingLeft: "32px" }}
                       value={searchTerm}
-                      onChange={(e) => { setSearchTerm(e.target.value); fetchCharities(); }}
+                      onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
                 </div>
@@ -1205,6 +1241,11 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                    {charities.length === 0 && (
+                      <div className="glass-card" style={{ gridColumn: "1 / -1", textAlign: "center", color: "var(--text-secondary)" }}>
+                        No organizations match the current filters.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

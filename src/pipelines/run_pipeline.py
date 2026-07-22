@@ -305,20 +305,24 @@ def run_pipeline(args):
         logger.info(f"SQLite database successfully loaded at: {db_file}")
 
     elif source == "full_run":
-        # 1. Initialize SQLite Database & retrieve completed list
-        conn = db_loader.create_connection(db_file)
+        # 1. Work against a staging database so a failed run cannot damage the active DB.
+        active_db_valid, validation_reason = db_loader.validate_database(db_file)
+        if os.path.exists(db_file) and not active_db_valid:
+            logger.warning(f"Existing database will not be reused: {validation_reason}")
+        staging_db_file, conn = db_loader.create_staging_database(
+            db_file,
+            preserve_existing=active_db_valid and not args.fresh,
+        )
         completed_numbers = set()
         
         if args.fresh:
-            logger.info("Fresh flag set. Dropping and re-creating database tables...")
-            db_loader.create_tables(conn)
+            logger.info("Fresh flag set. Using a clean, fully initialized staging database...")
         else:
-            # Query existing charity_ids from DB
+            # The staging helper always creates the schema, including on a first run.
             if conn:
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charities';")
-                    if cursor.fetchone():
+                    if active_db_valid:
+                        cursor = conn.cursor()
                         cursor.execute("SELECT charity_id FROM charities;")
                         completed_numbers = {int(row[0]) for row in cursor.fetchall()}
                         logger.info(f"Loaded {len(completed_numbers)} completed charity numbers from SQLite database cache.")
@@ -378,6 +382,7 @@ def run_pipeline(args):
             logger.info("No foundations to process.")
             if conn:
                 conn.close()
+            db_loader.publish_staging_database(staging_db_file, db_file)
             return
             
         logger.info(f"Found {len(target_tuples)} target foundations to process.")
@@ -460,6 +465,10 @@ def run_pipeline(args):
                     insert_grants(conn, grants_list)
                 except Exception as e:
                     logger.error(f"Failed to write to database for charity {reg_no}: {e}")
+                    conn.close()
+                    if os.path.exists(staging_db_file):
+                        os.unlink(staging_db_file)
+                    raise RuntimeError(f"Database insertion failed for charity {reg_no}") from e
                     
             # Step F: Update raw cache files in background to preserve sync
             for rec in cc_records:
@@ -477,6 +486,7 @@ def run_pipeline(args):
         if conn:
             conn.close()
             logger.info("Database connection closed.")
+        db_loader.publish_staging_database(staging_db_file, db_file)
 
     else:
         logger.error(f"Unsupported pipeline source: {source}")

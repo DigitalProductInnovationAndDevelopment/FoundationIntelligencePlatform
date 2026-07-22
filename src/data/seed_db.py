@@ -153,7 +153,7 @@ def main():
         sys.exit(1)
 
     try:
-        db_loader.create_tables(conn)
+        db_loader.create_tables(conn, reset=True)
         
         # Check if actual preprocessed jsonl files exist
         if os.path.exists(charities_jsonl) and os.path.exists(grants_jsonl):
