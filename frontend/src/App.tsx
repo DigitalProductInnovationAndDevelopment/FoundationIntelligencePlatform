@@ -27,7 +27,7 @@ import {
 } from "recharts";
 
 // Configuration for API requests
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 // Interface definitions
 interface Charity {
@@ -48,20 +48,47 @@ interface KPIStats {
   removed_charities: number;
   average_income: number;
   average_expenditure: number;
+  total_grants?: number | null;
+  data_mode?: string;
+  source?: string[];
 }
 
 interface GrantMapItem {
-  region: string;
-  total_amount_eur: number;
-  grants_count: number;
+  region_or_country_code: string | null;
+  region_or_country_name: string;
+  grant_count: number;
+  total_amount: number;
+  currency: string;
+}
+
+interface DataMetadata {
+  data_mode: string;
+  source: string[];
+  record_count: number;
+  coverage?: number | null;
+  limitations: string[];
+}
+
+interface GrantMapResponse {
+  status: string;
+  geographic_dimension: string;
+  items: GrantMapItem[];
+  known_geography_count: number;
+  unknown_geography_count: number;
+  coverage_percentage: number;
+  currencies: string[];
+  minimum_coverage_threshold: number;
+  metadata: DataMetadata;
 }
 
 interface GrantDetail {
   grant_id: string;
   funding_charity_id: number | null;
+  funding_name: string | null;
   recipient_name: string;
   recipient_charity_id: number | null;
-  amount_eur: number;
+  amount: number | null;
+  amount_eur: number | null;
   currency: string;
   description: string;
   date: string;
@@ -80,8 +107,11 @@ interface SankeyLink {
 }
 
 interface SankeyData {
+  status: string;
   nodes: SankeyNode[];
   links: SankeyLink[];
+  currency: string | null;
+  excludedCount: number;
 }
 
 interface PipelineStatus {
@@ -119,13 +149,22 @@ const MOCK_CHARITIES: Charity[] = [
   { registered_charity_number: 1160558, suffix: 0, link: "#", charity_name: "Great Ormond Street Hospital Charity", reg_status: "R", reporting_status: "Registered", removal_reason: null, latest_income: 98000000, latest_expenditure: 91000000 }
 ];
 
-const MOCK_MAP: GrantMapItem[] = [
-  { region: "London", total_amount_eur: 120500000, grants_count: 512 },
-  { region: "North West", total_amount_eur: 42100000, grants_count: 188 },
-  { region: "South East", total_amount_eur: 65800000, grants_count: 244 },
-  { region: "Scotland", total_amount_eur: 31000000, grants_count: 98 },
-  { region: "Wales", total_amount_eur: 5200000, grants_count: 42 }
-];
+const EMPTY_MAP: GrantMapResponse = {
+  status: "data_unavailable",
+  geographic_dimension: "beneficiary_location",
+  items: [],
+  known_geography_count: 0,
+  unknown_geography_count: 0,
+  coverage_percentage: 0,
+  currencies: [],
+  minimum_coverage_threshold: 0.30,
+  metadata: {
+    data_mode: "unavailable",
+    source: [],
+    record_count: 0,
+    limitations: ["The transaction geography endpoint has not been loaded."],
+  },
+};
 
 const MOCK_THEMATIC_DATA = [
   { name: "Poverty relief", amount: 145 },
@@ -258,10 +297,11 @@ export default function App() {
   // Data states
   const [stats, setStats] = useState<KPIStats>(MOCK_STATS);
   const [charities, setCharities] = useState<Charity[]>(MOCK_CHARITIES);
-  const [mapData, setMapData] = useState<GrantMapItem[]>(MOCK_MAP);
+  const [mapData, setMapData] = useState<GrantMapResponse>(EMPTY_MAP);
   const [selectedCharity, setSelectedCharity] = useState<Charity | null>(null);
   const [selectedCharityDetail, setSelectedCharityDetail] = useState<any>(null);
   const [charityGrants, setCharityGrants] = useState<GrantDetail[]>([]);
+  const [grantStatus, setGrantStatus] = useState("data_unavailable");
   const [sankeyData, setSankeyData] = useState<SankeyData | null>(null);
 
   // News summarizer states
@@ -566,72 +606,58 @@ export default function App() {
 
   const fetchMapData = async (forceOnline?: boolean) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
-    if (!isOnline) return;
+    if (!isOnline) {
+      setMapData(EMPTY_MAP);
+      return;
+    }
     try {
       const resp = await fetch(`${API_BASE}/api/charities/grants/map`, { credentials: "include" });
       if (resp.ok) {
-        const data = await resp.json();
+        const data: GrantMapResponse = await resp.json();
         setMapData(data);
       } else {
         setApiError(`Map-data request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch map metrics", e);
+      setMapData(EMPTY_MAP);
       setApiError("Map data is temporarily unavailable.");
     }
   };
 
   const fetchCharityGrants = async (id: number) => {
     if (!isBffOnline) {
-      // Mock grants made / received
-      setCharityGrants([
-        {
-          grant_id: "360G-SEED-01",
-          funding_charity_id: 326568,
-          recipient_name: "Oxfam GB",
-          recipient_charity_id: 202918,
-          amount_eur: 250000.0,
-          currency: "GBP",
-          description: "Capacity building and disaster preparedness program support.",
-          date: "2024-04-12",
-          recipient_region: "Oxford",
-          tags: ["Humanitarian & Disaster Relief", "Socio-economic Development, Poverty"]
-        }
-      ]);
+      setCharityGrants([]);
+      setGrantStatus("transaction_data_unavailable");
       return;
     }
     try {
       const resp = await fetch(`${API_BASE}/api/charities/${id}/grants`, { credentials: "include" });
       if (resp.ok) {
         const data = await resp.json();
-        setCharityGrants(data);
+        setCharityGrants(data.grants || []);
+        setGrantStatus(data.status || "data_unavailable");
+      } else {
+        setCharityGrants([]);
+        setGrantStatus("request_failed");
+        setApiError(`Grant transaction request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch grants", e);
+      setCharityGrants([]);
+      setGrantStatus("request_failed");
+      setApiError("Grant transactions are temporarily unavailable.");
     }
   };
 
   const fetchSankeyData = async (id: number) => {
     if (!isBffOnline) {
-      // Static mock layout
       setSankeyData({
-        nodes: [
-          { name: "Grants Received" },
-          { name: "Other Income" },
-          { name: "Oxfam GB" },
-          { name: "Total Expenditure" },
-          { name: "Reserves Surplus" },
-          { name: "Grants Made" },
-          { name: "Operating Expenses" }
-        ],
-        links: [
-          { source: 0, target: 2, value: 20000000 },
-          { source: 1, target: 2, value: 310000000 },
-          { source: 2, target: 3, value: 300000000 },
-          { source: 2, target: 4, value: 30000000 },
-          { source: 3, target: 5, value: 80000000 },
-          { source: 3, target: 6, value: 220000000 }
-        ]
+        status: "transaction_data_unavailable",
+        nodes: [],
+        links: [],
+        currency: null,
+        excludedCount: 0,
       });
       return;
     }
@@ -650,12 +676,20 @@ export default function App() {
         }));
 
         setSankeyData({
+          status: data.status,
           nodes: data.nodes.map((n: any) => ({ name: n.label })),
-          links: formattedLinks
+          links: formattedLinks,
+          currency: data.metadata?.selected_currency || null,
+          excludedCount: data.metadata?.excluded_grant_count || 0,
         });
+      } else {
+        setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
+        setApiError(`Sankey request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch sankey metrics", e);
+      setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
+      setApiError("Grant-flow data is temporarily unavailable.");
     }
   };
 
@@ -735,10 +769,19 @@ export default function App() {
   };
 
 
-  const formatCurrency = (val: number) => {
-    if (val >= 1000000) return `£${(val / 1000000).toFixed(1)}M`;
-    if (val >= 1000) return `£${(val / 1000).toFixed(0)}k`;
-    return `£${val}`;
+  const formatCurrency = (val: number | null | undefined, currency = "GBP") => {
+    if (val === null || val === undefined || !Number.isFinite(val)) return "Unavailable";
+    const compact = Math.abs(val) >= 1000;
+    try {
+      return new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency,
+        notation: compact ? "compact" : "standard",
+        maximumFractionDigits: compact ? 1 : 0,
+      }).format(val);
+    } catch {
+      return `${currency} ${val.toLocaleString("en-GB")}`;
+    }
   };
 
   if (initialLoading) {
@@ -883,6 +926,11 @@ export default function App() {
               Illustrative prototype mode — displayed values are local examples, not live source data.
             </div>
           )}
+          {isBffOnline && (
+            <div className="data-notice" role="status">
+              Cached source data · {(stats.source || ["Charity Commission", "360Giving"]).join(" · ")}
+            </div>
+          )}
 
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
@@ -917,78 +965,49 @@ export default function App() {
                   <div className="kpi-icon accent-sunny"><Activity size={24} /></div>
                   <div className="kpi-value-container">
                     <span className="kpi-label">Grants Monitored</span>
-                    <span className="kpi-value">2,576</span>
+                    <span className="kpi-value">{stats.total_grants ?? "Unavailable"}</span>
                   </div>
                 </div>
               </div>
 
               {/* Map and Thematic allocations */}
               <div className="grid-cols-1-2">
-                {/* SVG Visual Map Outline (Replacement for Leaflet pins error) */}
                 <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px", minHeight: "450px" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: "600" }}>UK Regional Funding Map</h3>
-                  <div style={{ display: "flex", flexGrow: "1", position: "relative", justifyContent: "center", alignItems: "center" }}>
-                    {/* SVG outline of the UK */}
-                    <svg viewBox="0 0 400 500" style={{ height: "350px", width: "100%", opacity: 0.85 }}>
-                      <path
-                        d="M150,100 L160,80 L180,60 L200,80 L220,110 L240,130 L220,150 L200,160 L180,180 L170,220 L190,260 L180,280 L160,300 L150,330 L160,360 L180,380 L190,420 L160,430 L140,410 L120,380 L100,360 L80,350 L70,320 L100,300 L120,290 L110,240 L130,220 L140,180 L130,160 L140,130 Z"
-                        fill="var(--nl-ash-dark)"
-                        stroke="var(--border-glass)"
-                        strokeWidth="1.5"
-                      />
-                      {/* Pulse indicators on active regions */}
-                      {mapData.map((reg, idx) => {
-                        // Approximate coordinate offsets
-                        let x = 180;
-                        let y = 350;
-                        if (reg.region.includes("London")) { x = 200; y = 390; }
-                        else if (reg.region.includes("North West")) { x = 160; y = 290; }
-                        else if (reg.region.includes("South East")) { x = 210; y = 405; }
-                        else if (reg.region.includes("Scotland")) { x = 170; y = 140; }
-                        else if (reg.region.includes("Wales")) { x = 130; y = 340; }
-
-                        const size = Math.max(12, Math.min(30, reg.total_amount_eur / 5000000));
-
-                        return (
-                          <g key={idx}>
-                            <circle
-                              cx={x}
-                              cy={y}
-                              r={size}
-                              fill="var(--nl-unicorn-glow)"
-                              stroke="var(--nl-unicorn)"
-                              strokeWidth="2"
-                            />
-                            <circle
-                              cx={x}
-                              cy={y}
-                              r={size + 4}
-                              fill="none"
-                              stroke="var(--nl-unicorn)"
-                              strokeWidth="1"
-                              opacity="0.35"
-                              className="pulse-ring"
-                            />
-                            <text x={x} y={y - size - 4} fill="var(--text-primary)" fontSize="10" textAnchor="middle" fontWeight="bold">
-                              {reg.region}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
-
-                    <div style={{ position: "absolute", bottom: "10px", left: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--nl-unicorn)", display: "inline-block" }}></span>
-                        <span>Seeded Funding Node</span>
-                      </div>
-                    </div>
+                  <div>
+                    <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>Grant beneficiary geography</h3>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                      Derived from source-provided 360Giving beneficiary locations · {mapData.coverage_percentage}% coverage
+                    </span>
                   </div>
+                  {mapData.status === "available" && mapData.items.length > 0 ? (
+                    <div style={{ width: "100%", height: "340px" }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={mapData.items} layout="vertical" margin={{ left: 28, right: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                          <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(value, mapData.items[0]?.currency)} />
+                          <YAxis type="category" width={110} dataKey="region_or_country_name" stroke="var(--text-muted)" fontSize={11} />
+                          <Tooltip formatter={(value) => formatCurrency(Number(value), mapData.items[0]?.currency)} contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
+                          <Bar dataKey="total_amount" name="Source grant amount" fill="var(--nl-unicorn)" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="data-notice data-notice-warning" style={{ margin: "auto 0" }}>
+                      {mapData.status === "low_coverage"
+                        ? `Low geographic coverage (${mapData.coverage_percentage}%). The aggregation is withheld below the ${Math.round(mapData.minimum_coverage_threshold * 100)}% prototype threshold.`
+                        : mapData.status === "mixed_currency_requires_filter"
+                          ? `Multiple currencies (${mapData.currencies.join(", ")}) are present. Select a currency before comparing amounts.`
+                          : "Beneficiary-location transaction data is unavailable."}
+                    </div>
+                  )}
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    Known: {mapData.known_geography_count} · Unknown or ambiguous: {mapData.unknown_geography_count}. Headquarters are not used as beneficiary locations.
+                  </span>
                 </div>
 
                 {/* Thematic Recharts Area Chart */}
                 <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Monthly Funding Trends</h3>
+                  <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Monthly Funding Trends <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>· Illustrative prototype data</span></h3>
                   <div style={{ width: "100%", height: "350px" }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={MOCK_TRENDS_DATA}>
@@ -1016,7 +1035,7 @@ export default function App() {
 
               {/* Bar Charts for projects */}
               <div className="glass-card">
-                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "20px" }}>Thematic Allocations (Share of Seed Funding)</h3>
+                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "20px" }}>Thematic Allocations <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>· Illustrative prototype data</span></h3>
                 <div style={{ width: "100%", height: "240px" }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={MOCK_THEMATIC_DATA}>
@@ -1548,9 +1567,13 @@ export default function App() {
               </div>
             )}
 
-            {/* Inflow vs Outflow Sankey Flow Widget */}
+            {/* Real grant-relationship Sankey */}
             <div>
-              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "12px", color: "var(--text-secondary)" }}>Balanced Inflow & Outflow Sankey Flow</h3>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Relationships</h3>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
+                Derived from stored 360Giving donor → recipient transactions{(sankeyData?.currency) ? ` · ${sankeyData.currency}` : ""}
+                {(sankeyData?.excludedCount || 0) > 0 ? ` · ${sankeyData?.excludedCount} records excluded` : ""}
+              </div>
               {sankeyData && sankeyData.nodes.length > 0 ? (
                 <div style={{ width: "100%", height: "300px", padding: "10px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
                   <ResponsiveContainer width="100%" height="100%">
@@ -1593,7 +1616,13 @@ export default function App() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)" }}>Calculating Sankey flows...</div>
+                <div className="data-notice data-notice-warning" style={{ padding: "20px", textAlign: "center" }}>
+                  {sankeyData?.status === "mixed_currency_requires_filter"
+                    ? "Grant flows span multiple currencies; no amounts are combined without a currency filter."
+                    : sankeyData?.status === "request_failed"
+                      ? "Grant-flow data could not be loaded."
+                      : "No observed grant transactions are available for this organization."}
+                </div>
               )}
             </div>
 
@@ -1718,14 +1747,15 @@ export default function App() {
 
             {/* Individual Grants Transaction Table */}
             <div>
-              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "12px", color: "var(--text-secondary)" }}>Recent Grants Transaction Log</h3>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Transactions</h3>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>Cached 360Giving records · source amounts are not converted</div>
               <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto" }}>
                 <table className="custom-table">
                   <thead>
                     <tr>
                       <th>Grant ID</th>
                       <th>Funder / Recipient Name</th>
-                      <th>Amount (EUR)</th>
+                      <th>Source amount</th>
                       <th>Description</th>
                       <th>Date</th>
                     </tr>
@@ -1734,15 +1764,19 @@ export default function App() {
                     {charityGrants.map((gr, idx) => (
                       <tr key={idx}>
                         <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{gr.grant_id}</td>
-                        <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : "Institutional Grant Link"}</td>
-                        <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }}>{formatCurrency(gr.amount_eur)}</td>
+                        <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : (gr.funding_name || "Unknown funder")}</td>
+                        <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }}>{formatCurrency(gr.amount, gr.currency)}</td>
                         <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{gr.description}</td>
                         <td style={{ whiteSpace: "nowrap" }}>{gr.date}</td>
                       </tr>
                     ))}
                     {charityGrants.length === 0 && (
                       <tr>
-                        <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>No grants recorded for this entity.</td>
+                        <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                          {grantStatus === "transaction_data_unavailable"
+                            ? "Transaction data is unavailable in the current data source."
+                            : "No matching observed grant transactions were found. Absence is not proof that no grants exist."}
+                        </td>
                       </tr>
                     )}
                   </tbody>

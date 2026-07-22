@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Optional
 from bff.auth import get_current_user_token
-from bff.schemas import CharityBase, CharityDetail, CharityStats, GrantMapItem, GrantDetail, SankeyData
+from bff.schemas import (
+    CharityBase,
+    CharityDetail,
+    CharityStats,
+    GrantMapResponse,
+    GrantListResponse,
+    GrantNetworkSummary,
+    SankeyData,
+)
 from bff.repositories import CharityRepository, get_charity_repository
 
 router = APIRouter(
@@ -59,14 +67,26 @@ async def get_charity_stats(repo: CharityRepository = Depends(get_charity_reposi
     """
     return await repo.get_stats()
 
-@router.get("/grants/map", response_model=List[GrantMapItem])
-async def get_grants_map(repo: CharityRepository = Depends(get_charity_repository)):
+@router.get("/grants/map", response_model=GrantMapResponse)
+async def get_grants_map(
+    currency: Optional[str] = None,
+    min_coverage: float = 0.30,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
     """
     Returns aggregated grant financial and transaction details grouped by geographic region.
     Used for showing donation distributions on the dashboard map.
     Requires a valid session cookie/token.
     """
-    return await repo.get_grants_map()
+    if min_coverage < 0 or min_coverage > 1:
+        raise HTTPException(status_code=400, detail="min_coverage must be between 0 and 1")
+    return await repo.get_grants_map(currency=currency, min_coverage=min_coverage)
+
+
+@router.get("/grants/summary", response_model=GrantNetworkSummary)
+async def get_grants_summary(repo: CharityRepository = Depends(get_charity_repository)):
+    """Return currency-separated transaction totals and leading organizations."""
+    return await repo.get_grant_summary()
 
 @router.get("/{reg_charity_number}", response_model=CharityDetail)
 async def get_charity_detail(
@@ -86,7 +106,7 @@ async def get_charity_detail(
         )
     return charity
 
-@router.get("/{reg_charity_number}/grants", response_model=List[GrantDetail])
+@router.get("/{reg_charity_number}/grants", response_model=GrantListResponse)
 async def get_charity_grants(
     reg_charity_number: int,
     role: str = "all",
@@ -103,11 +123,15 @@ async def get_charity_grants(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Charity registration number {reg_charity_number} not found."
         )
+    if role.lower() not in {"all", "funder", "recipient"}:
+        raise HTTPException(status_code=400, detail="role must be all, funder, or recipient")
     return await repo.get_grants_for_charity(reg_charity_number, role=role)
 
 @router.get("/{reg_charity_number}/sankey", response_model=SankeyData)
 async def get_charity_sankey(
     reg_charity_number: int,
+    currency: Optional[str] = None,
+    limit: int = 30,
     repo: CharityRepository = Depends(get_charity_repository)
 ):
     """
@@ -121,4 +145,6 @@ async def get_charity_sankey(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Charity registration number {reg_charity_number} not found."
         )
-    return await repo.get_sankey_data(reg_charity_number)
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+    return await repo.get_sankey_data(reg_charity_number, currency=currency, limit=limit)

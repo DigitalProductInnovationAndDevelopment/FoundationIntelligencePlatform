@@ -1,11 +1,42 @@
 import json
 import os
 import sqlite3
+import hashlib
+import re
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
 from data.db_loader import validate_database
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _json_list(value):
+    if isinstance(value, list):
+        return value
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+
+
+def _stable_party_id(role, charity_id, source_id, name, country="", source="360Giving"):
+    if charity_id is not None:
+        return f"organization:{charity_id}"
+    namespace = re.sub(r"[^a-z0-9]+", "", (source or "source").lower()) or "source"
+    if source_id:
+        return f"{namespace}:{role}:{source_id}"
+    normalized = re.sub(r"[^a-z0-9]+", "-", (name or "unnamed").lower()).strip("-")
+    digest_input = f"{source}|{role}|{normalized}|{country}".encode("utf-8")
+    digest = hashlib.sha256(digest_input).hexdigest()[:16]
+    return f"{namespace}:{role}:fallback:{digest}"
 
 class CharityRepository(ABC):
     """
@@ -39,15 +70,23 @@ class CharityRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_grants_map(self) -> List[Dict[str, Any]]:
+    async def get_grants_map(
+        self, currency: Optional[str] = None, min_coverage: float = 0.30
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod
-    async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> List[Dict[str, Any]]:
+    async def get_grant_summary(self) -> Dict[str, Any]:
         pass
 
     @abstractmethod
-    async def get_sankey_data(self, charity_id: int) -> Dict[str, Any]:
+    async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_sankey_data(
+        self, charity_id: int, currency: Optional[str] = None, limit: int = 30
+    ) -> Dict[str, Any]:
         pass
 
 
@@ -254,53 +293,90 @@ class JSONCharityRepository(CharityRepository):
             "active_charities": active,
             "removed_charities": removed,
             "average_income": avg_income,
-            "average_expenditure": avg_exp
+            "average_expenditure": avg_exp,
+            "total_grants": None,
+            "data_mode": "cached_source_without_transactions",
+            "source": ["Charity Commission for England and Wales"],
         }
 
-    async def get_grants_map(self) -> List[Dict[str, Any]]:
-        # Default mock for JSON format
-        return [
-            {"region": "London", "total_amount_eur": 1200000.0, "grants_count": 45},
-            {"region": "North West", "total_amount_eur": 450000.0, "grants_count": 18}
-        ]
-
-    async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> List[Dict[str, Any]]:
-        # Return a simple mock grant structure for testing JSON repo fallback
-        return [
-            {
-                "grant_id": "MOCK-G1",
-                "funding_charity_id": charity_id,
-                "recipient_name": "Test Recipient",
-                "recipient_charity_id": 1002,
-                "amount_eur": 15000.0,
-                "currency": "GBP",
-                "description": "Mock grant for testing JSON fallback",
-                "date": "2025-06-01",
-                "recipient_region": "London",
-                "tags": ["Education"]
-            }
-        ]
-
-    async def get_sankey_data(self, charity_id: int) -> Dict[str, Any]:
-        # Return a simple mock Sankey structure for JSON repo fallback
+    async def get_grants_map(
+        self, currency: Optional[str] = None, min_coverage: float = 0.30
+    ) -> Dict[str, Any]:
         return {
-            "nodes": [
-                {"id": "Grants Received", "label": "Received Grants (360Giving)"},
-                {"id": "Other Income", "label": "Other Income & Public Donations"},
-                {"id": "Charity", "label": "Mock Charity"},
-                {"id": "Expenditure", "label": "Total Expenditure"},
-                {"id": "Surplus", "label": "Added to Reserves"},
-                {"id": "Grants Awarded", "label": "Grants Made (360Giving)"},
-                {"id": "Operating Expenses", "label": "Operating & Other Expenses"}
-            ],
-            "links": [
-                {"source": "Grants Received", "target": "Charity", "value": 15000.0},
-                {"source": "Other Income", "target": "Charity", "value": 85000.0},
-                {"source": "Charity", "target": "Expenditure", "value": 70000.0},
-                {"source": "Charity", "target": "Surplus", "value": 30000.0},
-                {"source": "Expenditure", "target": "Grants Awarded", "value": 20000.0},
-                {"source": "Expenditure", "target": "Operating Expenses", "value": 50000.0}
-            ]
+            "status": "transaction_data_unavailable",
+            "geographic_dimension": "beneficiary_location",
+            "items": [],
+            "known_geography_count": 0,
+            "unknown_geography_count": 0,
+            "coverage_percentage": 0.0,
+            "currencies": [],
+            "minimum_coverage_threshold": min_coverage,
+            "metadata": {
+                "data_mode": "cached_source_without_transactions",
+                "source": ["Charity Commission for England and Wales"],
+                "generated_at": _utc_now(),
+                "record_count": 0,
+                "derivation": "No grant aggregation is available in JSON fallback mode.",
+                "coverage": 0.0,
+                "limitations": ["Build a valid SQLite database to enable transaction geography."],
+            },
+        }
+
+    async def get_grant_summary(self) -> Dict[str, Any]:
+        return {
+            "status": "transaction_data_unavailable",
+            "total_grant_count": 0,
+            "currencies": [],
+            "largest_donors": [],
+            "largest_recipients": [],
+            "metadata": {
+                "data_mode": "cached_source_without_transactions",
+                "source": ["Charity Commission for England and Wales"],
+                "generated_at": _utc_now(),
+                "record_count": 0,
+                "limitations": ["The JSON fallback does not contain normalized grant transactions."],
+            },
+        }
+
+    async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> Dict[str, Any]:
+        return {
+            "status": "transaction_data_unavailable",
+            "organization_id": charity_id,
+            "role": role,
+            "transaction_coverage": "not_loaded",
+            "grant_count": 0,
+            "currencies": [],
+            "grants": [],
+            "metadata": {
+                "data_mode": "cached_source_without_transactions",
+                "source": ["Charity Commission for England and Wales"],
+                "generated_at": _utc_now(),
+                "record_count": 0,
+                "limitations": ["The JSON fallback does not expose 360Giving transactions."],
+            },
+        }
+
+    async def get_sankey_data(
+        self, charity_id: int, currency: Optional[str] = None, limit: int = 30
+    ) -> Dict[str, Any]:
+        return {
+            "status": "transaction_data_unavailable",
+            "nodes": [],
+            "links": [],
+            "metadata": {
+                "source": ["Charity Commission for England and Wales"],
+                "generated_at": _utc_now(),
+                "grant_count": 0,
+                "included_grant_count": 0,
+                "excluded_grant_count": 0,
+                "excluded_reasons": {},
+                "included_value": 0.0,
+                "currencies": [],
+                "selected_currency": currency,
+                "conversion_method": "none",
+                "filters_applied": {"organization_id": charity_id, "limit": limit},
+                "truncation_applied": False,
+            },
         }
 
 
@@ -407,7 +483,7 @@ class SQLiteCharityRepository(CharityRepository):
                 SELECT funding_charity_id 
                 FROM grants 
                 GROUP BY funding_charity_id 
-                HAVING AVG(amount_eur) >= ?
+                HAVING COUNT(DISTINCT currency) = 1 AND AVG(amount) >= ?
             )"""
             params.append(min_avg_grant_size)
             
@@ -465,6 +541,12 @@ class SQLiteCharityRepository(CharityRepository):
         
         cursor.execute("SELECT AVG(annual_expenditure) FROM charities WHERE annual_expenditure IS NOT NULL")
         avg_exp = cursor.fetchone()[0] or 0.0
+
+        cursor.execute("SELECT COUNT(*) FROM grants")
+        total_grants = cursor.fetchone()[0]
+
+        cursor.execute("SELECT DISTINCT source FROM grants WHERE source IS NOT NULL AND source != ''")
+        grant_sources = sorted(row[0] for row in cursor.fetchall())
         
         conn.close()
         return {
@@ -472,37 +554,188 @@ class SQLiteCharityRepository(CharityRepository):
             "active_charities": active,
             "removed_charities": removed,
             "average_income": avg_income,
-            "average_expenditure": avg_exp
+            "average_expenditure": avg_exp,
+            "total_grants": total_grants,
+            "data_mode": "derived_from_cached_source",
+            "source": ["Charity Commission for England and Wales", *grant_sources],
         }
 
-    async def get_grants_map(self) -> List[Dict[str, Any]]:
+    async def get_grants_map(
+        self, currency: Optional[str] = None, min_coverage: float = 0.30
+    ) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT recipient_region, SUM(amount_eur), COUNT(*)
-            FROM grants
-            WHERE recipient_region IS NOT NULL AND recipient_region != ''
-            GROUP BY recipient_region
-        """)
+        cursor.execute("SELECT grant_id, amount, currency, beneficiary_geography FROM grants")
         rows = cursor.fetchall()
         conn.close()
-        
-        results = []
-        for r in rows:
-            results.append({
-                "region": r[0],
-                "total_amount_eur": r[1] or 0.0,
-                "grants_count": r[2]
-            })
-        return results
 
-    async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> List[Dict[str, Any]]:
+        currencies = sorted({str(row[2]).upper() for row in rows if row[2]})
+        selected_currency = currency.upper() if currency else (currencies[0] if len(currencies) == 1 else None)
+        base_metadata = {
+            "data_mode": "derived_from_cached_source",
+            "source": ["360Giving"],
+            "generated_at": _utc_now(),
+            "record_count": len(rows),
+            "derivation": "Aggregated source-provided beneficiary locations; no headquarters inference.",
+            "limitations": [],
+        }
+        if rows and selected_currency is None:
+            base_metadata["limitations"] = [
+                "Multiple currencies are present; select one currency before aggregating amounts."
+            ]
+            return {
+                "status": "mixed_currency_requires_filter",
+                "geographic_dimension": "beneficiary_location",
+                "items": [],
+                "known_geography_count": 0,
+                "unknown_geography_count": len(rows),
+                "coverage_percentage": 0.0,
+                "currencies": currencies,
+                "minimum_coverage_threshold": min_coverage,
+                "metadata": {**base_metadata, "coverage": 0.0},
+            }
+
+        selected_rows = [row for row in rows if not selected_currency or str(row[2]).upper() == selected_currency]
+        known_count = 0
+        aggregates = {}
+        excluded_multiple = 0
+        excluded_amount = 0
+        for _, amount, row_currency, raw_locations in selected_rows:
+            locations = _json_list(raw_locations)
+            unique_locations = {}
+            for location in locations:
+                if not isinstance(location, dict):
+                    continue
+                name = str(location.get("name") or location.get("country") or "").strip()
+                code = str(location.get("countryCode") or "").strip().upper() or None
+                if name.lower() in {"multi", "multiple", "various"}:
+                    continue
+                if name.lower() in {"worldwide", "global", "international"}:
+                    code, name = "GLOBAL", "Worldwide / global scope"
+                if code or name:
+                    unique_locations[(code or name.lower(), name or code)] = (code, name or code)
+            if len(unique_locations) != 1:
+                excluded_multiple += 1
+                continue
+            known_count += 1
+            if amount is None or amount <= 0:
+                excluded_amount += 1
+                continue
+            code, name = next(iter(unique_locations.values()))
+            key = (code, name, str(row_currency).upper())
+            current = aggregates.setdefault(key, {"grant_count": 0, "total_amount": 0.0})
+            current["grant_count"] += 1
+            current["total_amount"] += float(amount)
+
+        total_selected = len(selected_rows)
+        unknown_count = total_selected - known_count
+        coverage = known_count / total_selected if total_selected else 0.0
+        base_metadata["coverage"] = coverage
+        if excluded_multiple:
+            base_metadata["limitations"].append(
+                f"{excluded_multiple} grants lacked one unambiguous source-provided beneficiary location."
+            )
+        if excluded_amount:
+            base_metadata["limitations"].append(
+                f"{excluded_amount} geographically known grants had missing or non-positive amounts."
+            )
+
+        status_value = "available"
+        items = [
+            {
+                "region_or_country_code": code,
+                "region_or_country_name": name,
+                "grant_count": values["grant_count"],
+                "total_amount": round(values["total_amount"], 2),
+                "currency": row_currency,
+            }
+            for (code, name, row_currency), values in aggregates.items()
+        ]
+        items.sort(key=lambda item: item["total_amount"], reverse=True)
+        if not total_selected:
+            status_value = "no_data"
+        elif coverage < min_coverage:
+            status_value = "low_coverage"
+            items = []
+            base_metadata["limitations"].append(
+                "Coverage is below the configured display threshold; aggregation is withheld."
+            )
+
+        return {
+            "status": status_value,
+            "geographic_dimension": "beneficiary_location",
+            "items": items[:30],
+            "known_geography_count": known_count,
+            "unknown_geography_count": unknown_count,
+            "coverage_percentage": round(coverage * 100, 2),
+            "currencies": currencies,
+            "minimum_coverage_threshold": min_coverage,
+            "metadata": base_metadata,
+        }
+
+    async def get_grant_summary(self) -> Dict[str, Any]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM grants")
+        total_count = cursor.fetchone()[0]
+        cursor.execute("SELECT DISTINCT currency FROM grants WHERE currency IS NOT NULL AND currency != ''")
+        currencies = sorted(row[0].upper() for row in cursor.fetchall())
+        cursor.execute("""
+            SELECT funding_charity_id, COALESCE(NULLIF(funding_name, ''), 'Unknown donor'),
+                   currency, SUM(amount), COUNT(*)
+            FROM grants
+            WHERE amount > 0 AND currency IS NOT NULL
+            GROUP BY funding_charity_id, funding_name, currency
+            ORDER BY SUM(amount) DESC LIMIT 10
+        """)
+        donors = [
+            {
+                "organization_id": row[0], "organization_name": row[1],
+                "currency": row[2], "total_amount": round(row[3], 2), "grant_count": row[4]
+            }
+            for row in cursor.fetchall()
+        ]
+        cursor.execute("""
+            SELECT recipient_charity_id, COALESCE(NULLIF(recipient_name, ''), 'Unknown recipient'),
+                   currency, SUM(amount), COUNT(*)
+            FROM grants
+            WHERE amount > 0 AND currency IS NOT NULL
+            GROUP BY recipient_charity_id, recipient_name, currency
+            ORDER BY SUM(amount) DESC LIMIT 10
+        """)
+        recipients = [
+            {
+                "organization_id": row[0], "organization_name": row[1],
+                "currency": row[2], "total_amount": round(row[3], 2), "grant_count": row[4]
+            }
+            for row in cursor.fetchall()
+        ]
+        conn.close()
+        return {
+            "status": "available" if total_count else "no_data",
+            "total_grant_count": total_count,
+            "currencies": currencies,
+            "largest_donors": donors,
+            "largest_recipients": recipients,
+            "metadata": {
+                "data_mode": "derived_from_cached_source",
+                "source": ["360Giving"],
+                "generated_at": _utc_now(),
+                "record_count": total_count,
+                "derivation": "Currency-separated sums of stored source grant amounts.",
+                "limitations": ["Rankings do not combine values across currencies."],
+            },
+        }
+
+    async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
         
         query = """
-            SELECT grant_id, funding_charity_id, recipient_name, recipient_charity_id,
-                   amount_eur, currency, description, date, recipient_region, tags
+            SELECT grant_id, funding_charity_id, funding_name, funding_org_source_id,
+                   recipient_name, recipient_charity_id, recipient_org_source_id,
+                   amount, amount_eur, currency, description, date, recipient_region,
+                   beneficiary_geography, tags, source, source_record_id, source_url
             FROM grants
             WHERE 1=1
         """
@@ -524,89 +757,151 @@ class SQLiteCharityRepository(CharityRepository):
         
         results = []
         for r in rows:
-            tags_list = []
-            if r[9]:
-                try:
-                    tags_list = json.loads(r[9])
-                except Exception:
-                    tags_list = []
             results.append({
                 "grant_id": r[0],
                 "funding_charity_id": r[1],
-                "recipient_name": r[2],
-                "recipient_charity_id": r[3],
-                "amount_eur": r[4],
-                "currency": r[5],
-                "description": r[6],
-                "date": r[7],
-                "recipient_region": r[8],
-                "tags": tags_list
+                "funding_name": r[2],
+                "funding_org_source_id": r[3],
+                "recipient_name": r[4],
+                "recipient_charity_id": r[5],
+                "recipient_org_source_id": r[6],
+                "amount": r[7],
+                "amount_eur": r[8],
+                "currency": r[9] or "UNKNOWN",
+                "description": r[10] or "",
+                "date": r[11] or "",
+                "recipient_region": r[12],
+                "beneficiary_geography": _json_list(r[13]),
+                "tags": _json_list(r[14]),
+                "source": r[15],
+                "source_record_id": r[16],
+                "source_url": r[17],
             })
-        return results
+        currencies = sorted({item["currency"] for item in results})
+        return {
+            "status": "available" if results else "no_transactions_found",
+            "organization_id": charity_id,
+            "role": role_lower if role_lower in {"funder", "recipient"} else "all",
+            "transaction_coverage": "observed_transactions" if results else "no_transactions_found",
+            "grant_count": len(results),
+            "currencies": currencies,
+            "grants": results,
+            "metadata": {
+                "data_mode": "cached_source",
+                "source": ["360Giving"],
+                "generated_at": _utc_now(),
+                "record_count": len(results),
+                "limitations": ["Absence of a transaction does not prove that no grant exists."],
+            },
+        }
 
-    async def get_sankey_data(self, charity_id: int) -> Dict[str, Any]:
+    async def get_sankey_data(
+        self, charity_id: int, currency: Optional[str] = None, limit: int = 30
+    ) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        
-        cursor.execute("SELECT name, annual_income, annual_expenditure FROM charities WHERE charity_id = ?", (charity_id,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            return {"nodes": [], "links": []}
-            
-        charity_name, annual_income, annual_expenditure = row
-        annual_income = annual_income or 0.0
-        annual_expenditure = annual_expenditure or 0.0
-        
-        cursor.execute("SELECT SUM(amount_eur) FROM grants WHERE recipient_charity_id = ?", (charity_id,))
-        sum_received = cursor.fetchone()[0] or 0.0
-        
-        cursor.execute("SELECT SUM(amount_eur) FROM grants WHERE funding_charity_id = ?", (charity_id,))
-        sum_made = cursor.fetchone()[0] or 0.0
-        
+        cursor.execute("""
+            SELECT grant_id, funding_charity_id, funding_name, funding_org_source_id,
+                   recipient_charity_id, recipient_name, recipient_org_source_id,
+                   amount, currency, source
+            FROM grants
+            WHERE funding_charity_id = ? OR recipient_charity_id = ?
+        """, (charity_id, charity_id))
+        rows = cursor.fetchall()
         conn.close()
-        
-        nodes = [
-            {"id": "Grants Received", "label": "Received Grants (360Giving)"},
-            {"id": "Other Income", "label": "Other Income & Public Donations"},
-            {"id": "Charity", "label": charity_name},
-            {"id": "Expenditure", "label": "Total Expenditure"},
-            {"id": "Grants Awarded", "label": "Grants Made (360Giving)"},
-            {"id": "Operating Expenses", "label": "Operating & Other Expenses"}
+
+        currencies = sorted({str(row[8]).upper() for row in rows if row[8]})
+        selected_currency = currency.upper() if currency else (currencies[0] if len(currencies) == 1 else None)
+        excluded_reasons = {}
+        if rows and selected_currency is None:
+            return {
+                "status": "mixed_currency_requires_filter",
+                "nodes": [],
+                "links": [],
+                "metadata": {
+                    "source": ["360Giving"], "generated_at": _utc_now(),
+                    "grant_count": len(rows), "included_grant_count": 0,
+                    "excluded_grant_count": len(rows),
+                    "excluded_reasons": {"mixed_currency_requires_filter": len(rows)},
+                    "included_value": 0.0, "currencies": currencies,
+                    "selected_currency": None, "conversion_method": "none",
+                    "filters_applied": {"organization_id": charity_id, "limit": limit},
+                    "truncation_applied": False,
+                },
+            }
+
+        nodes_by_id = {}
+        aggregated = {}
+        for row in rows:
+            (_, donor_id, donor_name, donor_source_id, recipient_id, recipient_name,
+             recipient_source_id, amount, row_currency, row_source) = row
+            normalized_currency = str(row_currency or "").upper()
+            if selected_currency and normalized_currency != selected_currency:
+                excluded_reasons["currency_filtered"] = excluded_reasons.get("currency_filtered", 0) + 1
+                continue
+            if amount is None:
+                excluded_reasons["missing_amount"] = excluded_reasons.get("missing_amount", 0) + 1
+                continue
+            if amount <= 0:
+                excluded_reasons["non_positive_amount"] = excluded_reasons.get("non_positive_amount", 0) + 1
+                continue
+            source_id = _stable_party_id(
+                "donor", donor_id, donor_source_id, donor_name, source=row_source or "360Giving"
+            )
+            target_id = _stable_party_id(
+                "recipient", recipient_id, recipient_source_id, recipient_name,
+                source=row_source or "360Giving",
+            )
+            if source_id == target_id:
+                excluded_reasons["self_link"] = excluded_reasons.get("self_link", 0) + 1
+                continue
+            nodes_by_id.setdefault(source_id, {
+                "id": source_id, "label": donor_name or "Unnamed donor", "role": "donor"
+            })
+            nodes_by_id.setdefault(target_id, {
+                "id": target_id, "label": recipient_name or "Unnamed recipient", "role": "recipient"
+            })
+            key = (source_id, target_id, normalized_currency)
+            aggregate = aggregated.setdefault(key, {"value": 0.0, "grant_count": 0})
+            aggregate["value"] += float(amount)
+            aggregate["grant_count"] += 1
+
+        links = [
+            {
+                "source": source, "target": target, "currency": row_currency,
+                "value": round(values["value"], 2), "grant_count": values["grant_count"]
+            }
+            for (source, target, row_currency), values in aggregated.items()
         ]
-        
-        links = []
-        
-        actual_rec = min(sum_received, annual_income)
-        other_inc = max(0.0, annual_income - actual_rec)
-        
-        if actual_rec > 0:
-            links.append({"source": "Grants Received", "target": "Charity", "value": round(actual_rec, 2)})
-        if other_inc > 0:
-            links.append({"source": "Other Income", "target": "Charity", "value": round(other_inc, 2)})
-            
-        if annual_income < annual_expenditure:
-            drawdown = annual_expenditure - annual_income
-            nodes.append({"id": "Reserves Drawdown", "label": "Drawdown from Reserves"})
-            links.append({"source": "Reserves Drawdown", "target": "Charity", "value": round(drawdown, 2)})
-            links.append({"source": "Charity", "target": "Expenditure", "value": round(annual_expenditure, 2)})
-        else:
-            surplus = annual_income - annual_expenditure
-            if surplus > 0:
-                nodes.append({"id": "Reserves Surplus", "label": "Added to Reserves"})
-                links.append({"source": "Charity", "target": "Reserves Surplus", "value": round(surplus, 2)})
-            if annual_expenditure > 0:
-                links.append({"source": "Charity", "target": "Expenditure", "value": round(annual_expenditure, 2)})
-                
-        actual_made = min(sum_made, annual_expenditure)
-        operating_exp = max(0.0, annual_expenditure - actual_made)
-        
-        if actual_made > 0:
-            links.append({"source": "Expenditure", "target": "Grants Awarded", "value": round(actual_made, 2)})
-        if operating_exp > 0:
-            links.append({"source": "Expenditure", "target": "Operating Expenses", "value": round(operating_exp, 2)})
-            
-        return {"nodes": nodes, "links": links}
+        links.sort(key=lambda item: item["value"], reverse=True)
+        truncation_applied = len(links) > limit
+        if truncation_applied:
+            removed = links[limit:]
+            excluded_reasons["truncated"] = sum(item["grant_count"] for item in removed)
+            links = links[:limit]
+        retained_node_ids = {item["source"] for item in links} | {item["target"] for item in links}
+        nodes = [nodes_by_id[node_id] for node_id in sorted(retained_node_ids)]
+        retained_grants = sum(item["grant_count"] for item in links)
+        excluded_count = len(rows) - retained_grants
+        return {
+            "status": "available" if links else "no_transactions_found",
+            "nodes": nodes,
+            "links": links,
+            "metadata": {
+                "source": ["360Giving"],
+                "generated_at": _utc_now(),
+                "grant_count": len(rows),
+                "included_grant_count": retained_grants,
+                "excluded_grant_count": excluded_count,
+                "excluded_reasons": excluded_reasons,
+                "included_value": round(sum(item["value"] for item in links), 2),
+                "currencies": currencies,
+                "selected_currency": selected_currency,
+                "conversion_method": "none",
+                "filters_applied": {"organization_id": charity_id, "limit": limit},
+                "truncation_applied": truncation_applied,
+            },
+        }
 
 
 def get_charity_repository() -> CharityRepository:

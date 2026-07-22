@@ -3,6 +3,7 @@ import json
 import re
 import logging
 from urllib.parse import urlparse
+from datetime import datetime, timezone
 
 try:
     from preprocessing.quality import is_informative_value, is_placeholder_value
@@ -528,6 +529,7 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
     """
     import re
     from preprocessing.extract_geo_topic import extract_tags, extract_geo
+    ingestion_timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def parse_charity_number_from_org_id(org_id):
         if not org_id or not isinstance(org_id, str):
@@ -564,26 +566,28 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
         # Funder
         fund_orgs = g_data.get("fundingOrganization")
         fund_org = fund_orgs[0] if isinstance(fund_orgs, list) and fund_orgs else g_data.get("fundingOrg") or {}
-        funding_id = parse_charity_number_from_org_id(fund_org.get("id")) or default_funder_id
+        funding_source_id = fund_org.get("id")
+        funding_id = parse_charity_number_from_org_id(funding_source_id) or default_funder_id
+        funding_name = fund_org.get("name") or "Unknown Donor"
         
         # Recipient
         rec_orgs = g_data.get("recipientOrganization")
         rec_org = rec_orgs[0] if isinstance(rec_orgs, list) and rec_orgs else g_data.get("recipientOrg") or {}
-        recipient_id = parse_charity_number_from_org_id(rec_org.get("id") or rec_org.get("charityNumber")) or default_recipient_id
+        recipient_source_id = rec_org.get("id") or rec_org.get("charityNumber")
+        recipient_id = parse_charity_number_from_org_id(recipient_source_id) or default_recipient_id
         recipient_name = rec_org.get("name") or "Unknown Recipient"
         
         # Financials
         raw_amount = g_data.get("amountAwarded") or g_data.get("amount") or 0.0
         currency = g_data.get("currency") or "GBP"
         try:
-            amount_eur = float(raw_amount)
+            amount = float(raw_amount)
         except (ValueError, TypeError):
-            amount_eur = 0.0
-            
-        if currency.upper() == "GBP":
-            amount_eur *= GBP_TO_EUR_RATE
-        elif currency.upper() == "USD":
-            amount_eur *= 0.92
+            amount = None
+
+        # Preserve the source amount and currency. Only source-EUR values populate
+        # amount_eur; no undocumented exchange rate is applied here.
+        amount_eur = amount if currency.upper() == "EUR" else None
             
         desc = g_data.get("description") or g_data.get("title") or ""
         date_str = g_data.get("awardDate") or g_data.get("date") or ""
@@ -600,19 +604,40 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
             recipient_lng = recipient_loc[1]
             
         region = g_data.get("recipientRegion", {}).get("name") if isinstance(g_data.get("recipientRegion"), dict) else g_data.get("recipientRegion") or ""
+        beneficiary_locations = g_data.get("beneficiaryLocation") or []
+        project_locations = g_data.get("projectLocation") or g_data.get("location") or []
+        programme_areas = [
+            item.get("title")
+            for item in (g_data.get("grantProgramme") or [])
+            if isinstance(item, dict) and item.get("title")
+        ]
+        publisher = g.get("publisher") if isinstance(g.get("publisher"), dict) else {}
+        source_url = g_data.get("dataSource") or publisher.get("self") or ""
         
         return {
             "grant_id": grant_id,
             "funding_charity_id": funding_id,
+            "funding_name": funding_name,
+            "funding_org_source_id": funding_source_id,
             "recipient_name": recipient_name,
             "recipient_charity_id": recipient_id,
+            "recipient_org_source_id": recipient_source_id,
+            "amount": amount,
             "amount_eur": amount_eur,
             "currency": currency,
             "description": desc,
             "date": date_str,
             "recipient_latitude": recipient_lat,
             "recipient_longitude": recipient_lng,
-            "recipient_region": region
+            "recipient_region": region,
+            "beneficiary_geography": json.dumps(beneficiary_locations, ensure_ascii=False),
+            "project_geography": json.dumps(project_locations, ensure_ascii=False),
+            "programme_area_source": json.dumps(programme_areas, ensure_ascii=False),
+            "source": "360Giving",
+            "source_record_id": grant_id,
+            "source_url": source_url,
+            "ingestion_timestamp": ingestion_timestamp,
+            "raw_grant_data": g,
         }
 
     # Process all official Charity Commission records

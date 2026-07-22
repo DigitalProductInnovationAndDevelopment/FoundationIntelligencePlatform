@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("db_loader")
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 REQUIRED_SCHEMA = {
     "charities": {
         "charity_id", "name", "type", "website", "email", "address", "city",
@@ -18,9 +18,12 @@ REQUIRED_SCHEMA = {
         "annual_expenditure", "thematic_focus", "geographic_focus", "raw_cc_data"
     },
     "grants": {
-        "grant_id", "funding_charity_id", "recipient_name", "recipient_charity_id",
+        "grant_id", "funding_charity_id", "funding_name", "funding_org_source_id",
+        "recipient_name", "recipient_charity_id", "recipient_org_source_id", "amount",
         "amount_eur", "currency", "description", "date", "recipient_latitude",
-        "recipient_longitude", "recipient_region", "tags", "geographic_focus"
+        "recipient_longitude", "recipient_region", "beneficiary_geography",
+        "project_geography", "programme_area_source", "tags", "geographic_focus",
+        "source", "source_record_id", "source_url", "ingestion_timestamp", "raw_grant_data"
     },
 }
 
@@ -63,8 +66,12 @@ def create_tables(conn, reset=False):
     CREATE TABLE IF NOT EXISTS grants (
         grant_id TEXT PRIMARY KEY,
         funding_charity_id INTEGER,
+        funding_name TEXT,
+        funding_org_source_id TEXT,
         recipient_name TEXT NOT NULL,
         recipient_charity_id INTEGER,
+        recipient_org_source_id TEXT,
+        amount REAL,
         amount_eur REAL,
         currency TEXT,
         description TEXT,
@@ -72,8 +79,16 @@ def create_tables(conn, reset=False):
         recipient_latitude REAL,
         recipient_longitude REAL,
         recipient_region TEXT,
+        beneficiary_geography TEXT,
+        project_geography TEXT,
+        programme_area_source TEXT,
         tags TEXT,
         geographic_focus TEXT,
+        source TEXT,
+        source_record_id TEXT,
+        source_url TEXT,
+        ingestion_timestamp TEXT,
+        raw_grant_data TEXT,
         FOREIGN KEY (funding_charity_id) REFERENCES charities (charity_id),
         FOREIGN KEY (recipient_charity_id) REFERENCES charities (charity_id)
     );
@@ -235,16 +250,23 @@ def insert_grants(conn, grants_list):
             cursor.execute(
             """
             INSERT OR REPLACE INTO grants (
-                grant_id, funding_charity_id, recipient_name, recipient_charity_id,
-                amount_eur, currency, description, date, recipient_latitude,
-                recipient_longitude, recipient_region, tags, geographic_focus
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                grant_id, funding_charity_id, funding_name, funding_org_source_id,
+                recipient_name, recipient_charity_id, recipient_org_source_id,
+                amount, amount_eur, currency, description, date, recipient_latitude,
+                recipient_longitude, recipient_region, beneficiary_geography,
+                project_geography, programme_area_source, tags, geographic_focus,
+                source, source_record_id, source_url, ingestion_timestamp, raw_grant_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                 g["grant_id"],
                 g["funding_charity_id"],
+                g.get("funding_name"),
+                g.get("funding_org_source_id"),
                 g["recipient_name"],
                 g.get("recipient_charity_id"),
+                g.get("recipient_org_source_id"),
+                g.get("amount"),
                 g.get("amount_eur"),
                 g.get("currency"),
                 g.get("description"),
@@ -252,8 +274,16 @@ def insert_grants(conn, grants_list):
                 g.get("recipient_latitude"),
                 g.get("recipient_longitude"),
                 g.get("recipient_region"),
+                g.get("beneficiary_geography"),
+                g.get("project_geography"),
+                g.get("programme_area_source"),
                 g.get("tags"),
-                g.get("geographic_focus")
+                g.get("geographic_focus"),
+                g.get("source"),
+                g.get("source_record_id"),
+                g.get("source_url"),
+                g.get("ingestion_timestamp"),
+                json.dumps(g.get("raw_grant_data", {}))
                 )
             )
         conn.commit()
@@ -332,16 +362,23 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                     cursor.execute(
                         """
                         INSERT OR REPLACE INTO grants (
-                            grant_id, funding_charity_id, recipient_name, recipient_charity_id,
-                            amount_eur, currency, description, date, recipient_latitude,
-                            recipient_longitude, recipient_region, tags, geographic_focus
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            grant_id, funding_charity_id, funding_name, funding_org_source_id,
+                            recipient_name, recipient_charity_id, recipient_org_source_id,
+                            amount, amount_eur, currency, description, date, recipient_latitude,
+                            recipient_longitude, recipient_region, beneficiary_geography,
+                            project_geography, programme_area_source, tags, geographic_focus,
+                            source, source_record_id, source_url, ingestion_timestamp, raw_grant_data
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             g["grant_id"],
                             g["funding_charity_id"],
+                            g.get("funding_name"),
+                            g.get("funding_org_source_id"),
                             g["recipient_name"],
                             g.get("recipient_charity_id"),
+                            g.get("recipient_org_source_id"),
+                            g.get("amount"),
                             g.get("amount_eur"),
                             g.get("currency"),
                             g.get("description"),
@@ -349,8 +386,16 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                             g.get("recipient_latitude"),
                             g.get("recipient_longitude"),
                             g.get("recipient_region"),
+                            g.get("beneficiary_geography"),
+                            g.get("project_geography"),
+                            g.get("programme_area_source"),
                             g.get("tags"),
-                            g.get("geographic_focus")
+                            g.get("geographic_focus"),
+                            g.get("source"),
+                            g.get("source_record_id"),
+                            g.get("source_url"),
+                            g.get("ingestion_timestamp"),
+                            json.dumps(g.get("raw_grant_data", {}))
                         )
                     )
                     grant_count += 1

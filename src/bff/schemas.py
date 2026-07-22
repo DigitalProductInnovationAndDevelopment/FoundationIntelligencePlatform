@@ -115,23 +115,81 @@ class CharityStats(BaseModel):
     removed_charities: int
     average_income: float
     average_expenditure: float
+    total_grants: Optional[int] = None
+    data_mode: str = "unknown"
+    source: List[str] = []
 
 class GrantMapItem(BaseModel):
-    region: str
-    total_amount_eur: float
-    grants_count: int
+    region_or_country_code: Optional[str] = None
+    region_or_country_name: str
+    grant_count: int
+    total_amount: float
+    currency: str
+
+class DataMetadata(BaseModel):
+    data_mode: str
+    source: List[str] = []
+    generated_at: Optional[str] = None
+    record_count: int = 0
+    derivation: Optional[str] = None
+    coverage: Optional[float] = None
+    limitations: List[str] = []
+
+class GrantMapResponse(BaseModel):
+    status: str
+    geographic_dimension: str
+    items: List[GrantMapItem] = []
+    known_geography_count: int = 0
+    unknown_geography_count: int = 0
+    coverage_percentage: float = 0.0
+    currencies: List[str] = []
+    minimum_coverage_threshold: float = 0.30
+    metadata: DataMetadata
 
 class GrantDetail(BaseModel):
     grant_id: str
     funding_charity_id: Optional[int] = None
+    funding_name: Optional[str] = None
+    funding_org_source_id: Optional[str] = None
     recipient_name: str
     recipient_charity_id: Optional[int] = None
-    amount_eur: float
+    recipient_org_source_id: Optional[str] = None
+    amount: Optional[float] = None
+    amount_eur: Optional[float] = None
     currency: str
     description: str
     date: str
-    recipient_region: str
+    recipient_region: Optional[str] = None
+    beneficiary_geography: List[Any] = []
     tags: List[str] = []
+    source: Optional[str] = None
+    source_record_id: Optional[str] = None
+    source_url: Optional[str] = None
+
+class GrantListResponse(BaseModel):
+    status: str
+    organization_id: int
+    role: str
+    transaction_coverage: str
+    grant_count: int
+    currencies: List[str] = []
+    grants: List[GrantDetail] = []
+    metadata: DataMetadata
+
+class GrantRankingItem(BaseModel):
+    organization_id: Optional[int] = None
+    organization_name: str
+    total_amount: float
+    currency: str
+    grant_count: int
+
+class GrantNetworkSummary(BaseModel):
+    status: str
+    total_grant_count: int
+    currencies: List[str] = []
+    largest_donors: List[GrantRankingItem] = []
+    largest_recipients: List[GrantRankingItem] = []
+    metadata: DataMetadata
 
 class PipelineStatus(BaseModel):
     status: str = Field(..., description="idle, running, success, failed")
@@ -152,15 +210,34 @@ class PipelineTrigger(BaseModel):
 class SankeyNode(BaseModel):
     id: str
     label: str
+    role: Optional[str] = None
 
 class SankeyLink(BaseModel):
     source: str
     target: str
     value: float
+    currency: str
+    grant_count: int
+
+class SankeyMetadata(BaseModel):
+    source: List[str] = []
+    generated_at: str
+    grant_count: int
+    included_grant_count: int
+    excluded_grant_count: int
+    excluded_reasons: Dict[str, int] = {}
+    included_value: float
+    currencies: List[str] = []
+    selected_currency: Optional[str] = None
+    conversion_method: str = "none"
+    filters_applied: Dict[str, Any] = {}
+    truncation_applied: bool = False
 
 class SankeyData(BaseModel):
+    status: str
     nodes: List[SankeyNode]
     links: List[SankeyLink]
+    metadata: SankeyMetadata
 
 # Foundation News Schemas
 class NewsSource(BaseModel):
