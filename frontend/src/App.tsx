@@ -40,6 +40,15 @@ interface Charity {
   removal_reason: string | null;
   latest_income: number;
   latest_expenditure: number;
+  programme_areas_source?: string[];
+  programme_areas_inferred?: string[];
+  geographic_focus_source?: unknown[];
+  geographic_focus_inferred?: string[];
+  headquarters_country?: string | null;
+  headquarters_region?: string | null;
+  programme_area_review_required?: boolean;
+  geography_review_required?: boolean;
+  enrichment_rule_version?: string | null;
 }
 
 interface KPIStats {
@@ -278,7 +287,7 @@ const AVG_GRANT_SIZE_STEPS = [0, 1000, 5000, 10000, 50000, 100000, 250000, 50000
 const AVG_GRANT_SIZE_LABELS = ["£0", "£1k", "£5k", "£10k", "£50k", "£100k", "£250k", "£500k", "£1M"];
 
 const SECTORS = [
-  { value: "Social/Human Services", label: "Social Services" },
+  { value: "Socio-economic Development, Poverty", label: "Poverty & Economic Development" },
   { value: "Environment/Climate", label: "Climate & Environment" },
   { value: "Youth/Children Development", label: "Children & Youth" },
   { value: "Food, Agriculture & Nutrition", label: "Food & Nutrition" },
@@ -286,10 +295,16 @@ const SECTORS = [
   { value: "Sciences & Research", label: "Sciences & Research" },
   { value: "Health", label: "Health" },
   { value: "Arts & Culture", label: "Arts & Culture" },
-  { value: "Humanitarian & Disaster Relief", label: "Humanitarian & Disaster" }
+  { value: "Humanitarian & Disaster Relief", label: "Humanitarian & Disaster" },
+  { value: "Human/Civil Rights", label: "Human & Civil Rights" },
+  { value: "Diversity & Inclusion", label: "Diversity & Inclusion" },
+  { value: "Civil society, Voluntarism & Non-Profit Sector", label: "Civil Society" },
+  { value: "Citizenship, Social Justice & Public Affairs", label: "Citizenship & Public Affairs" },
+  { value: "Peace & Conflict Resolution", label: "Peace & Conflict Resolution" }
 ];
 
-const REGIONS = ["London", "South East", "North West", "West Midlands", "South West", "Scotland", "Wales", "Northern Ireland"];
+const HEADQUARTERS_LOCATIONS = ["United Kingdom", "Germany", "Austria", "Switzerland", "France", "Netherlands", "Denmark", "Norway"];
+const BENEFICIARY_GEOGRAPHIES = ["United Kingdom", "Ghana", "Kenya", "Tanzania", "Uganda", "South Africa", "India", "Worldwide", "Europe (DACH)"];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"overview" | "directory" | "admin">("overview");
@@ -1122,7 +1137,7 @@ export default function App() {
                     flexDirection: "column",
                     gap: "6px"
                   }}>
-                    {REGIONS.map((reg) => (
+                    {HEADQUARTERS_LOCATIONS.map((reg) => (
                       <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
                         <input
                           type="checkbox"
@@ -1143,7 +1158,7 @@ export default function App() {
                 </div>
 
                 <div className="filter-group" style={{ marginTop: "12px" }}>
-                  <span className="filter-label">Donation Destination</span>
+                  <span className="filter-label">Beneficiary Geography</span>
                   <div style={{
                     maxHeight: "130px",
                     overflowY: "auto",
@@ -1155,7 +1170,7 @@ export default function App() {
                     flexDirection: "column",
                     gap: "6px"
                   }}>
-                    {REGIONS.map((reg) => (
+                    {BENEFICIARY_GEOGRAPHIES.map((reg) => (
                       <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
                         <input
                           type="checkbox"
@@ -1251,6 +1266,17 @@ export default function App() {
                           <span className="charity-card-id">#{ch.registered_charity_number}</span>
                           <h3 className="charity-card-name">{ch.charity_name}</h3>
                         </div>
+                        {isBffOnline && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                            {ch.headquarters_country && <span className="status-badge">HQ · {ch.headquarters_country}</span>}
+                            {[...(ch.programme_areas_source || []), ...(ch.programme_areas_inferred || [])].slice(0, 2).map((area) => (
+                              <span className="status-badge" key={area}>{area}</span>
+                            ))}
+                            {(ch.programme_area_review_required || ch.geography_review_required) && (
+                              <span className="status-badge status-warning">Review suggested</span>
+                            )}
+                          </div>
+                        )}
                         <div className="charity-card-meta">
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>LATEST INCOME</span>
@@ -1563,6 +1589,44 @@ export default function App() {
                       selectedCharityDetail.all_details.address_post_code
                     ].filter(Boolean).join(", ") || "Not available"}
                   </span>
+                </div>
+              </div>
+            )}
+
+            {selectedCharityDetail && isBffOnline && (
+              <div className="glass-card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", backgroundColor: "rgba(255,255,255,0.02)" }}>
+                <div>
+                  <span className="kpi-label">Programme areas</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                    {(selectedCharityDetail.programme_areas_source || []).map((area: string) => (
+                      <span className="status-badge" key={`source-${area}`}>{area} · source</span>
+                    ))}
+                    {(selectedCharityDetail.programme_areas_inferred || []).map((area: string) => (
+                      <span className="status-badge" key={`inferred-${area}`}>{area} · rule-inferred</span>
+                    ))}
+                    {!(selectedCharityDetail.programme_areas_source || []).length && !(selectedCharityDetail.programme_areas_inferred || []).length && (
+                      <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>Unavailable</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="kpi-label">Geography</span>
+                  <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Headquarters: {selectedCharityDetail.headquarters_country || "Unavailable"}
+                    {selectedCharityDetail.headquarters_region ? ` · ${selectedCharityDetail.headquarters_region}` : ""}
+                  </div>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Stated/inferred focus: {(selectedCharityDetail.geographic_focus_inferred || []).join(", ") || "Unavailable"}
+                  </div>
+                </div>
+                <div>
+                  <span className="kpi-label">Classification provenance</span>
+                  <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Deterministic rules · {selectedCharityDetail.enrichment_rule_version || "version unavailable"}
+                  </div>
+                  {(selectedCharityDetail.programme_area_review_required || selectedCharityDetail.geography_review_required) && (
+                    <div className="status-badge status-warning" style={{ marginTop: "8px" }}>Low-confidence or ambiguous evidence · review required</div>
+                  )}
                 </div>
               </div>
             )}

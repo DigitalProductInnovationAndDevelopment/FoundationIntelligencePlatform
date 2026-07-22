@@ -6,6 +6,7 @@ import unittest
 
 from bff.repositories import SQLiteCharityRepository, _stable_party_id
 from data.db_loader import create_tables
+from preprocessing.enrichment import normalize_geography_sources
 
 
 class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
@@ -68,8 +69,9 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
                 grant_id, funding_charity_id, funding_name, funding_org_source_id,
                 recipient_name, recipient_charity_id, recipient_org_source_id,
                 amount, currency, description, date, beneficiary_geography,
-                source, source_record_id, source_url, ingestion_timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                beneficiary_geography_normalized, source, source_record_id, source_url,
+                ingestion_timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 grant_id,
@@ -84,6 +86,7 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
                 f"Description for {grant_id}",
                 "2025-01-01",
                 json.dumps(locations or []),
+                json.dumps(normalize_geography_sources(locations or [], "beneficiary_geography")[0]),
                 "360Giving",
                 grant_id,
                 f"https://example.test/grants/{grant_id}",

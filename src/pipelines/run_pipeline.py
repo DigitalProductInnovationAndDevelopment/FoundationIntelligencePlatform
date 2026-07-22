@@ -45,6 +45,7 @@ def parse_charity_number(org_id):
 
 
 from preprocessing.consolidate import consolidate_uk_datasets
+from preprocessing.enrichment import build_enrichment_report
 from preprocessing.extract_impressum import crawl_impressum
 import data.db_loader as db_loader
 from data.db_loader import insert_charities, insert_grants
@@ -298,6 +299,12 @@ def run_pipeline(args):
             for item in grants_list:
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
         logger.info(f"Exported grants table to: {grants_jsonl_path}")
+
+        enrichment_report = build_enrichment_report(charities_list, grants_list)
+        enrichment_report_path = os.path.join(PROJECT_ROOT, "data/preprocessed/enrichment_report.json")
+        with open(enrichment_report_path, "w", encoding="utf-8") as f:
+            json.dump(enrichment_report, f, ensure_ascii=False, indent=2)
+        logger.info(f"Exported enrichment coverage report to: {enrichment_report_path}")
 
         # Step 4: Loading SQLite DB
         logger.info("Step 4: Loading data into SQLite Database...")

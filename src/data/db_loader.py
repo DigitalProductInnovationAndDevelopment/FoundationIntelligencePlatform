@@ -10,12 +10,18 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("db_loader")
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 REQUIRED_SCHEMA = {
     "charities": {
         "charity_id", "name", "type", "website", "email", "address", "city",
         "state", "country", "latitude", "longitude", "annual_income",
-        "annual_expenditure", "thematic_focus", "geographic_focus", "raw_cc_data"
+        "annual_expenditure", "thematic_focus", "geographic_focus", "raw_cc_data",
+        "programme_areas_source", "programme_areas_inferred", "programme_area_scores",
+        "programme_area_method", "programme_area_evidence", "programme_area_review_required",
+        "geographic_focus_source", "geographic_focus_inferred", "headquarters_country",
+        "headquarters_region", "geography_method", "geography_confidence",
+        "geography_evidence", "geography_review_required", "enrichment_rule_version",
+        "enrichment_review_reasons", "insufficient_source_text"
     },
     "grants": {
         "grant_id", "funding_charity_id", "funding_name", "funding_org_source_id",
@@ -23,7 +29,13 @@ REQUIRED_SCHEMA = {
         "amount_eur", "currency", "description", "date", "recipient_latitude",
         "recipient_longitude", "recipient_region", "beneficiary_geography",
         "project_geography", "programme_area_source", "tags", "geographic_focus",
-        "source", "source_record_id", "source_url", "ingestion_timestamp", "raw_grant_data"
+        "source", "source_record_id", "source_url", "ingestion_timestamp", "raw_grant_data",
+        "programme_area_inferred", "programme_area_scores", "programme_area_method",
+        "programme_area_evidence", "programme_area_review_required",
+        "beneficiary_geography_normalized", "geographic_focus_inferred",
+        "geography_method", "geography_confidence", "geography_evidence",
+        "geography_review_required", "enrichment_rule_version", "enrichment_review_reasons",
+        "insufficient_source_text"
     },
 }
 
@@ -58,7 +70,24 @@ def create_tables(conn, reset=False):
         annual_expenditure REAL,
         thematic_focus TEXT,
         geographic_focus TEXT,
-        raw_cc_data TEXT
+        raw_cc_data TEXT,
+        programme_areas_source TEXT,
+        programme_areas_inferred TEXT,
+        programme_area_scores TEXT,
+        programme_area_method TEXT,
+        programme_area_evidence TEXT,
+        programme_area_review_required INTEGER NOT NULL DEFAULT 0,
+        geographic_focus_source TEXT,
+        geographic_focus_inferred TEXT,
+        headquarters_country TEXT,
+        headquarters_region TEXT,
+        geography_method TEXT,
+        geography_confidence REAL,
+        geography_evidence TEXT,
+        geography_review_required INTEGER NOT NULL DEFAULT 0,
+        enrichment_rule_version TEXT,
+        enrichment_review_reasons TEXT,
+        insufficient_source_text INTEGER NOT NULL DEFAULT 0
     );
     """
     
@@ -89,6 +118,20 @@ def create_tables(conn, reset=False):
         source_url TEXT,
         ingestion_timestamp TEXT,
         raw_grant_data TEXT,
+        programme_area_inferred TEXT,
+        programme_area_scores TEXT,
+        programme_area_method TEXT,
+        programme_area_evidence TEXT,
+        programme_area_review_required INTEGER NOT NULL DEFAULT 0,
+        beneficiary_geography_normalized TEXT,
+        geographic_focus_inferred TEXT,
+        geography_method TEXT,
+        geography_confidence REAL,
+        geography_evidence TEXT,
+        geography_review_required INTEGER NOT NULL DEFAULT 0,
+        enrichment_rule_version TEXT,
+        enrichment_review_reasons TEXT,
+        insufficient_source_text INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (funding_charity_id) REFERENCES charities (charity_id),
         FOREIGN KEY (recipient_charity_id) REFERENCES charities (charity_id)
     );
@@ -205,6 +248,15 @@ def publish_staging_database(staging_path, db_file):
     os.replace(staging_path, db_file)
     logger.info(f"Atomically published validated SQLite database at: {db_file}")
 
+
+def _json_value(value, default):
+    """Serialize structured values once while accepting legacy JSON strings."""
+    if value is None:
+        value = default
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
 def insert_charities(conn, charities_list):
     """Inserts or replaces charity profiles in the charities table."""
     cursor = conn.cursor()
@@ -215,8 +267,14 @@ def insert_charities(conn, charities_list):
             INSERT OR REPLACE INTO charities (
                 charity_id, name, type, website, email, address, city, state, country,
                 latitude, longitude, annual_income, annual_expenditure, thematic_focus,
-                geographic_focus, raw_cc_data
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                geographic_focus, raw_cc_data, programme_areas_source,
+                programme_areas_inferred, programme_area_scores, programme_area_method,
+                programme_area_evidence, programme_area_review_required,
+                geographic_focus_source, geographic_focus_inferred, headquarters_country,
+                headquarters_region, geography_method, geography_confidence,
+                geography_evidence, geography_review_required, enrichment_rule_version,
+                enrichment_review_reasons, insufficient_source_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                 c["charity_id"],
@@ -234,7 +292,24 @@ def insert_charities(conn, charities_list):
                 c.get("annual_expenditure"),
                 c.get("thematic_focus"),
                 c.get("geographic_focus"),
-                json.dumps(c.get("raw_cc_data", {}))
+                _json_value(c.get("raw_cc_data"), {}),
+                _json_value(c.get("programme_areas_source"), []),
+                _json_value(c.get("programme_areas_inferred"), []),
+                _json_value(c.get("programme_area_scores"), {}),
+                c.get("programme_area_method"),
+                _json_value(c.get("programme_area_evidence"), []),
+                bool(c.get("programme_area_review_required")),
+                _json_value(c.get("geographic_focus_source"), []),
+                _json_value(c.get("geographic_focus_inferred"), []),
+                c.get("headquarters_country"),
+                c.get("headquarters_region"),
+                c.get("geography_method"),
+                c.get("geography_confidence"),
+                _json_value(c.get("geography_evidence"), []),
+                bool(c.get("geography_review_required")),
+                c.get("enrichment_rule_version"),
+                _json_value(c.get("enrichment_review_reasons"), []),
+                bool(c.get("insufficient_source_text")),
                 )
             )
         conn.commit()
@@ -255,8 +330,14 @@ def insert_grants(conn, grants_list):
                 amount, amount_eur, currency, description, date, recipient_latitude,
                 recipient_longitude, recipient_region, beneficiary_geography,
                 project_geography, programme_area_source, tags, geographic_focus,
-                source, source_record_id, source_url, ingestion_timestamp, raw_grant_data
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source, source_record_id, source_url, ingestion_timestamp, raw_grant_data,
+                programme_area_inferred, programme_area_scores, programme_area_method,
+                programme_area_evidence, programme_area_review_required,
+                beneficiary_geography_normalized, geographic_focus_inferred,
+                geography_method, geography_confidence, geography_evidence,
+                geography_review_required, enrichment_rule_version, enrichment_review_reasons,
+                insufficient_source_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                 g["grant_id"],
@@ -283,7 +364,21 @@ def insert_grants(conn, grants_list):
                 g.get("source_record_id"),
                 g.get("source_url"),
                 g.get("ingestion_timestamp"),
-                json.dumps(g.get("raw_grant_data", {}))
+                _json_value(g.get("raw_grant_data"), {}),
+                _json_value(g.get("programme_area_inferred"), []),
+                _json_value(g.get("programme_area_scores"), {}),
+                g.get("programme_area_method"),
+                _json_value(g.get("programme_area_evidence"), []),
+                bool(g.get("programme_area_review_required")),
+                _json_value(g.get("beneficiary_geography_normalized"), []),
+                _json_value(g.get("geographic_focus_inferred"), []),
+                g.get("geography_method"),
+                g.get("geography_confidence"),
+                _json_value(g.get("geography_evidence"), []),
+                bool(g.get("geography_review_required")),
+                g.get("enrichment_rule_version"),
+                _json_value(g.get("enrichment_review_reasons"), []),
+                bool(g.get("insufficient_source_text")),
                 )
             )
         conn.commit()
@@ -314,8 +409,14 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                         INSERT OR REPLACE INTO charities (
                             charity_id, name, type, website, email, address, city, state, country,
                             latitude, longitude, annual_income, annual_expenditure, thematic_focus,
-                            geographic_focus, raw_cc_data
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            geographic_focus, raw_cc_data, programme_areas_source,
+                            programme_areas_inferred, programme_area_scores, programme_area_method,
+                            programme_area_evidence, programme_area_review_required,
+                            geographic_focus_source, geographic_focus_inferred, headquarters_country,
+                            headquarters_region, geography_method, geography_confidence,
+                            geography_evidence, geography_review_required, enrichment_rule_version,
+                            enrichment_review_reasons, insufficient_source_text
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             c["charity_id"],
@@ -333,7 +434,24 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                             c.get("annual_expenditure"),
                             c.get("thematic_focus"),
                             c.get("geographic_focus"),
-                            json.dumps(c.get("raw_cc_data", {}))
+                            _json_value(c.get("raw_cc_data"), {}),
+                            _json_value(c.get("programme_areas_source"), []),
+                            _json_value(c.get("programme_areas_inferred"), []),
+                            _json_value(c.get("programme_area_scores"), {}),
+                            c.get("programme_area_method"),
+                            _json_value(c.get("programme_area_evidence"), []),
+                            bool(c.get("programme_area_review_required")),
+                            _json_value(c.get("geographic_focus_source"), []),
+                            _json_value(c.get("geographic_focus_inferred"), []),
+                            c.get("headquarters_country"),
+                            c.get("headquarters_region"),
+                            c.get("geography_method"),
+                            c.get("geography_confidence"),
+                            _json_value(c.get("geography_evidence"), []),
+                            bool(c.get("geography_review_required")),
+                            c.get("enrichment_rule_version"),
+                            _json_value(c.get("enrichment_review_reasons"), []),
+                            bool(c.get("insufficient_source_text")),
                         )
                     )
                     charity_count += 1
@@ -367,8 +485,14 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                             amount, amount_eur, currency, description, date, recipient_latitude,
                             recipient_longitude, recipient_region, beneficiary_geography,
                             project_geography, programme_area_source, tags, geographic_focus,
-                            source, source_record_id, source_url, ingestion_timestamp, raw_grant_data
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source, source_record_id, source_url, ingestion_timestamp, raw_grant_data,
+                            programme_area_inferred, programme_area_scores, programme_area_method,
+                            programme_area_evidence, programme_area_review_required,
+                            beneficiary_geography_normalized, geographic_focus_inferred,
+                            geography_method, geography_confidence, geography_evidence,
+                            geography_review_required, enrichment_rule_version, enrichment_review_reasons,
+                            insufficient_source_text
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             g["grant_id"],
@@ -395,7 +519,21 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                             g.get("source_record_id"),
                             g.get("source_url"),
                             g.get("ingestion_timestamp"),
-                            json.dumps(g.get("raw_grant_data", {}))
+                            _json_value(g.get("raw_grant_data"), {}),
+                            _json_value(g.get("programme_area_inferred"), []),
+                            _json_value(g.get("programme_area_scores"), {}),
+                            g.get("programme_area_method"),
+                            _json_value(g.get("programme_area_evidence"), []),
+                            bool(g.get("programme_area_review_required")),
+                            _json_value(g.get("beneficiary_geography_normalized"), []),
+                            _json_value(g.get("geographic_focus_inferred"), []),
+                            g.get("geography_method"),
+                            g.get("geography_confidence"),
+                            _json_value(g.get("geography_evidence"), []),
+                            bool(g.get("geography_review_required")),
+                            g.get("enrichment_rule_version"),
+                            _json_value(g.get("enrichment_review_reasons"), []),
+                            bool(g.get("insufficient_source_text")),
                         )
                     )
                     grant_count += 1

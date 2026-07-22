@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Any
 from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
 from data.db_loader import validate_database
+from preprocessing.enrichment import enrich_organization
 
 
 def _utc_now():
@@ -157,6 +158,9 @@ class JSONCharityRepository(CharityRepository):
     ) -> List[Dict[str, Any]]:
         filtered = self._data
 
+        def enrichment(item):
+            return enrich_organization(item)
+
         # Filter by search string (case-insensitive name search)
         if search:
             search_lower = search.lower()
@@ -175,34 +179,45 @@ class JSONCharityRepository(CharityRepository):
 
         # Filter by tags (multiple choice, match ANY)
         if tags:
-            tags_lower = [t.lower() for t in tags]
+            selected = {t.casefold() for t in tags}
             filtered = [
                 c for c in filtered
-                if any(any(tl in t.get("tag", "").lower() for tl in tags_lower) for t in c.get("tags_focus", []))
+                if selected.intersection({
+                    value.casefold()
+                    for value in (
+                        enrichment(c)["programme_areas_source"]
+                        + enrichment(c)["programme_areas_inferred"]
+                    )
+                })
             ]
         elif tag:
-            tag_lower = tag.lower()
+            selected = tag.casefold()
             filtered = [
                 c for c in filtered
-                if any(tag_lower in t.get("tag", "").lower() for t in c.get("tags_focus", []))
+                if selected in {
+                    value.casefold()
+                    for value in (
+                        enrichment(c)["programme_areas_source"]
+                        + enrichment(c)["programme_areas_inferred"]
+                    )
+                }
             ]
 
         # Filter by foundation regions (multiple choice, match ANY)
         if foundation_regions:
-            fr_lower = [r.lower() for r in foundation_regions]
+            selected = {r.casefold() for r in foundation_regions}
             filtered = [
                 c for c in filtered
-                if any(any(fr in key.lower() for fr in fr_lower) for key in c.get("geo_locations", {}).keys())
-                or any(any(fr in str(val).lower() for fr in fr_lower) for val in [c.get("all_details", {}).get("city"), c.get("all_details", {}).get("state"), c.get("all_details", {}).get("address_line_one")])
+                if selected.intersection({
+                    str(enrichment(c).get("headquarters_country") or "").casefold(),
+                    str(enrichment(c).get("headquarters_region") or "").casefold(),
+                })
             ]
 
         # Filter by funding regions (multiple choice, match ANY)
         if funding_regions:
-            fur_lower = [r.lower() for r in funding_regions]
-            filtered = [
-                c for c in filtered
-                if any(any(fur in key.lower() for fur in fur_lower) for key in c.get("geo_locations", {}).keys())
-            ]
+            # JSON fallback has no normalized grant transactions or destinations.
+            filtered = []
 
         # Filter by legacy region
         if not foundation_regions and not funding_regions and region:
@@ -245,6 +260,7 @@ class JSONCharityRepository(CharityRepository):
         for c in filtered[skip : skip + limit]:
             income, expenditure = self._get_financials(c)
             all_details = c.get("all_details", {})
+            enriched = enrichment(c)
             results.append({
                 "registered_charity_number": c.get("registered_charity_number"),
                 "suffix": c.get("suffix", 0),
@@ -254,14 +270,23 @@ class JSONCharityRepository(CharityRepository):
                 "reporting_status": all_details.get("reporting_status"),
                 "removal_reason": all_details.get("removal_reason"),
                 "latest_income": income,
-                "latest_expenditure": expenditure
+                "latest_expenditure": expenditure,
+                "programme_areas_source": enriched["programme_areas_source"],
+                "programme_areas_inferred": enriched["programme_areas_inferred"],
+                "geographic_focus_source": enriched["geographic_focus_source"],
+                "geographic_focus_inferred": enriched["geographic_focus_inferred"],
+                "headquarters_country": enriched["headquarters_country"],
+                "headquarters_region": enriched["headquarters_region"],
+                "programme_area_review_required": enriched["programme_area_review_required"],
+                "geography_review_required": enriched["geography_review_required"],
+                "enrichment_rule_version": enriched["enrichment_rule_version"],
             })
         return results
 
     async def get_by_id(self, reg_charity_number: int) -> Optional[Dict[str, Any]]:
         for c in self._data:
             if c.get("registered_charity_number") == reg_charity_number:
-                return c
+                return {**c, **enrich_organization(c)}
         return None
 
     async def get_stats(self) -> Dict[str, Any]:
@@ -413,7 +438,11 @@ class SQLiteCharityRepository(CharityRepository):
         query = """
             SELECT charity_id, name, type, website, email, address, city, state, country, 
                    latitude, longitude, annual_income, annual_expenditure, thematic_focus, 
-                   geographic_focus, raw_cc_data 
+                   geographic_focus, raw_cc_data, programme_areas_source,
+                   programme_areas_inferred, geographic_focus_source,
+                   geographic_focus_inferred, headquarters_country, headquarters_region,
+                   programme_area_review_required, geography_review_required,
+                   enrichment_rule_version
             FROM charities 
             WHERE 1=1
         """
@@ -430,43 +459,55 @@ class SQLiteCharityRepository(CharityRepository):
         if tags:
             tag_conds = []
             for t in tags:
-                tag_conds.append("thematic_focus LIKE ?")
-                params.append(f'%"{t}"%')
+                tag_conds.append("""(
+                    EXISTS (SELECT 1 FROM json_each(charities.programme_areas_source) WHERE value = ?)
+                    OR EXISTS (SELECT 1 FROM json_each(charities.programme_areas_inferred) WHERE value = ?)
+                )""")
+                params.extend([t, t])
             query += " AND (" + " OR ".join(tag_conds) + ")"
         elif tag:
-            query += " AND thematic_focus LIKE ?"
-            params.append(f'%"{tag}"%')
+            query += """ AND (
+                EXISTS (SELECT 1 FROM json_each(charities.programme_areas_source) WHERE value = ?)
+                OR EXISTS (SELECT 1 FROM json_each(charities.programme_areas_inferred) WHERE value = ?)
+            )"""
+            params.extend([tag, tag])
             
         if foundation_regions:
             fr_conds = []
             for r in foundation_regions:
-                fr_conds.append("(state LIKE ? OR city LIKE ? OR address LIKE ?)")
-                r_pat = f"%{r}%"
-                params.extend([r_pat, r_pat, r_pat])
+                fr_conds.append("(headquarters_country = ? OR headquarters_region = ?)")
+                params.extend([r, r])
             query += " AND (" + " OR ".join(fr_conds) + ")"
 
         if funding_regions:
             fur_conds = []
             for r in funding_regions:
-                fur_conds.append("charity_id IN (SELECT funding_charity_id FROM grants WHERE recipient_region LIKE ?)")
-                params.append(f"%{r}%")
+                fur_conds.append("""charity_id IN (
+                    SELECT funding_charity_id FROM grants
+                    WHERE EXISTS (
+                        SELECT 1 FROM json_each(grants.beneficiary_geography_normalized)
+                        WHERE json_extract(value, '$.name') = ?
+                           OR json_extract(value, '$.macro_region') = ?
+                    )
+                )""")
+                params.extend([r, r])
             query += " AND (" + " OR ".join(fur_conds) + ")"
 
         if not foundation_regions and not funding_regions and region:
             query += """ AND (
-                state LIKE ? 
-                OR city LIKE ? 
-                OR address LIKE ? 
-                OR geographic_focus LIKE ? 
+                headquarters_country = ?
+                OR headquarters_region = ?
+                OR EXISTS (SELECT 1 FROM json_each(charities.geographic_focus_inferred) WHERE value = ?)
                 OR charity_id IN (
-                    SELECT funding_charity_id FROM grants WHERE recipient_region LIKE ?
-                )
-                OR charity_id IN (
-                    SELECT recipient_charity_id FROM grants WHERE recipient_region LIKE ?
+                    SELECT funding_charity_id FROM grants
+                    WHERE EXISTS (
+                        SELECT 1 FROM json_each(grants.beneficiary_geography_normalized)
+                        WHERE json_extract(value, '$.name') = ?
+                           OR json_extract(value, '$.macro_region') = ?
+                    )
                 )
             )"""
-            region_pat = f"%{region}%"
-            params.extend([region_pat, region_pat, region_pat, region_pat, region_pat, region_pat])
+            params.extend([region, region, region, region, region])
 
         if min_annual_giving is not None:
             query += " AND annual_expenditure >= ?"
@@ -508,19 +549,54 @@ class SQLiteCharityRepository(CharityRepository):
                 "reporting_status": all_details.get("reporting_status"),
                 "removal_reason": all_details.get("removal_reason"),
                 "latest_income": r[11],
-                "latest_expenditure": r[12]
+                "latest_expenditure": r[12],
+                "programme_areas_source": _json_list(r[16]),
+                "programme_areas_inferred": _json_list(r[17]),
+                "geographic_focus_source": _json_list(r[18]),
+                "geographic_focus_inferred": _json_list(r[19]),
+                "headquarters_country": r[20],
+                "headquarters_region": r[21],
+                "programme_area_review_required": bool(r[22]),
+                "geography_review_required": bool(r[23]),
+                "enrichment_rule_version": r[24],
             })
         return results
 
     async def get_by_id(self, reg_charity_number: int) -> Optional[Dict[str, Any]]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT raw_cc_data FROM charities WHERE charity_id = ?", (reg_charity_number,))
+        cursor.execute("""
+            SELECT raw_cc_data, programme_areas_source, programme_areas_inferred,
+                   programme_area_scores, programme_area_method, programme_area_evidence,
+                   programme_area_review_required, geographic_focus_source,
+                   geographic_focus_inferred, headquarters_country, headquarters_region,
+                   geography_method, geography_confidence, geography_evidence,
+                   geography_review_required, enrichment_rule_version
+            FROM charities WHERE charity_id = ?
+        """, (reg_charity_number,))
         row = cursor.fetchone()
         conn.close()
         
         if row and row[0]:
-            return json.loads(row[0])
+            raw = json.loads(row[0])
+            raw.update({
+                "programme_areas_source": _json_list(row[1]),
+                "programme_areas_inferred": _json_list(row[2]),
+                "programme_area_scores": json.loads(row[3]) if row[3] else {},
+                "programme_area_method": row[4],
+                "programme_area_evidence": _json_list(row[5]),
+                "programme_area_review_required": bool(row[6]),
+                "geographic_focus_source": _json_list(row[7]),
+                "geographic_focus_inferred": _json_list(row[8]),
+                "headquarters_country": row[9],
+                "headquarters_region": row[10],
+                "geography_method": row[11],
+                "geography_confidence": row[12],
+                "geography_evidence": _json_list(row[13]),
+                "geography_review_required": bool(row[14]),
+                "enrichment_rule_version": row[15],
+            })
+            return raw
         return None
 
     async def get_stats(self) -> Dict[str, Any]:
@@ -565,7 +641,7 @@ class SQLiteCharityRepository(CharityRepository):
     ) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT grant_id, amount, currency, beneficiary_geography FROM grants")
+        cursor.execute("SELECT grant_id, amount, currency, beneficiary_geography_normalized FROM grants")
         rows = cursor.fetchall()
         conn.close()
 
@@ -606,8 +682,8 @@ class SQLiteCharityRepository(CharityRepository):
             for location in locations:
                 if not isinstance(location, dict):
                     continue
-                name = str(location.get("name") or location.get("country") or "").strip()
-                code = str(location.get("countryCode") or "").strip().upper() or None
+                name = str(location.get("name") or "").strip()
+                code = str(location.get("code") or "").strip().upper() or None
                 if name.lower() in {"multi", "multiple", "various"}:
                     continue
                 if name.lower() in {"worldwide", "global", "international"}:
@@ -735,7 +811,12 @@ class SQLiteCharityRepository(CharityRepository):
             SELECT grant_id, funding_charity_id, funding_name, funding_org_source_id,
                    recipient_name, recipient_charity_id, recipient_org_source_id,
                    amount, amount_eur, currency, description, date, recipient_region,
-                   beneficiary_geography, tags, source, source_record_id, source_url
+                   beneficiary_geography, tags, source, source_record_id, source_url,
+                   programme_area_source, programme_area_inferred, programme_area_scores,
+                   programme_area_method, programme_area_evidence,
+                   programme_area_review_required, beneficiary_geography_normalized,
+                   geographic_focus_inferred, geography_method, geography_confidence,
+                   geography_evidence, geography_review_required, enrichment_rule_version
             FROM grants
             WHERE 1=1
         """
@@ -776,6 +857,19 @@ class SQLiteCharityRepository(CharityRepository):
                 "source": r[15],
                 "source_record_id": r[16],
                 "source_url": r[17],
+                "programme_area_source": _json_list(r[18]),
+                "programme_area_inferred": _json_list(r[19]),
+                "programme_area_scores": json.loads(r[20]) if r[20] else {},
+                "programme_area_method": r[21],
+                "programme_area_evidence": _json_list(r[22]),
+                "programme_area_review_required": bool(r[23]),
+                "beneficiary_geography_normalized": _json_list(r[24]),
+                "geographic_focus_inferred": _json_list(r[25]),
+                "geography_method": r[26],
+                "geography_confidence": r[27],
+                "geography_evidence": _json_list(r[28]),
+                "geography_review_required": bool(r[29]),
+                "enrichment_rule_version": r[30],
             })
         currencies = sorted({item["currency"] for item in results})
         return {

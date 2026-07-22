@@ -517,8 +517,17 @@ class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
         # Insert a predictable seed charity
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO charities (charity_id, name, type, annual_income, annual_expenditure, thematic_focus, geographic_focus, raw_cc_data)
-            VALUES (202918, 'Oxfam GB', 'Charity', 400000000.0, 395000000.0, '["Socio-economic Development, Poverty"]', '{"Europe (Western / General)": ["United Kingdom"]}', '{"all_details": {"reg_status": "R", "organisation_number": 202918}}')
+            INSERT INTO charities (
+                charity_id, name, type, annual_income, annual_expenditure,
+                thematic_focus, geographic_focus, programme_areas_inferred,
+                headquarters_country, raw_cc_data
+            ) VALUES (
+                202918, 'Oxfam GB', 'Charity', 400000000.0, 395000000.0,
+                '["Socio-economic Development, Poverty"]',
+                '{"Europe (Western / General)": ["United Kingdom"]}',
+                '["Socio-economic Development, Poverty"]', 'United Kingdom',
+                '{"all_details": {"reg_status": "R", "organisation_number": 202918}}'
+            )
         """)
         # Insert a predictable grant
         cursor.execute("""
@@ -526,12 +535,13 @@ class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
                 grant_id, funding_charity_id, funding_name, funding_org_source_id,
                 recipient_name, recipient_charity_id, recipient_org_source_id,
                 amount, currency, description, date, beneficiary_geography,
-                tags, source, source_record_id, source_url
+                beneficiary_geography_normalized, tags, source, source_record_id, source_url
             ) VALUES (
                 'G1', 202918, 'Oxfam GB', 'GB-CHC-202918',
                 'Test Recipient', 1002, 'GB-CHC-1002',
                 10000.0, 'GBP', 'Test Grant', '2024-01-01',
                 '[{"name": "United Kingdom", "countryCode": "GB"}]',
+                '[{"name": "United Kingdom", "code": "GB", "macro_region": "Europe (Western / General)", "scope": "country"}]',
                 '["Health"]', '360Giving', 'G1', 'https://example.test/grants/G1'
             )
         """)

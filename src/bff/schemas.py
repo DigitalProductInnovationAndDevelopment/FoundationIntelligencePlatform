@@ -98,6 +98,15 @@ class CharityBase(BaseModel):
     removal_reason: Optional[str] = None
     latest_income: Optional[float] = None
     latest_expenditure: Optional[float] = None
+    programme_areas_source: List[str] = []
+    programme_areas_inferred: List[str] = []
+    geographic_focus_source: List[Any] = []
+    geographic_focus_inferred: List[str] = []
+    headquarters_country: Optional[str] = None
+    headquarters_region: Optional[str] = None
+    programme_area_review_required: bool = False
+    geography_review_required: bool = False
+    enrichment_rule_version: Optional[str] = None
 
 class CharityDetail(BaseModel):
     registered_charity_number: int
@@ -108,6 +117,21 @@ class CharityDetail(BaseModel):
     primary_grants: Optional[Any] = None
     who_what_how: Optional[List[Any]] = []
     financial_history: List[CharityFinancialHistoryItem] = []
+    programme_areas_source: List[str] = []
+    programme_areas_inferred: List[str] = []
+    programme_area_scores: Dict[str, float] = {}
+    programme_area_method: Optional[str] = None
+    programme_area_evidence: List[Dict[str, Any]] = []
+    programme_area_review_required: bool = False
+    geographic_focus_source: List[Any] = []
+    geographic_focus_inferred: List[str] = []
+    headquarters_country: Optional[str] = None
+    headquarters_region: Optional[str] = None
+    geography_method: Optional[str] = None
+    geography_confidence: Optional[float] = None
+    geography_evidence: List[Dict[str, Any]] = []
+    geography_review_required: bool = False
+    enrichment_rule_version: Optional[str] = None
 
 class CharityStats(BaseModel):
     total_charities: int
@@ -165,6 +189,19 @@ class GrantDetail(BaseModel):
     source: Optional[str] = None
     source_record_id: Optional[str] = None
     source_url: Optional[str] = None
+    programme_area_source: List[str] = []
+    programme_area_inferred: List[str] = []
+    programme_area_scores: Dict[str, float] = {}
+    programme_area_method: Optional[str] = None
+    programme_area_evidence: List[Dict[str, Any]] = []
+    programme_area_review_required: bool = False
+    beneficiary_geography_normalized: List[Dict[str, Any]] = []
+    geographic_focus_inferred: List[str] = []
+    geography_method: Optional[str] = None
+    geography_confidence: Optional[float] = None
+    geography_evidence: List[Dict[str, Any]] = []
+    geography_review_required: bool = False
+    enrichment_rule_version: Optional[str] = None
 
 class GrantListResponse(BaseModel):
     status: str

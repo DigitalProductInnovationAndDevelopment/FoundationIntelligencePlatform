@@ -529,6 +529,7 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
     """
     import re
     from preprocessing.extract_geo_topic import extract_tags, extract_geo
+    from preprocessing.enrichment import enrich_grant, enrich_organization
     ingestion_timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def parse_charity_number_from_org_id(org_id):
@@ -782,8 +783,16 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
     # Serialize complex fields to match database format
     # In SQLite, we store thematic_focus as JSON arrays and geographic_focus as JSON objects
     for c in charities_list:
+        enrichment = enrich_organization(c)
+        c.update(enrichment)
         c["thematic_focus"] = json.dumps(c.get("tags_focus", []))
         c["geographic_focus"] = json.dumps(c.get("geo_locations", {}))
+        for field in (
+            "programme_areas_source", "programme_areas_inferred", "programme_area_scores",
+            "programme_area_evidence", "geographic_focus_source", "geographic_focus_inferred",
+            "geography_evidence", "enrichment_review_reasons",
+        ):
+            c[field] = json.dumps(c.get(field, []), ensure_ascii=False)
         c["latitude"] = c.get("raw_cc_data", {}).get("position", {}).get("lat") if c.get("raw_cc_data") else None
         c["longitude"] = c.get("raw_cc_data", {}).get("position", {}).get("lng") if c.get("raw_cc_data") else None
         if c["latitude"] is not None:
@@ -811,5 +820,13 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
         
         g_geo = g_mock.get("geo_locations", {})
         g["geographic_focus"] = json.dumps(g_geo)
+        enrichment = enrich_grant(g)
+        g.update(enrichment)
+        for field in (
+            "programme_area_inferred", "programme_area_scores", "programme_area_evidence",
+            "beneficiary_geography_normalized", "geographic_focus_inferred",
+            "geography_evidence", "enrichment_review_reasons",
+        ):
+            g[field] = json.dumps(g.get(field, []), ensure_ascii=False)
 
     return charities_list, grants_list
