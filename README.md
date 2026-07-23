@@ -8,8 +8,8 @@ The platform deliberately separates source facts, normalized source values, dete
 
 | Capability | Status | Current evidence / limitation |
 |---|---|---|
-| Cached UK organization ingestion | Complete | 63 normalized UK-side organizations in the current rebuilt database |
-| Cached 360Giving grant ingestion | Complete | 2,596 GBP transactions with source provenance |
+| Cached UK organization ingestion | Complete | 65 normalized UK-side organizations in the current rebuilt database |
+| Cached 360Giving grant ingestion | Complete | 3,096 GBP transactions with source provenance |
 | Cached Philea organization ingestion | Complete | 299 records; organization-level only, with no grants assigned |
 | DACH foundation intelligence | Partial | Philea and deterministic geography normalization provide some European/DACH discoverability; this is not a complete DACH registry or grant dataset |
 | Organization directory and detail | Complete | SQLite-backed API and UI, with source/type/coverage labels |
@@ -63,13 +63,13 @@ The major components are:
 
 ## Data sources and provenance
 
-The checked-in source caches currently contain 62 Charity Commission records, 55 360Giving publisher/organization records containing 2,596 grants, and 299 Philea member records. Consolidation creates 63 UK-side organization rows because one 360Giving funder has no matching cached Charity Commission profile.
+The checked-in source caches currently contain 62 Charity Commission records, 57 360Giving publisher/organization records containing 3,096 grants, and 299 Philea member records. Consolidation creates 65 UK-side organization rows alongside the Philea records.
 
 The current regenerated database contains:
 
-- 362 organizations: 63 primarily from the Charity Commission and 299 from Philea.
-- 2,596 grants, all explicitly stored as GBP and sourced from 360Giving.
-- GBP 957,147,650.73 in stored grant values. `amount_eur` is empty because there is no approved exchange-rate/date policy; currencies are not silently converted or combined.
+- 364 organizations: 65 primarily from the Charity Commission/360Giving and 299 from Philea.
+- 3,096 grants, all explicitly stored as GBP and sourced from 360Giving.
+- GBP 961,181,726.30 in stored grant values. `amount_eur` is empty because there is no approved exchange-rate/date policy; currencies are not silently converted or combined.
 - 299 Philea organizations marked `organization_level_only`; no grant is attached to a synthetic Philea ID.
 
 Raw source records remain traceable through source name, source record ID, source URL where supplied, ingestion timestamp, and retained raw payload fields. Organization records also retain source-record arrays and deduplication status/candidates. Derived data is stored separately:
@@ -108,7 +108,7 @@ Geographic concepts are intentionally distinct:
 - Geographic focus: where an organization says it works or funds; source and inferred values remain separate.
 - Beneficiary/project geography: a transaction's destination; used by recipient-region filters and the map.
 
-The current map has normalized beneficiary geography for 1,336 of 2,596 grants (51.46%), above the default 30% display threshold. The remaining 1,260 are reported as unknown rather than assigned to donor headquarters.
+The current map has normalized beneficiary geography for 1,699 of 3,096 grants (54.88%), above the default 30% display threshold. The remaining 1,397 are reported as unknown rather than assigned to donor headquarters.
 
 ## Grant overview aggregations
 
@@ -116,7 +116,7 @@ The Overview charts use cached 360Giving grant rows only. `Monthly Grant Awards`
 
 `Grant Allocation by Programme Area` first normalizes `programme_area_source`; only a valid taxonomy match takes precedence. Otherwise it accepts `programme_area_inferred` categories whose stored score meets the existing 0.55 enrichment review threshold. Everything else remains visible as `Unclassified`. A multi-category grant is split in minor currency units across its categories, with deterministic remainder assignment, so allocated amounts reconcile exactly to qualifying source amounts. Negative source values are treated as possible corrections/reversals, excluded from these presentation sums, and reported in exclusion metadata. Numeric zero values remain included. No implicit currency conversion or upper-value rejection is applied.
 
-The current GBP cache yields 66.82% accepted programme classification coverage (1,734 of 2,595 qualifying non-negative grants); 861 remain Unclassified. Philea organization records are not included because the cache contains no Philea grant-level transactions.
+The current GBP cache yields 66.82% accepted programme classification coverage (2,068 of 3,095 qualifying non-negative grants); 1,027 remain Unclassified. Philea organization records are not included because the cache contains no Philea grant-level transactions.
 
 ## Explainable relevance score
 
@@ -240,7 +240,7 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 1. Start on Overview and show the beneficiary map, Monthly Grant Awards, and Grant Allocation by Programme Area; point out the cached-source, currency, temporal-coverage, and classification-coverage labels.
 2. Open Directory and demonstrate search, programme, headquarters, funding-region, annual-giving, and average-grant filters.
 3. Open Charity Projects (`326568`, whose source grant records use the funder name Comic Relief) to show Charity Commission identity/provenance, source versus inferred classifications, evidence/review state, observed 360Giving grants, and the donor-to-recipient Sankey.
-4. Show the beneficiary map and its 51.46% known-geography disclosure; explain why headquarters is not substituted for missing transaction geography.
+4. Show the beneficiary map and its 54.88% known-geography disclosure; explain why headquarters is not substituted for missing transaction geography.
 5. Open Women Win (`-24788`) to show Philea organization type/source and the explicit `organization_level_only` transaction status.
 6. Show the experimental score components, confidence, completeness, missing inputs, version, assumptions, and “not a prediction” label.
 7. Open Admin last. Prefer `quick_consolidate` for the cached rebuild; do not launch an uncontrolled external scrape during the presentation.
