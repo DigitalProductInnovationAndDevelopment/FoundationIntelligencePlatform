@@ -247,6 +247,110 @@ class GrantNetworkSummary(BaseModel):
     metadata: DataMetadata
 
 
+class GrantAggregationExclusions(BaseModel):
+    missing_date: int = 0
+    invalid_date: int = 0
+    missing_amount: int = 0
+    invalid_amount: int = 0
+    negative_amount: int = 0
+    unsupported_currency: int = 0
+    currency_filtered: int = 0
+    unsupported_source: int = 0
+    outside_period: int = 0
+
+
+class GrantAggregationScope(BaseModel):
+    coverage_note: str
+    market_scope: str = "available cached 360Giving records"
+
+
+class GrantAmountPolicy(BaseModel):
+    monetary_precision: str = "minor_units_2_decimal_places"
+    rounding: str = "ROUND_HALF_UP"
+    zero_amounts: str = "included_when_source_value_is_numeric_zero"
+    negative_amounts: str = "excluded_and_reported"
+    upper_bound: str = "no_unapproved_implausibility_threshold_applied"
+    maximum_observed_amount: Optional[float] = None
+
+
+class GrantTrendPeriod(BaseModel):
+    from_month: str = Field(alias="from")
+    to: str
+    months: int
+    anchor: str
+
+    model_config = {"populate_by_name": True}
+
+
+class GrantTrendItem(BaseModel):
+    month: str
+    grant_count: Optional[int] = None
+    source_record_count: int = 0
+    total_amount: Optional[float] = None
+    coverage_status: str
+
+
+class GrantTrendsResponse(BaseModel):
+    status: str
+    currency: Optional[str] = None
+    available_currencies: List[str] = []
+    date_basis: str = "award_date"
+    period: Optional[GrantTrendPeriod] = None
+    items: List[GrantTrendItem] = []
+    excluded: GrantAggregationExclusions
+    zero_amount_count: int = 0
+    latest_award_date: Optional[str] = None
+    last_refreshed_at: Optional[str] = None
+    source: List[str] = []
+    data_mode: str
+    amount_policy: GrantAmountPolicy
+    scope: GrantAggregationScope
+
+
+class ProgrammeAllocationItem(BaseModel):
+    programme_area: str
+    distinct_grant_count: int
+    weighted_grant_count: float
+    allocated_amount: float
+    source_classified_grant_count: int = 0
+    inferred_classified_grant_count: int = 0
+    unclassified_grant_count: int = 0
+
+
+class ProgrammeClassificationCoverage(BaseModel):
+    qualifying_grant_count: int
+    classified_grant_count: int
+    unclassified_grant_count: int
+    classified_percentage: float
+    source_classified_grant_count: int
+    inferred_classified_grant_count: int
+    source_percentage: float
+    inferred_percentage: float
+    multiple_programme_area_grant_count: int
+    invalid_source_label_count: int
+    low_confidence_inference_count: int
+
+
+class GrantThemesResponse(BaseModel):
+    status: str
+    currency: Optional[str] = None
+    available_currencies: List[str] = []
+    allocation_method: str = "equal_split_across_available_categories"
+    classification_precedence: List[str] = []
+    inference_confidence_threshold: float
+    items: List[ProgrammeAllocationItem] = []
+    classification_coverage: ProgrammeClassificationCoverage
+    qualifying_amount: float = 0.0
+    allocated_amount: float = 0.0
+    excluded: GrantAggregationExclusions
+    zero_amount_count: int = 0
+    last_refreshed_at: Optional[str] = None
+    source: List[str] = []
+    data_mode: str
+    amount_policy: GrantAmountPolicy
+    scope: GrantAggregationScope
+
+
 class ScoreTargetProfile(BaseModel):
     programme_areas: List[str] = []
     geographies: List[str] = []

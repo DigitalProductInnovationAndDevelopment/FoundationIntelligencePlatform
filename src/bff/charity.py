@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import List, Optional
 from bff.auth import get_current_user_token
 from bff.schemas import (
@@ -8,6 +8,8 @@ from bff.schemas import (
     GrantMapResponse,
     GrantListResponse,
     GrantNetworkSummary,
+    GrantThemesResponse,
+    GrantTrendsResponse,
     SankeyData,
     ScoreRequest,
     ScoreResponse,
@@ -89,6 +91,25 @@ async def get_grants_map(
 async def get_grants_summary(repo: CharityRepository = Depends(get_charity_repository)):
     """Return currency-separated transaction totals and leading organizations."""
     return await repo.get_grant_summary()
+
+
+@router.get("/grants/trends", response_model=GrantTrendsResponse)
+async def get_grant_trends(
+    currency: Optional[str] = None,
+    months: int = Query(default=24, ge=1, le=120),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Aggregate cached 360Giving awards by award-date month without filling unknown coverage."""
+    return await repo.get_grant_trends(currency=currency, months=months)
+
+
+@router.get("/grants/themes", response_model=GrantThemesResponse)
+async def get_grant_themes(
+    currency: Optional[str] = None,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Allocate cached grant amounts across auditable normalized programme areas."""
+    return await repo.get_grant_themes(currency=currency)
 
 @router.get("/{reg_charity_number}", response_model=CharityDetail)
 async def get_charity_detail(

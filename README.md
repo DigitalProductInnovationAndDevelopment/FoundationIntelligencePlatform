@@ -21,7 +21,7 @@ The platform deliberately separates source facts, normalized source values, dete
 | Relevance score | Experimental | Explainable example configuration; not client-approved and not a prediction |
 | News summary | Partial | Live Google News/Claude path requires credentials and network access |
 | Offline dashboard fallback | Mocked | Clearly labelled local prototype values; grant/map/score data are not fabricated offline |
-| Monthly trend and thematic charts | Mocked | Always labelled “Illustrative prototype data” |
+| Monthly grant awards and programme allocation | Complete | Currency-isolated aggregations from cached 360Giving grants with exclusions and coverage metadata |
 | Complete DACH grant transactions | Missing | No source currently supplies this coverage |
 | Enrichment predictive accuracy | Not verified | Coverage is reported; labelled validation data do not exist |
 | Client-approved score definition | Blocked | No approved target, weights, or decision policy was found in the repository |
@@ -110,6 +110,14 @@ Geographic concepts are intentionally distinct:
 
 The current map has normalized beneficiary geography for 1,336 of 2,596 grants (51.46%), above the default 30% display threshold. The remaining 1,260 are reported as unknown rather than assigned to donor headquarters.
 
+## Grant overview aggregations
+
+The Overview charts use cached 360Giving grant rows only. `Monthly Grant Awards` groups `grants.amount` by the calendar month of `grants.date`, explicitly interpreted as the award date. The default 24-month period is anchored to the latest available award month rather than the current month. Months without an observed source record are returned as unknown coverage with null values, not as confirmed zero activity.
+
+`Grant Allocation by Programme Area` first normalizes `programme_area_source`; only a valid taxonomy match takes precedence. Otherwise it accepts `programme_area_inferred` categories whose stored score meets the existing 0.55 enrichment review threshold. Everything else remains visible as `Unclassified`. A multi-category grant is split in minor currency units across its categories, with deterministic remainder assignment, so allocated amounts reconcile exactly to qualifying source amounts. Negative source values are treated as possible corrections/reversals, excluded from these presentation sums, and reported in exclusion metadata. Numeric zero values remain included. No implicit currency conversion or upper-value rejection is applied.
+
+The current GBP cache yields 66.82% accepted programme classification coverage (1,734 of 2,595 qualifying non-negative grants); 861 remain Unclassified. Philea organization records are not included because the cache contains no Philea grant-level transactions.
+
 ## Explainable relevance score
 
 No client-approved score definition, notes, target variable, or weights were found. The included `example-relevance-v1` configuration is therefore explicitly `experimental` and measures only relevance to a selected target profile. It is not a probability, recommendation, financial forecast, or prediction of donation behavior.
@@ -192,6 +200,8 @@ All `/api/*` routes require the session cookie returned by `POST /api/auth/login
 | `GET /api/charities/{id}/grants?role=all|funder|recipient` | Observed transactions and coverage status |
 | `GET /api/charities/grants/summary` | Currency-separated network totals and rankings |
 | `GET /api/charities/grants/map` | Beneficiary-geography aggregation and coverage metadata |
+| `GET /api/charities/grants/trends?currency=GBP&months=24` | Award-date monthly grant totals with unknown-coverage months and exclusions |
+| `GET /api/charities/grants/themes?currency=GBP` | Minor-unit-preserving programme allocations and classification coverage |
 | `GET /api/charities/{id}/sankey` | Currency-safe observed donor-to-recipient flow |
 | `POST /api/charities/{id}/score` | Experimental target-profile relevance score and explanation |
 | `GET /api/news/{name}/summary` | Optional sourced news summary |
@@ -227,7 +237,7 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 
 ## Presentation flow
 
-1. Start on Overview and identify the live-source banner, current organization/grant totals, and two explicitly illustrative charts.
+1. Start on Overview and show the beneficiary map, Monthly Grant Awards, and Grant Allocation by Programme Area; point out the cached-source, currency, temporal-coverage, and classification-coverage labels.
 2. Open Directory and demonstrate search, programme, headquarters, funding-region, annual-giving, and average-grant filters.
 3. Open Charity Projects (`326568`, whose source grant records use the funder name Comic Relief) to show Charity Commission identity/provenance, source versus inferred classifications, evidence/review state, observed 360Giving grants, and the donor-to-recipient Sankey.
 4. Show the beneficiary map and its 51.46% known-geography disclosure; explain why headquarters is not substituted for missing transaction geography.
@@ -241,7 +251,7 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 - Philea contributes organization metadata only. No transaction activity is inferred from membership.
 - Enrichment coverage is measured, but accuracy is not validated against labelled ground truth; evidence and review flags must remain visible.
 - The relevance score is an unapproved example and must not be framed as a donation likelihood.
-- The online Overview's monthly trends and thematic allocation charts remain static illustrative examples. When the BFF is offline, KPI/cards/detail/news/admin simulation also use clearly labelled local mock content; grant flows, map values, and scores remain unavailable rather than fabricated.
+- When the BFF is offline, KPI/cards/detail/news/admin simulation use clearly labelled local mock content; grant charts, flows, map values, and scores remain unavailable rather than fabricated.
 - The news route depends on current external pages, Google News decoding, and Claude-compatible credentials, so it is not deterministic.
 - Demo authentication defaults and frontend-visible credentials are suitable only for local presentation use.
 - The production frontend build currently emits a bundle-size warning above Vite's 500 kB advisory threshold; code splitting is future work.

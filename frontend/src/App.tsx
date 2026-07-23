@@ -99,6 +99,70 @@ interface GrantMapResponse {
   metadata: DataMetadata;
 }
 
+interface GrantTrendItem {
+  month: string;
+  grant_count: number | null;
+  source_record_count: number;
+  total_amount: number | null;
+  coverage_status: "observed" | "partial" | "unknown";
+}
+
+interface GrantTrendsResponse {
+  status: string;
+  currency: string | null;
+  available_currencies: string[];
+  date_basis: string;
+  period: { from: string; to: string; months: number; anchor: string } | null;
+  items: GrantTrendItem[];
+  excluded: Record<string, number>;
+  zero_amount_count: number;
+  latest_award_date: string | null;
+  last_refreshed_at: string | null;
+  source: string[];
+  data_mode: string;
+  scope: { coverage_note: string };
+}
+
+interface ProgrammeAllocationItem {
+  programme_area: string;
+  distinct_grant_count: number;
+  weighted_grant_count: number;
+  allocated_amount: number;
+  source_classified_grant_count: number;
+  inferred_classified_grant_count: number;
+}
+
+interface GrantThemesResponse {
+  status: string;
+  currency: string | null;
+  available_currencies: string[];
+  allocation_method: string;
+  classification_precedence: string[];
+  inference_confidence_threshold: number;
+  items: ProgrammeAllocationItem[];
+  classification_coverage: {
+    qualifying_grant_count: number;
+    classified_grant_count: number;
+    unclassified_grant_count: number;
+    classified_percentage: number;
+    source_classified_grant_count: number;
+    inferred_classified_grant_count: number;
+    source_percentage: number;
+    inferred_percentage: number;
+    multiple_programme_area_grant_count: number;
+    invalid_source_label_count: number;
+    low_confidence_inference_count: number;
+  };
+  qualifying_amount: number;
+  allocated_amount: number;
+  excluded: Record<string, number>;
+  zero_amount_count: number;
+  last_refreshed_at: string | null;
+  source: string[];
+  data_mode: string;
+  scope: { coverage_note: string };
+}
+
 interface GrantDetail {
   grant_id: string;
   funding_charity_id: number | null;
@@ -207,23 +271,6 @@ const EMPTY_MAP: GrantMapResponse = {
     limitations: ["The transaction geography endpoint has not been loaded."],
   },
 };
-
-const MOCK_THEMATIC_DATA = [
-  { name: "Poverty relief", amount: 145 },
-  { name: "Health & Cancer", amount: 210 },
-  { name: "Youth Development", amount: 95 },
-  { name: "Environment", amount: 120 },
-  { name: "Humanitarian", amount: 180 }
-];
-
-const MOCK_TRENDS_DATA = [
-  { month: "Jan", income: 240, expenditure: 220 },
-  { month: "Mar", income: 280, expenditure: 260 },
-  { month: "May", income: 310, expenditure: 290 },
-  { month: "Jul", income: 295, expenditure: 285 },
-  { month: "Sep", income: 330, expenditure: 310 },
-  { month: "Nov", income: 360, expenditure: 345 }
-];
 
 const renderMarkdown = (text: string) => {
   if (!text) return null;
@@ -346,6 +393,11 @@ export default function App() {
   const [stats, setStats] = useState<KPIStats>(MOCK_STATS);
   const [charities, setCharities] = useState<Charity[]>(MOCK_CHARITIES);
   const [mapData, setMapData] = useState<GrantMapResponse>(EMPTY_MAP);
+  const [grantTrends, setGrantTrends] = useState<GrantTrendsResponse | null>(null);
+  const [grantThemes, setGrantThemes] = useState<GrantThemesResponse | null>(null);
+  const [grantAnalyticsLoading, setGrantAnalyticsLoading] = useState(false);
+  const [grantAnalyticsError, setGrantAnalyticsError] = useState<string | null>(null);
+  const [grantAnalyticsCurrency, setGrantAnalyticsCurrency] = useState("");
   const [selectedCharity, setSelectedCharity] = useState<Charity | null>(null);
   const [selectedCharityDetail, setSelectedCharityDetail] = useState<any>(null);
   const [charityGrants, setCharityGrants] = useState<GrantDetail[]>([]);
@@ -439,6 +491,7 @@ export default function App() {
       fetchStats();
       fetchCharities();
       fetchMapData();
+      fetchGrantAnalytics();
     }
   }, [pipelineStatus.status]);
 
@@ -484,7 +537,8 @@ export default function App() {
           await Promise.all([
             fetchStats(true),
             fetchCharities(true),
-            fetchMapData(true)
+            fetchMapData(true),
+            fetchGrantAnalytics(true)
           ]);
           setInitialLoading(false);
           return;
@@ -676,6 +730,51 @@ export default function App() {
     }
   };
 
+  const fetchGrantAnalytics = async (forceOnline?: boolean, currencyOverride?: string) => {
+    const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
+    if (!isOnline) {
+      setGrantTrends(null);
+      setGrantThemes(null);
+      setGrantAnalyticsError("Grant analytics require the cached SQLite transaction database.");
+      return;
+    }
+    setGrantAnalyticsLoading(true);
+    setGrantAnalyticsError(null);
+    const requestedCurrency = currencyOverride || grantAnalyticsCurrency;
+    const currencyQuery = requestedCurrency
+      ? `&currency=${encodeURIComponent(requestedCurrency)}`
+      : "";
+    try {
+      const [trendsResponse, themesResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/charities/grants/trends?months=24${currencyQuery}`, {
+          credentials: "include"
+        }),
+        fetch(`${API_BASE}/api/charities/grants/themes?${currencyQuery.slice(1)}`, {
+          credentials: "include"
+        })
+      ]);
+      if (!trendsResponse.ok || !themesResponse.ok) {
+        setGrantAnalyticsError(
+          `Grant analytics request failed (${trendsResponse.status}/${themesResponse.status}).`
+        );
+        return;
+      }
+      const trends: GrantTrendsResponse = await trendsResponse.json();
+      const themes: GrantThemesResponse = await themesResponse.json();
+      setGrantTrends(trends);
+      setGrantThemes(themes);
+      const resolvedCurrency = trends.currency || themes.currency;
+      if (resolvedCurrency) setGrantAnalyticsCurrency(resolvedCurrency);
+    } catch (error) {
+      console.error("Failed to fetch grant analytics", error);
+      setGrantAnalyticsError("Grant analytics are temporarily unavailable.");
+      setGrantTrends(null);
+      setGrantThemes(null);
+    } finally {
+      setGrantAnalyticsLoading(false);
+    }
+  };
+
   const fetchCharityGrants = async (id: number) => {
     if (!isBffOnline) {
       setCharityGrants([]);
@@ -859,6 +958,20 @@ export default function App() {
       return `${currency} ${val.toLocaleString("en-GB")}`;
     }
   };
+
+  const grantAnalyticsCurrencies = Array.from(new Set([
+    ...(grantTrends?.available_currencies || []),
+    ...(grantThemes?.available_currencies || [])
+  ])).sort();
+  const classificationPercentage = grantThemes?.classification_coverage.classified_percentage ?? 0;
+  const unknownTrendMonths = grantTrends?.items.filter(
+    item => item.coverage_status === "unknown"
+  ).length ?? 0;
+  const latestAnalyticsRefresh = grantTrends?.last_refreshed_at || grantThemes?.last_refreshed_at;
+  const analyticsAreStale = Boolean(
+    latestAnalyticsRefresh
+    && Date.now() - Date.parse(latestAnalyticsRefresh) > 30 * 24 * 60 * 60 * 1000
+  );
 
   if (initialLoading) {
     return (
@@ -1081,48 +1194,154 @@ export default function App() {
                   </span>
                 </div>
 
-                {/* Thematic Recharts Area Chart */}
+                {/* Monthly source-derived grant awards */}
                 <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Monthly Funding Trends <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>· Illustrative prototype data</span></h3>
-                  <div style={{ width: "100%", height: "350px" }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={MOCK_TRENDS_DATA}>
-                        <defs>
-                          <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="colorExpenditure" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2} />
-                            <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                        <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={11} />
-                        <YAxis stroke="var(--text-muted)" fontSize={11} />
-                        <Tooltip contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                        <Area type="monotone" dataKey="income" name="Income (Millions)" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorIncome)" />
-                        <Area type="monotone" dataKey="expenditure" name="Expenses (Millions)" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExpenditure)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div>
+                      <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>Monthly Grant Awards</h3>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Derived from cached 360Giving records · award-date basis
+                      </span>
+                    </div>
+                    {grantAnalyticsCurrencies.length > 0 && (
+                      <label style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Currency
+                        <select
+                          value={grantAnalyticsCurrency}
+                          onChange={(event) => {
+                            setGrantAnalyticsCurrency(event.target.value);
+                            fetchGrantAnalytics(undefined, event.target.value);
+                          }}
+                          style={{ marginLeft: "8px", padding: "5px 8px" }}
+                        >
+                          {grantAnalyticsCurrencies.map(currency => (
+                            <option key={currency} value={currency}>{currency}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
+                  {grantAnalyticsLoading ? (
+                    <div className="loading-container" style={{ minHeight: "300px" }}><div className="spinner" /></div>
+                  ) : grantAnalyticsError ? (
+                    <div className="data-notice data-notice-warning">{grantAnalyticsError}</div>
+                  ) : grantTrends?.status === "currency_selection_required" ? (
+                    <div className="data-notice data-notice-warning">Select one currency; grant amounts are never combined across currencies.</div>
+                  ) : grantTrends?.status === "available" && grantTrends.items.length > 0 ? (
+                    <>
+                      <div style={{ width: "100%", height: "350px" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={grantTrends.items}>
+                            <defs>
+                              <linearGradient id="colorGrantAwards" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                            <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={10} tickFormatter={(month) => String(month).slice(2)} />
+                            <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(Number(value), grantTrends.currency || "GBP")} />
+                            <Tooltip
+                              filterNull={false}
+                              content={({ active, payload, label }: any) => {
+                                if (!active || !payload?.length) return null;
+                                const item = payload[0]?.payload as GrantTrendItem;
+                                return (
+                                  <div style={{ background: "var(--bg-surface-opaque)", border: "1px solid var(--border-glass)", padding: "10px", borderRadius: "8px" }}>
+                                    <strong>{label}</strong>
+                                    {item.coverage_status === "unknown" ? (
+                                      <div>No source coverage established; not a confirmed zero.</div>
+                                    ) : item.coverage_status === "partial" ? (
+                                      <div>Source records exist, but no valid amount can be aggregated.</div>
+                                    ) : (
+                                      <>
+                                        <div>{formatCurrency(item.total_amount, grantTrends.currency || "GBP")}</div>
+                                        <div>{item.grant_count} recorded grants</div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="total_amount"
+                              name="Recorded grant awards"
+                              connectNulls={false}
+                              stroke="var(--nl-unicorn)"
+                              fillOpacity={1}
+                              fill="url(#colorGrantAwards)"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Active currency: {grantTrends.currency} · Period {grantTrends.period?.from}–{grantTrends.period?.to}, anchored to the latest available award month. {unknownTrendMonths} month(s) have unknown source coverage.
+                      </span>
+                      {analyticsAreStale && (
+                        <div className="data-notice data-notice-warning">Cached grant data was last refreshed more than 30 days ago.</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="data-notice data-notice-warning">
+                      No qualifying monthly grant awards are available for the selected currency.
+                    </div>
+                  )}
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    Coverage reflects available source records and is not representative of the entire funding market.
+                  </span>
                 </div>
               </div>
 
-              {/* Bar Charts for projects */}
+              {/* Programme allocation derived from stored source/inferred classifications */}
               <div className="glass-card">
-                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "20px" }}>Thematic Allocations <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>· Illustrative prototype data</span></h3>
-                <div style={{ width: "100%", height: "240px" }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={MOCK_THEMATIC_DATA}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                      <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} />
-                      <YAxis stroke="var(--text-muted)" fontSize={11} />
-                      <Tooltip contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                      <Bar dataKey="amount" fill="var(--nl-unicorn)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div style={{ marginBottom: "16px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>Grant Allocation by Programme Area</h3>
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    Derived from cached 360Giving records · active currency: {grantThemes?.currency || grantAnalyticsCurrency || "unselected"}
+                  </span>
                 </div>
+                {grantAnalyticsLoading ? (
+                  <div className="loading-container" style={{ minHeight: "300px" }}><div className="spinner" /></div>
+                ) : grantAnalyticsError ? (
+                  <div className="data-notice data-notice-warning">{grantAnalyticsError}</div>
+                ) : grantThemes?.status === "currency_selection_required" ? (
+                  <div className="data-notice data-notice-warning">Select one currency before comparing programme allocations.</div>
+                ) : grantThemes?.status === "available" && grantThemes.items.length > 0 ? (
+                  <>
+                    <div style={{ width: "100%", height: "520px" }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={grantThemes.items} layout="vertical" margin={{ left: 25, right: 30 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                          <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(Number(value), grantThemes.currency || "GBP")} />
+                          <YAxis type="category" width={210} dataKey="programme_area" stroke="var(--text-muted)" fontSize={11} />
+                          <Tooltip
+                            formatter={(value) => formatCurrency(Number(value), grantThemes.currency || "GBP")}
+                            labelFormatter={(label) => String(label)}
+                            contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }}
+                          />
+                          <Bar dataKey="allocated_amount" name="Allocated source amount" fill="var(--nl-unicorn)" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "12px" }}>
+                      Classified: {grantThemes.classification_coverage.classified_grant_count} / {grantThemes.classification_coverage.qualifying_grant_count} grants ({classificationPercentage}%). Unclassified remains visible. Multi-category amounts and counts are split equally to preserve totals.
+                    </div>
+                    {classificationPercentage < 50 ? (
+                      <div className="data-notice data-notice-warning">Strong coverage warning: fewer than half of qualifying grants have an accepted programme classification.</div>
+                    ) : classificationPercentage < 80 ? (
+                      <div className="data-notice data-notice-warning">Moderate coverage warning: programme classification coverage is below the 80% presentation threshold.</div>
+                    ) : null}
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "8px" }}>
+                      Allocation method: equal split across accepted categories · source categories precede inferred categories · inference threshold {grantThemes.inference_confidence_threshold}.
+                    </div>
+                  </>
+                ) : (
+                  <div className="data-notice data-notice-warning">No qualifying programme-area allocation is available for the selected currency.</div>
+                )}
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginTop: "12px" }}>
+                  Coverage reflects available source records and is not representative of the entire funding market. Philea organization metadata is not included as grant flow.
+                </span>
               </div>
             </div>
           )}

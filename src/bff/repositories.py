@@ -5,11 +5,17 @@ import hashlib
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import List, Optional, Dict, Any
 from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
 from data.db_loader import validate_database
-from preprocessing.enrichment import enrich_organization
+from preprocessing.enrichment import (
+    DEFAULT_REVIEW_THRESHOLD,
+    PROGRAMME_TAXONOMY,
+    enrich_organization,
+    normalize_programme_sources,
+)
 from scoring.engine import load_score_configuration, score_relevance
 
 
@@ -27,6 +33,95 @@ def _json_list(value):
         return parsed if isinstance(parsed, list) else []
     except (TypeError, ValueError, json.JSONDecodeError):
         return []
+
+
+def _json_dict(value):
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+MONEY_QUANTUM = Decimal("0.01")
+GRANT_SCOPE_NOTE = (
+    "Results reflect available cached 360Giving records and are not a complete "
+    "representation of the UK, DACH, European, global, or wider funding market."
+)
+STRICT_GRANT_DATE_SQL = (
+    "DATE(date) IS NOT NULL "
+    "AND DATE(date) = SUBSTR(TRIM(CAST(date AS TEXT)), 1, 10)"
+)
+
+
+def _money_minor_units(value):
+    """Return a validation status and deterministic two-decimal minor units."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "missing", None
+    if isinstance(value, bool):
+        return "invalid", None
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return "invalid", None
+    if not amount.is_finite():
+        return "invalid", None
+    quantized = amount.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+    minor_units = int(quantized * 100)
+    if quantized < 0:
+        return "negative", minor_units
+    if quantized == 0:
+        return "zero", 0
+    return "valid", minor_units
+
+
+def _minor_units_to_amount(value: int) -> float:
+    return float(Decimal(value) / Decimal(100))
+
+
+def _month_offset(month: str, offset: int) -> str:
+    year, month_number = (int(part) for part in month.split("-"))
+    absolute = year * 12 + month_number - 1 + offset
+    resolved_year, resolved_month = divmod(absolute, 12)
+    return f"{resolved_year:04d}-{resolved_month + 1:02d}"
+
+
+def _month_range(from_month: str, months: int) -> list[str]:
+    return [_month_offset(from_month, offset) for offset in range(months)]
+
+
+def _amount_policy(maximum_minor_units: Optional[int] = None):
+    return {
+        "monetary_precision": "minor_units_2_decimal_places",
+        "rounding": "ROUND_HALF_UP",
+        "zero_amounts": "included_when_source_value_is_numeric_zero",
+        "negative_amounts": "excluded_and_reported",
+        "upper_bound": "no_unapproved_implausibility_threshold_applied",
+        "maximum_observed_amount": (
+            _minor_units_to_amount(maximum_minor_units)
+            if maximum_minor_units is not None else None
+        ),
+    }
+
+
+def _empty_classification_coverage():
+    return {
+        "qualifying_grant_count": 0,
+        "classified_grant_count": 0,
+        "unclassified_grant_count": 0,
+        "classified_percentage": 0.0,
+        "source_classified_grant_count": 0,
+        "inferred_classified_grant_count": 0,
+        "source_percentage": 0.0,
+        "inferred_percentage": 0.0,
+        "multiple_programme_area_grant_count": 0,
+        "invalid_source_label_count": 0,
+        "low_confidence_inference_count": 0,
+    }
 
 
 def _stable_party_id(role, charity_id, source_id, name, country="", source="360Giving"):
@@ -79,6 +174,18 @@ class CharityRepository(ABC):
 
     @abstractmethod
     async def get_grant_summary(self) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_grant_trends(
+        self, currency: Optional[str] = None, months: int = 24
+    ) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_grant_themes(
+        self, currency: Optional[str] = None
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod
@@ -386,6 +493,51 @@ class JSONCharityRepository(CharityRepository):
                 "record_count": 0,
                 "limitations": ["The JSON fallback does not contain normalized grant transactions."],
             },
+        }
+
+    async def get_grant_trends(
+        self, currency: Optional[str] = None, months: int = 24
+    ) -> Dict[str, Any]:
+        return {
+            "status": "transaction_data_unavailable",
+            "currency": currency.upper() if currency else None,
+            "available_currencies": [],
+            "date_basis": "award_date",
+            "period": None,
+            "items": [],
+            "excluded": {},
+            "zero_amount_count": 0,
+            "latest_award_date": None,
+            "last_refreshed_at": None,
+            "source": [],
+            "data_mode": "cached_source_without_transactions",
+            "amount_policy": _amount_policy(),
+            "scope": {"coverage_note": GRANT_SCOPE_NOTE},
+        }
+
+    async def get_grant_themes(
+        self, currency: Optional[str] = None
+    ) -> Dict[str, Any]:
+        return {
+            "status": "transaction_data_unavailable",
+            "currency": currency.upper() if currency else None,
+            "available_currencies": [],
+            "allocation_method": "equal_split_across_available_categories",
+            "classification_precedence": [
+                "valid_source_category", "accepted_inferred_category", "unclassified"
+            ],
+            "inference_confidence_threshold": DEFAULT_REVIEW_THRESHOLD,
+            "items": [],
+            "classification_coverage": _empty_classification_coverage(),
+            "qualifying_amount": 0.0,
+            "allocated_amount": 0.0,
+            "excluded": {},
+            "zero_amount_count": 0,
+            "last_refreshed_at": None,
+            "source": [],
+            "data_mode": "cached_source_without_transactions",
+            "amount_policy": _amount_policy(),
+            "scope": {"coverage_note": GRANT_SCOPE_NOTE},
         }
 
     async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> Dict[str, Any]:
@@ -879,6 +1031,416 @@ class SQLiteCharityRepository(CharityRepository):
                 "derivation": "Currency-separated sums of stored source grant amounts.",
                 "limitations": ["Rankings do not combine values across currencies."],
             },
+        }
+
+    def _grant_aggregation_context(self, conn, currency: Optional[str]):
+        """Resolve cached 360Giving source/currency scope shared by overview charts."""
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM grants")
+        total_records = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM grants WHERE source = ?", ("360Giving",))
+        source_records = cursor.fetchone()[0]
+        cursor.execute("""
+            SELECT DISTINCT UPPER(TRIM(currency))
+            FROM grants
+            WHERE source = ?
+              AND currency IS NOT NULL
+              AND LENGTH(TRIM(currency)) = 3
+              AND TRIM(currency) NOT GLOB '*[^A-Za-z]*'
+            ORDER BY UPPER(TRIM(currency))
+        """, ("360Giving",))
+        available_currencies = [row[0] for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT COUNT(*) FROM grants
+            WHERE source = ? AND (
+                currency IS NULL OR TRIM(CAST(currency AS TEXT)) = ''
+                OR LENGTH(TRIM(CAST(currency AS TEXT))) != 3
+                OR TRIM(CAST(currency AS TEXT)) GLOB '*[^A-Za-z]*'
+            )
+        """, ("360Giving",))
+        unsupported_currency = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT MAX(ingestion_timestamp) FROM grants WHERE source = ?",
+            ("360Giving",),
+        )
+        last_refreshed_at = cursor.fetchone()[0]
+
+        requested = str(currency or "").strip().upper() or None
+        selected = requested
+        status = None
+        if not source_records:
+            status = "no_data"
+            selected = requested
+        elif requested and requested not in available_currencies:
+            status = "unsupported_currency"
+        elif not requested and len(available_currencies) == 1:
+            selected = available_currencies[0]
+        elif not requested and len(available_currencies) > 1:
+            status = "currency_selection_required"
+        elif not available_currencies:
+            status = "no_qualifying_records"
+
+        currency_filtered = 0
+        if selected and selected in available_currencies:
+            cursor.execute("""
+                SELECT COUNT(*) FROM grants
+                WHERE source = ?
+                  AND currency IS NOT NULL
+                  AND LENGTH(TRIM(currency)) = 3
+                  AND TRIM(currency) NOT GLOB '*[^A-Za-z]*'
+                  AND UPPER(TRIM(currency)) != ?
+            """, ("360Giving", selected))
+            currency_filtered = cursor.fetchone()[0]
+
+        return {
+            "status": status,
+            "selected_currency": selected,
+            "available_currencies": available_currencies,
+            "last_refreshed_at": last_refreshed_at,
+            "source_records": source_records,
+            "excluded": {
+                "unsupported_currency": unsupported_currency,
+                "currency_filtered": currency_filtered,
+                "unsupported_source": total_records - source_records,
+            },
+        }
+
+    @staticmethod
+    def _empty_grant_trends(context, months):
+        return {
+            "status": context["status"] or "no_qualifying_records",
+            "currency": context["selected_currency"],
+            "available_currencies": context["available_currencies"],
+            "date_basis": "award_date",
+            "period": None,
+            "items": [],
+            "excluded": context["excluded"],
+            "zero_amount_count": 0,
+            "latest_award_date": None,
+            "last_refreshed_at": context["last_refreshed_at"],
+            "source": ["360Giving"] if context["source_records"] else [],
+            "data_mode": "derived_from_cached_source",
+            "amount_policy": _amount_policy(),
+            "scope": {"coverage_note": GRANT_SCOPE_NOTE},
+        }
+
+    async def get_grant_trends(
+        self, currency: Optional[str] = None, months: int = 24
+    ) -> Dict[str, Any]:
+        conn = self._get_conn()
+        context = self._grant_aggregation_context(conn, currency)
+        selected = context["selected_currency"]
+        if context["status"] or not selected:
+            conn.close()
+            return self._empty_grant_trends(context, months)
+
+        cursor = conn.cursor()
+        base_params = ("360Giving", selected)
+        base_filter = "source = ? AND UPPER(TRIM(currency)) = ?"
+        cursor.execute(f"""
+            SELECT
+                SUM(CASE WHEN date IS NULL OR TRIM(CAST(date AS TEXT)) = '' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN date IS NOT NULL AND TRIM(CAST(date AS TEXT)) != ''
+                              AND NOT ({STRICT_GRANT_DATE_SQL}) THEN 1 ELSE 0 END),
+                SUM(CASE WHEN amount IS NULL OR (TYPEOF(amount) = 'text' AND TRIM(amount) = '')
+                         THEN 1 ELSE 0 END),
+                SUM(CASE WHEN amount IS NOT NULL
+                              AND NOT (TYPEOF(amount) = 'text' AND TRIM(amount) = '')
+                              AND TYPEOF(amount) NOT IN ('integer', 'real') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN TYPEOF(amount) IN ('integer', 'real') AND amount < 0 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN TYPEOF(amount) IN ('integer', 'real') AND amount = 0 THEN 1 ELSE 0 END),
+                MAX(CASE WHEN TYPEOF(amount) IN ('integer', 'real') AND amount >= 0
+                         THEN CAST(ROUND(amount * 100, 0) AS INTEGER) END),
+                MAX(CASE WHEN {STRICT_GRANT_DATE_SQL} THEN DATE(date) END)
+            FROM grants WHERE {base_filter}
+        """, base_params)
+        quality = cursor.fetchone()
+        excluded = {
+            **context["excluded"],
+            "missing_date": quality[0] or 0,
+            "invalid_date": quality[1] or 0,
+            "missing_amount": quality[2] or 0,
+            "invalid_amount": quality[3] or 0,
+            "negative_amount": quality[4] or 0,
+        }
+        zero_amount_count = quality[5] or 0
+        maximum_minor_units = quality[6]
+        latest_award_date = quality[7]
+        if not latest_award_date:
+            conn.close()
+            response = self._empty_grant_trends(context, months)
+            response["excluded"] = excluded
+            response["zero_amount_count"] = zero_amount_count
+            response["amount_policy"] = _amount_policy(maximum_minor_units)
+            return response
+
+        anchor_month = latest_award_date[:7]
+        from_month = _month_offset(anchor_month, -(months - 1))
+        calendar_months = _month_range(from_month, months)
+
+        cursor.execute(f"""
+            SELECT STRFTIME('%Y-%m', date), COUNT(*)
+            FROM grants
+            WHERE {base_filter} AND {STRICT_GRANT_DATE_SQL}
+              AND STRFTIME('%Y-%m', date) BETWEEN ? AND ?
+            GROUP BY STRFTIME('%Y-%m', date)
+        """, (*base_params, from_month, anchor_month))
+        source_records_by_month = {row[0]: row[1] for row in cursor.fetchall()}
+
+        cursor.execute(f"""
+            SELECT STRFTIME('%Y-%m', date), COUNT(*),
+                   SUM(CAST(ROUND(amount * 100, 0) AS INTEGER))
+            FROM grants
+            WHERE {base_filter} AND {STRICT_GRANT_DATE_SQL}
+              AND TYPEOF(amount) IN ('integer', 'real') AND amount >= 0
+              AND STRFTIME('%Y-%m', date) BETWEEN ? AND ?
+            GROUP BY STRFTIME('%Y-%m', date)
+            ORDER BY STRFTIME('%Y-%m', date)
+        """, (*base_params, from_month, anchor_month))
+        awards_by_month = {
+            row[0]: {"grant_count": row[1], "minor_units": row[2] or 0}
+            for row in cursor.fetchall()
+        }
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM grants
+            WHERE {base_filter} AND {STRICT_GRANT_DATE_SQL}
+              AND TYPEOF(amount) IN ('integer', 'real') AND amount >= 0
+              AND STRFTIME('%Y-%m', date) NOT BETWEEN ? AND ?
+        """, (*base_params, from_month, anchor_month))
+        excluded["outside_period"] = cursor.fetchone()[0]
+        conn.close()
+
+        items = []
+        for month in calendar_months:
+            award = awards_by_month.get(month)
+            source_record_count = source_records_by_month.get(month, 0)
+            if award:
+                items.append({
+                    "month": month,
+                    "grant_count": award["grant_count"],
+                    "source_record_count": source_record_count,
+                    "total_amount": _minor_units_to_amount(award["minor_units"]),
+                    "coverage_status": "observed",
+                })
+            elif source_record_count:
+                items.append({
+                    "month": month,
+                    "grant_count": None,
+                    "source_record_count": source_record_count,
+                    "total_amount": None,
+                    "coverage_status": "partial",
+                })
+            else:
+                items.append({
+                    "month": month,
+                    "grant_count": None,
+                    "source_record_count": 0,
+                    "total_amount": None,
+                    "coverage_status": "unknown",
+                })
+
+        return {
+            "status": "available" if awards_by_month else "no_qualifying_records",
+            "currency": selected,
+            "available_currencies": context["available_currencies"],
+            "date_basis": "award_date",
+            "period": {
+                "from": from_month,
+                "to": anchor_month,
+                "months": months,
+                "anchor": "latest_available_award_month",
+            },
+            "items": items,
+            "excluded": excluded,
+            "zero_amount_count": zero_amount_count,
+            "latest_award_date": latest_award_date,
+            "last_refreshed_at": context["last_refreshed_at"],
+            "source": ["360Giving"],
+            "data_mode": "derived_from_cached_source",
+            "amount_policy": _amount_policy(maximum_minor_units),
+            "scope": {"coverage_note": GRANT_SCOPE_NOTE},
+        }
+
+    async def get_grant_themes(
+        self, currency: Optional[str] = None
+    ) -> Dict[str, Any]:
+        conn = self._get_conn()
+        context = self._grant_aggregation_context(conn, currency)
+        selected = context["selected_currency"]
+        base_response = {
+            "status": context["status"] or "no_qualifying_records",
+            "currency": selected,
+            "available_currencies": context["available_currencies"],
+            "allocation_method": "equal_split_across_available_categories",
+            "classification_precedence": [
+                "valid_source_category", "accepted_inferred_category", "unclassified"
+            ],
+            "inference_confidence_threshold": DEFAULT_REVIEW_THRESHOLD,
+            "items": [],
+            "classification_coverage": _empty_classification_coverage(),
+            "qualifying_amount": 0.0,
+            "allocated_amount": 0.0,
+            "excluded": context["excluded"],
+            "zero_amount_count": 0,
+            "last_refreshed_at": context["last_refreshed_at"],
+            "source": ["360Giving"] if context["source_records"] else [],
+            "data_mode": "derived_from_cached_source",
+            "amount_policy": _amount_policy(),
+            "scope": {"coverage_note": GRANT_SCOPE_NOTE},
+        }
+        if context["status"] or not selected:
+            conn.close()
+            return base_response
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT grant_id, amount, programme_area_source, programme_area_inferred,
+                   programme_area_scores
+            FROM grants
+            WHERE source = ? AND UPPER(TRIM(currency)) = ?
+            ORDER BY grant_id
+        """, ("360Giving", selected))
+
+        aggregates = {}
+        qualifying_grants = 0
+        classified_grants = 0
+        unclassified_grants = 0
+        source_classified = 0
+        inferred_classified = 0
+        multiple_categories = 0
+        invalid_source_labels = 0
+        low_confidence_inferences = 0
+        qualifying_minor_units = 0
+        maximum_minor_units = None
+        zero_amount_count = 0
+        amount_exclusions = {"missing_amount": 0, "invalid_amount": 0, "negative_amount": 0}
+
+        for _, amount, source_raw, inferred_raw, scores_raw in cursor:
+            amount_status, minor_units = _money_minor_units(amount)
+            if amount_status == "missing":
+                amount_exclusions["missing_amount"] += 1
+                continue
+            if amount_status == "invalid":
+                amount_exclusions["invalid_amount"] += 1
+                continue
+            if amount_status == "negative":
+                amount_exclusions["negative_amount"] += 1
+                continue
+            if amount_status == "zero":
+                zero_amount_count += 1
+
+            qualifying_grants += 1
+            qualifying_minor_units += minor_units
+            maximum_minor_units = (
+                minor_units if maximum_minor_units is None
+                else max(maximum_minor_units, minor_units)
+            )
+            source_values = _json_list(source_raw)
+            source_categories, _ = normalize_programme_sources(source_values)
+            if source_values and not source_categories:
+                invalid_source_labels += 1
+
+            inferred_values = _json_list(inferred_raw)
+            scores = _json_dict(scores_raw)
+            accepted_inferred = []
+            inferred_candidates = []
+            for category in inferred_values:
+                if category not in PROGRAMME_TAXONOMY:
+                    continue
+                inferred_candidates.append(category)
+                try:
+                    confidence = float(scores.get(category, 0.0))
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                if confidence >= DEFAULT_REVIEW_THRESHOLD:
+                    accepted_inferred.append(category)
+
+            if source_categories:
+                categories = sorted(set(source_categories))
+                provenance = "source"
+                source_classified += 1
+                classified_grants += 1
+            elif accepted_inferred:
+                categories = sorted(set(accepted_inferred))
+                provenance = "inferred"
+                inferred_classified += 1
+                classified_grants += 1
+            else:
+                categories = ["Unclassified"]
+                provenance = "unclassified"
+                unclassified_grants += 1
+                if inferred_candidates:
+                    low_confidence_inferences += 1
+
+            if len(categories) > 1:
+                multiple_categories += 1
+            base_share, remainder = divmod(minor_units, len(categories))
+            weight = Decimal(1) / Decimal(len(categories))
+            for index, category in enumerate(categories):
+                share = base_share + (1 if index < remainder else 0)
+                current = aggregates.setdefault(category, {
+                    "distinct_grant_count": 0,
+                    "weighted_grant_count": Decimal(0),
+                    "allocated_minor_units": 0,
+                    "source_classified_grant_count": 0,
+                    "inferred_classified_grant_count": 0,
+                    "unclassified_grant_count": 0,
+                })
+                current["distinct_grant_count"] += 1
+                current["weighted_grant_count"] += weight
+                current["allocated_minor_units"] += share
+                if provenance == "source":
+                    current["source_classified_grant_count"] += 1
+                elif provenance == "inferred":
+                    current["inferred_classified_grant_count"] += 1
+                else:
+                    current["unclassified_grant_count"] += 1
+
+        conn.close()
+        allocated_minor_units = sum(
+            values["allocated_minor_units"] for values in aggregates.values()
+        )
+        items = [
+            {
+                "programme_area": category,
+                "distinct_grant_count": values["distinct_grant_count"],
+                "weighted_grant_count": float(
+                    values["weighted_grant_count"].quantize(
+                        Decimal("0.000001"), rounding=ROUND_HALF_UP
+                    )
+                ),
+                "allocated_amount": _minor_units_to_amount(values["allocated_minor_units"]),
+                "source_classified_grant_count": values["source_classified_grant_count"],
+                "inferred_classified_grant_count": values["inferred_classified_grant_count"],
+                "unclassified_grant_count": values["unclassified_grant_count"],
+            }
+            for category, values in aggregates.items()
+        ]
+        items.sort(key=lambda item: (-item["allocated_amount"], item["programme_area"]))
+        denominator = qualifying_grants or 1
+        coverage = {
+            "qualifying_grant_count": qualifying_grants,
+            "classified_grant_count": classified_grants,
+            "unclassified_grant_count": unclassified_grants,
+            "classified_percentage": round(classified_grants / denominator * 100, 2),
+            "source_classified_grant_count": source_classified,
+            "inferred_classified_grant_count": inferred_classified,
+            "source_percentage": round(source_classified / denominator * 100, 2),
+            "inferred_percentage": round(inferred_classified / denominator * 100, 2),
+            "multiple_programme_area_grant_count": multiple_categories,
+            "invalid_source_label_count": invalid_source_labels,
+            "low_confidence_inference_count": low_confidence_inferences,
+        }
+        return {
+            **base_response,
+            "status": "available" if qualifying_grants else "no_qualifying_records",
+            "items": items,
+            "classification_coverage": coverage,
+            "qualifying_amount": _minor_units_to_amount(qualifying_minor_units),
+            "allocated_amount": _minor_units_to_amount(allocated_minor_units),
+            "excluded": {**context["excluded"], **amount_exclusions},
+            "zero_amount_count": zero_amount_count,
+            "amount_policy": _amount_policy(maximum_minor_units),
         }
 
     async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> Dict[str, Any]:
