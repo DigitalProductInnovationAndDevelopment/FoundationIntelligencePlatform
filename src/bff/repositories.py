@@ -280,13 +280,29 @@ class JSONCharityRepository(CharityRepository):
                 "programme_area_review_required": enriched["programme_area_review_required"],
                 "geography_review_required": enriched["geography_review_required"],
                 "enrichment_rule_version": enriched["enrichment_rule_version"],
+                "organization_type": all_details.get("charity_type") or "charity",
+                "primary_source": "Charity Commission for England and Wales",
+                "source_names": ["Charity Commission for England and Wales"],
+                "source_record_id": str(c.get("registered_charity_number")),
+                "source_url": c.get("link"),
+                "transaction_coverage": "source_without_transactions",
             })
         return results
 
     async def get_by_id(self, reg_charity_number: int) -> Optional[Dict[str, Any]]:
         for c in self._data:
             if c.get("registered_charity_number") == reg_charity_number:
-                return {**c, **enrich_organization(c)}
+                return {
+                    **c,
+                    **enrich_organization(c),
+                    "organization_type": c.get("all_details", {}).get("charity_type") or "charity",
+                    "primary_source": "Charity Commission for England and Wales",
+                    "source_names": ["Charity Commission for England and Wales"],
+                    "source_record_id": str(c.get("registered_charity_number")),
+                    "source_url": c.get("link"),
+                    "source_records": [],
+                    "transaction_coverage": "source_without_transactions",
+                }
         return None
 
     async def get_stats(self) -> Dict[str, Any]:
@@ -322,6 +338,8 @@ class JSONCharityRepository(CharityRepository):
             "total_grants": None,
             "data_mode": "cached_source_without_transactions",
             "source": ["Charity Commission for England and Wales"],
+            "source_counts": {"Charity Commission for England and Wales": total},
+            "organization_type_counts": {"charity": total},
         }
 
     async def get_grants_map(
@@ -442,7 +460,8 @@ class SQLiteCharityRepository(CharityRepository):
                    programme_areas_inferred, geographic_focus_source,
                    geographic_focus_inferred, headquarters_country, headquarters_region,
                    programme_area_review_required, geography_review_required,
-                   enrichment_rule_version
+                   enrichment_rule_version, organization_type, primary_source, source_names,
+                   source_record_id, source_url, transaction_coverage
             FROM charities 
             WHERE 1=1
         """
@@ -559,6 +578,12 @@ class SQLiteCharityRepository(CharityRepository):
                 "programme_area_review_required": bool(r[22]),
                 "geography_review_required": bool(r[23]),
                 "enrichment_rule_version": r[24],
+                "organization_type": r[25] or r[2] or "unknown",
+                "primary_source": r[26],
+                "source_names": _json_list(r[27]),
+                "source_record_id": r[28],
+                "source_url": r[29],
+                "transaction_coverage": r[30] or "unknown",
             })
         return results
 
@@ -571,7 +596,10 @@ class SQLiteCharityRepository(CharityRepository):
                    programme_area_review_required, geographic_focus_source,
                    geographic_focus_inferred, headquarters_country, headquarters_region,
                    geography_method, geography_confidence, geography_evidence,
-                   geography_review_required, enrichment_rule_version
+                   geography_review_required, enrichment_rule_version, organization_type,
+                   primary_source, source_names, source_record_id, source_url,
+                   source_records, ingestion_timestamp, transaction_coverage,
+                   deduplication_status, deduplication_candidates
             FROM charities WHERE charity_id = ?
         """, (reg_charity_number,))
         row = cursor.fetchone()
@@ -595,6 +623,16 @@ class SQLiteCharityRepository(CharityRepository):
                 "geography_evidence": _json_list(row[13]),
                 "geography_review_required": bool(row[14]),
                 "enrichment_rule_version": row[15],
+                "organization_type": row[16] or "unknown",
+                "primary_source": row[17],
+                "source_names": _json_list(row[18]),
+                "source_record_id": row[19],
+                "source_url": row[20],
+                "source_records": _json_list(row[21]),
+                "ingestion_timestamp": row[22],
+                "transaction_coverage": row[23] or "unknown",
+                "deduplication_status": row[24],
+                "deduplication_candidates": _json_list(row[25]),
             })
             return raw
         return None
@@ -623,6 +661,18 @@ class SQLiteCharityRepository(CharityRepository):
 
         cursor.execute("SELECT DISTINCT source FROM grants WHERE source IS NOT NULL AND source != ''")
         grant_sources = sorted(row[0] for row in cursor.fetchall())
+
+        cursor.execute("""
+            SELECT source.value, COUNT(*)
+            FROM charities, json_each(charities.source_names) AS source
+            GROUP BY source.value
+        """)
+        source_counts = {str(row[0]): row[1] for row in cursor.fetchall()}
+        cursor.execute("""
+            SELECT COALESCE(NULLIF(organization_type, ''), 'unknown'), COUNT(*)
+            FROM charities GROUP BY COALESCE(NULLIF(organization_type, ''), 'unknown')
+        """)
+        organization_type_counts = {str(row[0]): row[1] for row in cursor.fetchall()}
         
         conn.close()
         return {
@@ -633,7 +683,9 @@ class SQLiteCharityRepository(CharityRepository):
             "average_expenditure": avg_exp,
             "total_grants": total_grants,
             "data_mode": "derived_from_cached_source",
-            "source": ["Charity Commission for England and Wales", *grant_sources],
+            "source": sorted(set(source_counts) | set(grant_sources)),
+            "source_counts": source_counts,
+            "organization_type_counts": organization_type_counts,
         }
 
     async def get_grants_map(
@@ -806,6 +858,11 @@ class SQLiteCharityRepository(CharityRepository):
     async def get_grants_for_charity(self, charity_id: int, role: str = "all") -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
+        cursor.execute(
+            "SELECT transaction_coverage, source_names FROM charities WHERE charity_id = ?",
+            (charity_id,),
+        )
+        organization_row = cursor.fetchone()
         
         query = """
             SELECT grant_id, funding_charity_id, funding_name, funding_org_source_id,
@@ -872,17 +929,28 @@ class SQLiteCharityRepository(CharityRepository):
                 "enrichment_rule_version": r[30],
             })
         currencies = sorted({item["currency"] for item in results})
+        stored_coverage = organization_row[0] if organization_row else "unknown"
+        source_names = _json_list(organization_row[1]) if organization_row else []
+        if results:
+            response_status = "available"
+            coverage_status = "observed_transactions"
+        elif stored_coverage == "organization_level_only":
+            response_status = "organization_level_only"
+            coverage_status = "organization_level_only"
+        else:
+            response_status = "no_transactions_found"
+            coverage_status = "no_transactions_found"
         return {
-            "status": "available" if results else "no_transactions_found",
+            "status": response_status,
             "organization_id": charity_id,
             "role": role_lower if role_lower in {"funder", "recipient"} else "all",
-            "transaction_coverage": "observed_transactions" if results else "no_transactions_found",
+            "transaction_coverage": coverage_status,
             "grant_count": len(results),
             "currencies": currencies,
             "grants": results,
             "metadata": {
                 "data_mode": "cached_source",
-                "source": ["360Giving"],
+                "source": sorted({item["source"] for item in results if item["source"]}) or source_names,
                 "generated_at": _utc_now(),
                 "record_count": len(results),
                 "limitations": ["Absence of a transaction does not prove that no grant exists."],
@@ -894,6 +962,11 @@ class SQLiteCharityRepository(CharityRepository):
     ) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
+        cursor.execute(
+            "SELECT transaction_coverage, source_names FROM charities WHERE charity_id = ?",
+            (charity_id,),
+        )
+        organization_row = cursor.fetchone()
         cursor.execute("""
             SELECT grant_id, funding_charity_id, funding_name, funding_org_source_id,
                    recipient_charity_id, recipient_name, recipient_org_source_id,
@@ -904,7 +977,24 @@ class SQLiteCharityRepository(CharityRepository):
         rows = cursor.fetchall()
         conn.close()
 
+        if not rows and organization_row and organization_row[0] == "organization_level_only":
+            return {
+                "status": "organization_level_only",
+                "nodes": [],
+                "links": [],
+                "metadata": {
+                    "source": _json_list(organization_row[1]), "generated_at": _utc_now(),
+                    "grant_count": 0, "included_grant_count": 0,
+                    "excluded_grant_count": 0, "excluded_reasons": {},
+                    "included_value": 0.0, "currencies": [],
+                    "selected_currency": currency, "conversion_method": "none",
+                    "filters_applied": {"organization_id": charity_id, "limit": limit},
+                    "truncation_applied": False,
+                },
+            }
+
         currencies = sorted({str(row[8]).upper() for row in rows if row[8]})
+        transaction_sources = sorted({str(row[9]) for row in rows if row[9]})
         selected_currency = currency.upper() if currency else (currencies[0] if len(currencies) == 1 else None)
         excluded_reasons = {}
         if rows and selected_currency is None:
@@ -913,7 +1003,7 @@ class SQLiteCharityRepository(CharityRepository):
                 "nodes": [],
                 "links": [],
                 "metadata": {
-                    "source": ["360Giving"], "generated_at": _utc_now(),
+                    "source": transaction_sources, "generated_at": _utc_now(),
                     "grant_count": len(rows), "included_grant_count": 0,
                     "excluded_grant_count": len(rows),
                     "excluded_reasons": {"mixed_currency_requires_filter": len(rows)},
@@ -982,7 +1072,7 @@ class SQLiteCharityRepository(CharityRepository):
             "nodes": nodes,
             "links": links,
             "metadata": {
-                "source": ["360Giving"],
+                "source": transaction_sources,
                 "generated_at": _utc_now(),
                 "grant_count": len(rows),
                 "included_grant_count": retained_grants,

@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("db_loader")
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 REQUIRED_SCHEMA = {
     "charities": {
         "charity_id", "name", "type", "website", "email", "address", "city",
@@ -21,7 +21,10 @@ REQUIRED_SCHEMA = {
         "geographic_focus_source", "geographic_focus_inferred", "headquarters_country",
         "headquarters_region", "geography_method", "geography_confidence",
         "geography_evidence", "geography_review_required", "enrichment_rule_version",
-        "enrichment_review_reasons", "insufficient_source_text"
+        "enrichment_review_reasons", "insufficient_source_text", "normalized_name",
+        "normalized_domain", "organization_type", "primary_source", "source_names",
+        "source_record_id", "source_url", "source_records", "ingestion_timestamp",
+        "transaction_coverage", "deduplication_status", "deduplication_candidates"
     },
     "grants": {
         "grant_id", "funding_charity_id", "funding_name", "funding_org_source_id",
@@ -87,7 +90,19 @@ def create_tables(conn, reset=False):
         geography_review_required INTEGER NOT NULL DEFAULT 0,
         enrichment_rule_version TEXT,
         enrichment_review_reasons TEXT,
-        insufficient_source_text INTEGER NOT NULL DEFAULT 0
+        insufficient_source_text INTEGER NOT NULL DEFAULT 0,
+        normalized_name TEXT,
+        normalized_domain TEXT,
+        organization_type TEXT,
+        primary_source TEXT,
+        source_names TEXT,
+        source_record_id TEXT,
+        source_url TEXT,
+        source_records TEXT,
+        ingestion_timestamp TEXT,
+        transaction_coverage TEXT,
+        deduplication_status TEXT,
+        deduplication_candidates TEXT
     );
     """
     
@@ -273,8 +288,11 @@ def insert_charities(conn, charities_list):
                 geographic_focus_source, geographic_focus_inferred, headquarters_country,
                 headquarters_region, geography_method, geography_confidence,
                 geography_evidence, geography_review_required, enrichment_rule_version,
-                enrichment_review_reasons, insufficient_source_text
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enrichment_review_reasons, insufficient_source_text, normalized_name,
+                normalized_domain, organization_type, primary_source, source_names,
+                source_record_id, source_url, source_records, ingestion_timestamp,
+                transaction_coverage, deduplication_status, deduplication_candidates
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                 c["charity_id"],
@@ -310,6 +328,18 @@ def insert_charities(conn, charities_list):
                 c.get("enrichment_rule_version"),
                 _json_value(c.get("enrichment_review_reasons"), []),
                 bool(c.get("insufficient_source_text")),
+                c.get("normalized_name"),
+                c.get("normalized_domain"),
+                c.get("organization_type") or c.get("type"),
+                c.get("primary_source"),
+                _json_value(c.get("source_names"), []),
+                c.get("source_record_id"),
+                c.get("source_url"),
+                _json_value(c.get("source_records"), []),
+                c.get("ingestion_timestamp"),
+                c.get("transaction_coverage"),
+                c.get("deduplication_status"),
+                _json_value(c.get("deduplication_candidates"), []),
                 )
             )
         conn.commit()
@@ -415,8 +445,11 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                             geographic_focus_source, geographic_focus_inferred, headquarters_country,
                             headquarters_region, geography_method, geography_confidence,
                             geography_evidence, geography_review_required, enrichment_rule_version,
-                            enrichment_review_reasons, insufficient_source_text
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            enrichment_review_reasons, insufficient_source_text, normalized_name,
+                            normalized_domain, organization_type, primary_source, source_names,
+                            source_record_id, source_url, source_records, ingestion_timestamp,
+                            transaction_coverage, deduplication_status, deduplication_candidates
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             c["charity_id"],
@@ -452,6 +485,18 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                             c.get("enrichment_rule_version"),
                             _json_value(c.get("enrichment_review_reasons"), []),
                             bool(c.get("insufficient_source_text")),
+                            c.get("normalized_name"),
+                            c.get("normalized_domain"),
+                            c.get("organization_type") or c.get("type"),
+                            c.get("primary_source"),
+                            _json_value(c.get("source_names"), []),
+                            c.get("source_record_id"),
+                            c.get("source_url"),
+                            _json_value(c.get("source_records"), []),
+                            c.get("ingestion_timestamp"),
+                            c.get("transaction_coverage"),
+                            c.get("deduplication_status"),
+                            _json_value(c.get("deduplication_candidates"), []),
                         )
                     )
                     charity_count += 1

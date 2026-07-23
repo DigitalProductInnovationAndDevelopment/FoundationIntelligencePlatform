@@ -38,8 +38,8 @@ interface Charity {
   reg_status: string;
   reporting_status: string;
   removal_reason: string | null;
-  latest_income: number;
-  latest_expenditure: number;
+  latest_income: number | null;
+  latest_expenditure: number | null;
   programme_areas_source?: string[];
   programme_areas_inferred?: string[];
   geographic_focus_source?: unknown[];
@@ -49,6 +49,12 @@ interface Charity {
   programme_area_review_required?: boolean;
   geography_review_required?: boolean;
   enrichment_rule_version?: string | null;
+  organization_type?: string;
+  primary_source?: string | null;
+  source_names?: string[];
+  source_record_id?: string | null;
+  source_url?: string | null;
+  transaction_coverage?: string;
 }
 
 interface KPIStats {
@@ -892,7 +898,7 @@ export default function App() {
               onClick={() => setActiveTab("directory")}
             >
               <Building2 size={18} />
-              <span>Charities Directory</span>
+              <span>Organization Directory</span>
             </button>
             <button
               className={`nav-item ${activeTab === "admin" ? "active" : ""}`}
@@ -924,7 +930,7 @@ export default function App() {
         <header className="header-bar">
           <h1 className="header-title">
             {activeTab === "overview" && "Foundation Intelligence Platform"}
-            {activeTab === "directory" && "Charities Registry Directory"}
+            {activeTab === "directory" && "Foundation & Organization Directory"}
             {activeTab === "admin" && "Administrative Pipeline Monitor"}
           </h1>
         </header>
@@ -955,7 +961,7 @@ export default function App() {
                 <div className="glass-card kpi-card">
                   <div className="kpi-icon"><Building2 size={24} /></div>
                   <div className="kpi-value-container">
-                    <span className="kpi-label">Registered Charities</span>
+                    <span className="kpi-label">Organizations Indexed</span>
                     <span className="kpi-value">{stats.total_charities}</span>
                   </div>
                 </div>
@@ -1083,7 +1089,7 @@ export default function App() {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Charity name..."
+                      placeholder="Organization name..."
                       style={{ paddingLeft: "32px" }}
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -1263,17 +1269,24 @@ export default function App() {
                         onClick={() => setSelectedCharity(ch)}
                       >
                         <div className="charity-card-header">
-                          <span className="charity-card-id">#{ch.registered_charity_number}</span>
+                          <span className="charity-card-id">
+                            {ch.primary_source === "Philea" ? `Philea #${ch.source_record_id}` : `#${ch.registered_charity_number}`}
+                          </span>
                           <h3 className="charity-card-name">{ch.charity_name}</h3>
                         </div>
                         {isBffOnline && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                            {ch.primary_source && <span className="status-badge">Source · {ch.primary_source}</span>}
+                            {ch.organization_type && <span className="status-badge">Type · {ch.organization_type}</span>}
                             {ch.headquarters_country && <span className="status-badge">HQ · {ch.headquarters_country}</span>}
                             {[...(ch.programme_areas_source || []), ...(ch.programme_areas_inferred || [])].slice(0, 2).map((area) => (
                               <span className="status-badge" key={area}>{area}</span>
                             ))}
                             {(ch.programme_area_review_required || ch.geography_review_required) && (
                               <span className="status-badge status-warning">Review suggested</span>
+                            )}
+                            {ch.transaction_coverage === "organization_level_only" && (
+                              <span className="status-badge status-warning">Organization-level data only</span>
                             )}
                           </div>
                         )}
@@ -1538,7 +1551,9 @@ export default function App() {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px" }}>
               <div>
-                <span className="charity-card-id">#{selectedCharity.registered_charity_number}</span>
+                <span className="charity-card-id">
+                  {selectedCharity.primary_source === "Philea" ? `Philea #${selectedCharity.source_record_id}` : `#${selectedCharity.registered_charity_number}`}
+                </span>
                 <h2 style={{ fontSize: "22px", fontWeight: "700", marginTop: "4px" }}>{selectedCharity.charity_name}</h2>
               </div>
               <button
@@ -1624,6 +1639,12 @@ export default function App() {
                   <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
                     Deterministic rules · {selectedCharityDetail.enrichment_rule_version || "version unavailable"}
                   </div>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Source: {(selectedCharityDetail.source_names || []).join(" · ") || "Unavailable"}
+                  </div>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Type: {selectedCharityDetail.organization_type || "unknown"} · Coverage: {selectedCharityDetail.transaction_coverage || "unknown"}
+                  </div>
                   {(selectedCharityDetail.programme_area_review_required || selectedCharityDetail.geography_review_required) && (
                     <div className="status-badge status-warning" style={{ marginTop: "8px" }}>Low-confidence or ambiguous evidence · review required</div>
                   )}
@@ -1683,6 +1704,8 @@ export default function App() {
                 <div className="data-notice data-notice-warning" style={{ padding: "20px", textAlign: "center" }}>
                   {sankeyData?.status === "mixed_currency_requires_filter"
                     ? "Grant flows span multiple currencies; no amounts are combined without a currency filter."
+                    : sankeyData?.status === "organization_level_only"
+                      ? "This source provides organization-level intelligence only; transaction-level grant coverage is unavailable."
                     : sankeyData?.status === "request_failed"
                       ? "Grant-flow data could not be loaded."
                       : "No observed grant transactions are available for this organization."}
@@ -1839,6 +1862,8 @@ export default function App() {
                         <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                           {grantStatus === "transaction_data_unavailable"
                             ? "Transaction data is unavailable in the current data source."
+                            : grantStatus === "organization_level_only"
+                              ? "Philea provides organization-level intelligence only; no transaction records are assigned."
                             : "No matching observed grant transactions were found. Absence is not proof that no grants exist."}
                         </td>
                       </tr>

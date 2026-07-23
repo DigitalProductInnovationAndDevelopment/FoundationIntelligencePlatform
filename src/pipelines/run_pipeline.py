@@ -46,6 +46,7 @@ def parse_charity_number(org_id):
 
 from preprocessing.consolidate import consolidate_uk_datasets
 from preprocessing.enrichment import build_enrichment_report
+from preprocessing.philea_adapter import integrate_philea_organizations
 from preprocessing.extract_impressum import crawl_impressum
 import data.db_loader as db_loader
 from data.db_loader import insert_charities, insert_grants
@@ -69,6 +70,7 @@ def run_pipeline(args):
     # Setup Paths
     raw_cc_path = args.raw_cc_output or os.path.join(PROJECT_ROOT, "data/raw/register_of_charities_results.json")
     raw_ts_path = args.raw_ts_output or os.path.join(PROJECT_ROOT, "data/raw/threesixtygiving_results.json")
+    raw_philea_path = os.path.join(PROJECT_ROOT, "data/raw/philea_members.json")
     charities_jsonl_path = os.path.join(PROJECT_ROOT, "data/preprocessed/charities.jsonl")
     grants_jsonl_path = os.path.join(PROJECT_ROOT, "data/preprocessed/grants.jsonl")
     db_file = os.path.join(PROJECT_ROOT, "data/charities.db")
@@ -286,6 +288,17 @@ def run_pipeline(args):
                     except Exception as e:
                         logger.warning(f"  -> Failed to crawl {c['name']}: {e}")
 
+        philea_records = load_existing_raw(raw_philea_path)
+        charities_list, philea_report = integrate_philea_organizations(
+            charities_list, philea_records
+        )
+        logger.info(
+            "Integrated cached Philea organizations: %s added, %s merged, %s rejected.",
+            philea_report["philea_added_count"],
+            philea_report["philea_merged_count"],
+            philea_report["philea_rejected_count"],
+        )
+
         # Step 3: Export flat JSON Lines files
         logger.info("Step 3: Exporting flat relational tables to JSONL...")
         os.makedirs(os.path.dirname(charities_jsonl_path), exist_ok=True)
@@ -305,6 +318,10 @@ def run_pipeline(args):
         with open(enrichment_report_path, "w", encoding="utf-8") as f:
             json.dump(enrichment_report, f, ensure_ascii=False, indent=2)
         logger.info(f"Exported enrichment coverage report to: {enrichment_report_path}")
+        philea_report_path = os.path.join(PROJECT_ROOT, "data/preprocessed/philea_integration_report.json")
+        with open(philea_report_path, "w", encoding="utf-8") as f:
+            json.dump(philea_report, f, ensure_ascii=False, indent=2)
+        logger.info(f"Exported Philea integration report to: {philea_report_path}")
 
         # Step 4: Loading SQLite DB
         logger.info("Step 4: Loading data into SQLite Database...")
@@ -388,6 +405,11 @@ def run_pipeline(args):
         if not target_tuples:
             logger.info("No foundations to process.")
             if conn:
+                philea_only, philea_report = integrate_philea_organizations(
+                    [], load_existing_raw(raw_philea_path)
+                )
+                insert_charities(conn, philea_only)
+                logger.info("Loaded %s cached Philea organizations.", len(philea_only))
                 conn.close()
             db_loader.publish_staging_database(staging_db_file, db_file)
             return
@@ -491,6 +513,14 @@ def run_pipeline(args):
             logger.info(f"[{idx}/{len(target_tuples)}] Foundation {reg_no} successfully integrated.")
             
         if conn:
+            philea_only, philea_report = integrate_philea_organizations(
+                [], load_existing_raw(raw_philea_path)
+            )
+            insert_charities(conn, philea_only)
+            logger.info(
+                "Loaded %s cached Philea organization-level records in full-run mode.",
+                len(philea_only),
+            )
             conn.close()
             logger.info("Database connection closed.")
         db_loader.publish_staging_database(staging_db_file, db_file)

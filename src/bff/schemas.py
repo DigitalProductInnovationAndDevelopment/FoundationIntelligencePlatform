@@ -107,6 +107,12 @@ class CharityBase(BaseModel):
     programme_area_review_required: bool = False
     geography_review_required: bool = False
     enrichment_rule_version: Optional[str] = None
+    organization_type: str = "unknown"
+    primary_source: Optional[str] = None
+    source_names: List[str] = []
+    source_record_id: Optional[str] = None
+    source_url: Optional[str] = None
+    transaction_coverage: str = "unknown"
 
 class CharityDetail(BaseModel):
     registered_charity_number: int
@@ -132,6 +138,16 @@ class CharityDetail(BaseModel):
     geography_evidence: List[Dict[str, Any]] = []
     geography_review_required: bool = False
     enrichment_rule_version: Optional[str] = None
+    organization_type: str = "unknown"
+    primary_source: Optional[str] = None
+    source_names: List[str] = []
+    source_record_id: Optional[str] = None
+    source_url: Optional[str] = None
+    source_records: List[Dict[str, Any]] = []
+    ingestion_timestamp: Optional[str] = None
+    transaction_coverage: str = "unknown"
+    deduplication_status: Optional[str] = None
+    deduplication_candidates: List[Dict[str, Any]] = []
 
 class CharityStats(BaseModel):
     total_charities: int
@@ -142,6 +158,8 @@ class CharityStats(BaseModel):
     total_grants: Optional[int] = None
     data_mode: str = "unknown"
     source: List[str] = []
+    source_counts: Dict[str, int] = {}
+    organization_type_counts: Dict[str, int] = {}
 
 class GrantMapItem(BaseModel):
     region_or_country_code: Optional[str] = None
