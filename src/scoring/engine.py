@@ -124,6 +124,26 @@ def _normalized_set(values: Any) -> set[str]:
     return {str(value).strip().casefold() for value in _list(values) if str(value).strip()}
 
 
+def _normalized_geography_set(values: Any) -> set[str]:
+    """Normalize scalar or source-object geography values for score comparison."""
+    normalized = set()
+    for value in _list(values):
+        if isinstance(value, Mapping):
+            candidates = [
+                value.get("name"), value.get("country"), value.get("region"),
+                value.get("macro_region"), value.get("value"),
+            ]
+        else:
+            candidates = [value]
+        for candidate in candidates:
+            text = str(candidate or "").strip().casefold()
+            if text:
+                normalized.add(text)
+    if normalized.intersection({"england", "scotland", "wales", "northern ireland"}):
+        normalized.add("united kingdom")
+    return normalized
+
+
 def _component(score, weight, confidence, evidence, missing_reason=None):
     available = score is not None
     return {
@@ -168,9 +188,13 @@ def score_relevance(
         components["thematic_fit"] = _component(None, config.weights["thematic_fit"], 0, [], reason)
         missing_inputs.append(reason)
 
-    target_geographies = _normalized_set(target_profile.get("geographies"))
-    organization_geo_source = _normalized_set(organization.get("geographic_focus_source"))
-    organization_geo_inferred = _normalized_set(organization.get("geographic_focus_inferred"))
+    target_geographies = _normalized_geography_set(target_profile.get("geographies"))
+    organization_geo_source = _normalized_geography_set(
+        organization.get("geographic_focus_source")
+    )
+    organization_geo_inferred = _normalized_geography_set(
+        organization.get("geographic_focus_inferred")
+    )
     organization_geographies = organization_geo_source | organization_geo_inferred
     if target_geographies and organization_geographies:
         matches = target_geographies & organization_geographies
@@ -180,7 +204,7 @@ def score_relevance(
             "target_values": sorted(target_geographies),
             "organization_values": sorted(organization_geographies),
             "matched_values": sorted(matches),
-            "method": "exact_normalized_geography_overlap",
+            "method": "normalized_geography_overlap_with_constituent_country_rollup",
             "headquarters_excluded": True,
         }])
     else:

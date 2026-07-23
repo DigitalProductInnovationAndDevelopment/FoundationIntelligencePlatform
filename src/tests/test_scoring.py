@@ -106,6 +106,24 @@ class TestRelevanceScore(unittest.TestCase):
         self.assertEqual(result["data_completeness"], 0.7)
         self.assertIn("annual expenditure missing", result["missing_inputs"])
 
+    def test_source_geography_objects_are_normalized_with_uk_rollup(self):
+        organization = strong_organization()
+        organization["geographic_focus_source"] = [
+            {"country": "Scotland", "continent": "Europe"}
+        ]
+        profile = target_profile()
+        profile["geographies"] = ["United Kingdom"]
+
+        result = score_relevance(organization, profile, grant_stats(), self.config)
+
+        component = result["components"]["geographic_fit"]
+        self.assertEqual(component["score"], 100.0)
+        self.assertEqual(component["evidence"][0]["matched_values"], ["united kingdom"])
+        self.assertEqual(
+            component["evidence"][0]["organization_values"],
+            ["scotland", "united kingdom"],
+        )
+
     def test_missing_programme_and_geography_are_disclosed(self):
         organization = strong_organization()
         organization["programme_areas_source"] = []
