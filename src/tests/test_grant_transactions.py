@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from bff.repositories import SQLiteCharityRepository, _stable_party_id
+from bff.schemas import CharityDetail
 from data.db_loader import create_tables
 from preprocessing.enrichment import normalize_geography_sources
 
@@ -17,14 +18,31 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
         create_tables(self.conn)
         self.conn.executemany(
             """
-            INSERT INTO charities (charity_id, name, type, raw_cc_data)
-            VALUES (?, ?, 'Charity', ?)
+            INSERT INTO charities (
+                charity_id, name, type, raw_cc_data, headquarters_country,
+                headquarters_region, annual_expenditure, programme_areas_source,
+                programme_areas_inferred
+            ) VALUES (?, ?, 'Charity', ?, ?, ?, ?, ?, ?)
             """,
             [
-                (1, "Alpha Foundation", self._raw_charity(1, "Alpha Foundation")),
-                (2, "Beta Charity", self._raw_charity(2, "Beta Charity")),
-                (3, "Gamma Charity", self._raw_charity(3, "Gamma Charity")),
-                (4, "Organization-level only", self._raw_charity(4, "Organization-level only")),
+                (
+                    1, "Alpha Foundation", self._raw_charity(1, "Alpha Foundation"),
+                    "United Kingdom", "London", 2_000_000,
+                    json.dumps(["Health"]), json.dumps([]),
+                ),
+                (
+                    2, "Beta Charity", self._raw_charity(2, "Beta Charity"),
+                    "Ghana", None, 500_000, json.dumps([]), json.dumps([]),
+                ),
+                (
+                    3, "Gamma Charity", self._raw_charity(3, "Gamma Charity"),
+                    "Kenya", None, 100_000, json.dumps([]), json.dumps([]),
+                ),
+                (
+                    4, "Organization-level only",
+                    self._raw_charity(4, "Organization-level only"),
+                    None, None, None, json.dumps([]), json.dumps([]),
+                ),
             ],
         )
         self.conn.commit()
@@ -197,7 +215,7 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["metadata"]["excluded_reasons"]["truncated"], 1)
         self.assertEqual(result["metadata"]["included_grant_count"], 1)
 
-    async def test_map_uses_only_one_unambiguous_beneficiary_location(self):
+    async def test_map_counts_multi_country_associations_without_allocating_amount(self):
         self._grant("KNOWN", amount=300, locations=[{"name": "Ghana", "countryCode": "GH"}])
         self._grant("MULTI", amount=200, locations=[
             {"name": "Ghana", "countryCode": "GH"},
@@ -208,11 +226,18 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
         result = await self.repo.get_grants_map(min_coverage=0.30)
 
         self.assertEqual(result["status"], "available")
-        self.assertEqual(result["known_geography_count"], 1)
-        self.assertEqual(result["unknown_geography_count"], 2)
-        self.assertEqual(result["coverage_percentage"], 33.33)
-        self.assertEqual(result["items"][0]["region_or_country_code"], "GH")
-        self.assertEqual(result["items"][0]["total_amount"], 300.0)
+        self.assertEqual(result["known_geography_count"], 2)
+        self.assertEqual(result["unknown_geography_count"], 1)
+        self.assertEqual(result["coverage_percentage"], 66.67)
+        self.assertEqual(result["grant_country_association_count"], 3)
+        self.assertEqual(result["multi_country_grant_count"], 1)
+        self.assertEqual(result["funding_excluded_multi_country_count"], 1)
+        self.assertEqual(result["funding_excluded_multi_country_amount"], 200.0)
+        by_code = {item["region_or_country_code"]: item for item in result["items"]}
+        self.assertEqual(by_code["GH"]["grant_count"], 2)
+        self.assertEqual(by_code["GH"]["total_amount"], 300.0)
+        self.assertEqual(by_code["KE"]["grant_count"], 1)
+        self.assertIsNone(by_code["KE"]["total_amount"])
 
     async def test_map_withholds_aggregation_below_configured_coverage(self):
         self._grant("KNOWN", locations=[{"name": "Ghana", "countryCode": "GH"}])
@@ -229,10 +254,12 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
 
         result = await self.repo.get_grants_map()
 
-        self.assertEqual(result["items"][0]["region_or_country_code"], "GLOBAL")
-        self.assertEqual(result["items"][0]["region_or_country_name"], "Worldwide / global scope")
+        self.assertEqual(result["status"], "no_geography")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["known_geography_count"], 0)
+        self.assertEqual(result["unknown_geography_count"], 1)
 
-    async def test_map_requires_currency_filter_and_supports_no_data(self):
+    async def test_map_keeps_counts_currency_neutral_and_separates_funding(self):
         empty = await self.repo.get_grants_map()
         self.assertEqual(empty["status"], "no_data")
 
@@ -241,9 +268,177 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
         mixed = await self.repo.get_grants_map()
         selected = await self.repo.get_grants_map(currency="EUR")
 
-        self.assertEqual(mixed["status"], "mixed_currency_requires_filter")
+        self.assertEqual(mixed["status"], "available")
+        self.assertEqual(mixed["funding_status"], "currency_selection_required")
+        self.assertFalse(mixed["funding_mode_available"])
+        self.assertEqual(sum(item["grant_count"] for item in mixed["items"]), 2)
+        self.assertTrue(all(item["total_amount"] is None for item in mixed["items"]))
         self.assertEqual(selected["status"], "available")
-        self.assertEqual(selected["items"][0]["currency"], "EUR")
+        self.assertTrue(selected["funding_mode_available"])
+        by_code = {item["region_or_country_code"]: item for item in selected["items"]}
+        self.assertEqual(by_code["KE"]["currency"], "EUR")
+        self.assertEqual(by_code["KE"]["total_amount"], 100.0)
+        self.assertIsNone(by_code["GH"]["total_amount"])
+        self.assertEqual(selected["funding_excluded_currency_count"], 1)
+
+    async def test_map_rolls_up_uk_constituents_and_preserves_source_label(self):
+        self._grant(
+            "ENGLAND",
+            locations=[{"name": "England", "geoCode": "E92000001", "geoCodeType": "CTRY"}],
+        )
+
+        result = await self.repo.get_grants_map()
+
+        self.assertEqual(result["known_geography_count"], 1)
+        self.assertEqual(result["items"][0]["region_or_country_code"], "GB")
+        self.assertEqual(result["items"][0]["region_or_country_name"], "United Kingdom")
+        self.assertIn("England", result["items"][0]["original_geographies"])
+
+    async def test_map_supports_alpha_three_codes_and_rejects_invalid_country_codes(self):
+        self._grant("ALPHA3", locations=[{"name": "Zambia", "countryCode": "ZMB"}])
+        self._grant("INVALID", locations=[{"name": "Neverland", "countryCode": "ZZ"}])
+
+        result = await self.repo.get_grants_map()
+
+        self.assertEqual(result["known_geography_count"], 1)
+        self.assertEqual(result["unknown_geography_count"], 1)
+        self.assertEqual(result["items"][0]["region_or_country_code"], "ZM")
+        self.assertIn("Zambia", result["items"][0]["original_geographies"])
+
+    async def test_map_excludes_missing_and_negative_amounts_but_keeps_counts(self):
+        self._grant("MISSING", amount=None, locations=[{"name": "Ghana", "countryCode": "GH"}])
+        self._grant("NEGATIVE", amount=-20, locations=[{"name": "Ghana", "countryCode": "GH"}])
+        self._grant("ZERO", amount=0, locations=[{"name": "Ghana", "countryCode": "GH"}])
+
+        result = await self.repo.get_grants_map()
+
+        self.assertEqual(result["items"][0]["grant_count"], 3)
+        self.assertEqual(result["items"][0]["funding_grant_count"], 1)
+        self.assertEqual(result["items"][0]["total_amount"], 0.0)
+        self.assertEqual(result["funding_excluded_invalid_amount_count"], 2)
+
+    async def test_map_filters_funders_and_returns_disclosed_hq_connections(self):
+        self._grant(
+            "ALPHA-GH",
+            donor_id=1,
+            donor_name="Alpha Foundation",
+            amount=2_000,
+            locations=[{"name": "Ghana", "countryCode": "GH"}],
+        )
+        self._grant(
+            "BETA-KE",
+            donor_id=2,
+            donor_name="Beta Charity",
+            amount=100,
+            locations=[{"name": "Kenya", "countryCode": "KE"}],
+        )
+
+        result = await self.repo.get_grants_map(
+            search="Alpha",
+            tags=["Health"],
+            foundation_regions=["United Kingdom"],
+            funding_regions=["Ghana"],
+            min_annual_giving=1_000_000,
+            min_avg_grant_size=1_000,
+        )
+
+        self.assertEqual(result["known_geography_count"], 1)
+        self.assertEqual(result["items"][0]["region_or_country_code"], "GH")
+        self.assertEqual(result["connection_grant_count"], 1)
+        self.assertEqual(len(result["connections"]), 1)
+        self.assertEqual(result["connections"][0]["origin_country_code"], "GB")
+        self.assertEqual(result["connections"][0]["destination_country_code"], "GH")
+        self.assertIn(
+            "Organization-directory registered location",
+            result["connections"][0]["origin_sources"],
+        )
+
+    async def test_map_reports_no_data_when_organization_search_has_no_match(self):
+        self._grant("KNOWN", locations=[{"name": "Ghana", "countryCode": "GH"}])
+
+        result = await self.repo.get_grants_map(search="Missing funder")
+
+        self.assertEqual(result["status"], "no_data")
+        self.assertEqual(result["known_geography_count"], 0)
+        self.assertEqual(result["connections"], [])
+
+    async def test_directory_search_matches_observed_funder_alias(self):
+        self._grant(
+            "ALIAS",
+            donor_id=1,
+            donor_name="Alpha Public Funder Brand",
+            locations=[{"name": "Ghana", "countryCode": "GH"}],
+        )
+
+        result = await self.repo.get_all(search="Public Funder Brand")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["registered_charity_number"], 1)
+
+    async def test_directory_geography_matches_map_iso_fallback_and_uk_rollup(self):
+        self._grant(
+            "RAW-MALAWI",
+            donor_id=1,
+            donor_name="Alpha Foundation",
+            locations=[{"name": "Malawi", "countryCode": "MW"}],
+        )
+        self._grant(
+            "RAW-ENGLAND",
+            donor_id=2,
+            donor_name="Beta Charity",
+            locations=[{
+                "name": "England",
+                "countryCode": "GB",
+                "geoCode": "E92000001",
+                "geoCodeType": "CTRY",
+            }],
+        )
+
+        malawi = await self.repo.get_all(funding_regions=["Malawi"])
+        united_kingdom = await self.repo.get_all(
+            funding_regions=["United Kingdom"]
+        )
+
+        self.assertEqual(
+            [item["registered_charity_number"] for item in malawi], [1]
+        )
+        self.assertEqual(
+            [item["registered_charity_number"] for item in united_kingdom], [2]
+        )
+
+    async def test_directory_geography_stays_empty_without_linked_funder(self):
+        self._grant(
+            "SOURCE-ONLY",
+            donor_id=None,
+            donor_name="Source-only funder",
+            locations=[{"name": "Libya", "countryCode": "LY"}],
+        )
+
+        result = await self.repo.get_all(funding_regions=["Libya"])
+
+        self.assertEqual(result, [])
+
+    async def test_partial_directory_profile_has_schema_valid_detail(self):
+        self.conn.execute("""
+            UPDATE charities
+            SET raw_cc_data = '{}', website = 'https://partial.example',
+                email = 'hello@partial.example', address = '1 Example Street',
+                annual_income = 125000, annual_expenditure = 100000
+            WHERE charity_id = 4
+        """)
+        self.conn.commit()
+
+        listing = await self.repo.get_all(search="Organization-level only")
+        detail = await self.repo.get_by_id(4)
+        validated = CharityDetail.model_validate(detail)
+
+        self.assertEqual(listing[0]["reg_status"], "UNKNOWN")
+        self.assertEqual(validated.registered_charity_number, 4)
+        self.assertEqual(validated.all_details.charity_name, "Organization-level only")
+        self.assertEqual(validated.all_details.reg_status, "UNKNOWN")
+        self.assertEqual(validated.all_details.web, "https://partial.example")
+        self.assertEqual(validated.all_details.latest_expenditure, 100000)
+        self.assertEqual(validated.financial_history, [])
 
     async def test_network_summary_is_currency_separated(self):
         self._grant("GBP", amount=100, currency="GBP")

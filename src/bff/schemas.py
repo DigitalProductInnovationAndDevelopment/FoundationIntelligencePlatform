@@ -165,8 +165,26 @@ class GrantMapItem(BaseModel):
     region_or_country_code: Optional[str] = None
     region_or_country_name: str
     grant_count: int
-    total_amount: float
-    currency: str
+    total_amount: Optional[float] = None
+    currency: Optional[str] = None
+    distinct_funders: int = 0
+    distinct_recipients: int = 0
+    top_programme_areas: List[Dict[str, Any]] = []
+    top_funders: List[Dict[str, Any]] = []
+    top_recipients: List[Dict[str, Any]] = []
+    original_geographies: List[str] = []
+    funding_grant_count: int = 0
+    excluded_multi_country_grant_count: int = 0
+    excluded_invalid_amount_grant_count: int = 0
+
+class GrantMapConnection(BaseModel):
+    origin_country_code: str
+    origin_country_name: str
+    destination_country_code: str
+    destination_country_name: str
+    grant_count: int
+    top_funders: List[Dict[str, Any]] = []
+    origin_sources: List[str] = []
 
 class DataMetadata(BaseModel):
     data_mode: str
@@ -185,6 +203,19 @@ class GrantMapResponse(BaseModel):
     unknown_geography_count: int = 0
     coverage_percentage: float = 0.0
     currencies: List[str] = []
+    selected_currency: Optional[str] = None
+    funding_status: str = "unavailable"
+    funding_mode_available: bool = False
+    grant_country_association_count: int = 0
+    multi_country_grant_count: int = 0
+    funding_excluded_multi_country_count: int = 0
+    funding_excluded_multi_country_amount: float = 0.0
+    funding_excluded_currency_count: int = 0
+    funding_excluded_invalid_amount_count: int = 0
+    connections: List[GrantMapConnection] = []
+    connection_grant_count: int = 0
+    connection_excluded_no_headquarters_count: int = 0
+    connection_same_country_count: int = 0
     minimum_coverage_threshold: float = 0.30
     metadata: DataMetadata
 

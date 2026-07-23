@@ -75,16 +75,41 @@ async def get_charity_stats(repo: CharityRepository = Depends(get_charity_reposi
 async def get_grants_map(
     currency: Optional[str] = None,
     min_coverage: float = 0.30,
+    search: Optional[str] = None,
+    tags: Optional[str] = None,
+    foundation_regions: Optional[str] = None,
+    funding_regions: Optional[str] = None,
+    min_annual_giving: Optional[float] = None,
+    min_avg_grant_size: Optional[float] = None,
     repo: CharityRepository = Depends(get_charity_repository),
 ):
     """
     Returns stored grant transactions grouped by normalized beneficiary geography.
-    Used for showing grant distributions on the dashboard map; headquarters are excluded.
+    Directory-style filters can scope the grant rows. Headquarters remain excluded from
+    beneficiary geography and are used only for separately disclosed illustrative connections.
     Requires a valid session cookie/token.
     """
     if min_coverage < 0 or min_coverage > 1:
         raise HTTPException(status_code=400, detail="min_coverage must be between 0 and 1")
-    return await repo.get_grants_map(currency=currency, min_coverage=min_coverage)
+    tags_list = [value.strip() for value in tags.split(",") if value.strip()] if tags else None
+    foundation_regions_list = (
+        [value.strip() for value in foundation_regions.split(",") if value.strip()]
+        if foundation_regions else None
+    )
+    funding_regions_list = (
+        [value.strip() for value in funding_regions.split(",") if value.strip()]
+        if funding_regions else None
+    )
+    return await repo.get_grants_map(
+        currency=currency,
+        min_coverage=min_coverage,
+        search=search,
+        tags=tags_list,
+        foundation_regions=foundation_regions_list,
+        funding_regions=funding_regions_list,
+        min_annual_giving=min_annual_giving,
+        min_avg_grant_size=min_avg_grant_size,
+    )
 
 
 @router.get("/grants/summary", response_model=GrantNetworkSummary)

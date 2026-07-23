@@ -4,9 +4,13 @@ import sqlite3
 import hashlib
 import re
 from abc import ABC, abstractmethod
+from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Mapping
+
+import pycountry
+
 from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
 from data.db_loader import validate_database
@@ -56,6 +60,235 @@ STRICT_GRANT_DATE_SQL = (
     "DATE(date) IS NOT NULL "
     "AND DATE(date) = SUBSTR(TRIM(CAST(date AS TEXT)), 1, 10)"
 )
+
+UK_CONSTITUENT_CODES = {"GB-ENG", "GB-SCT", "GB-WLS", "GB-NIR"}
+UK_CONSTITUENT_NAMES = {"england", "scotland", "wales", "northern ireland"}
+COUNTRY_CODE_ALIASES = {"UK": "GB"}
+COUNTRY_NAME_ALIASES = {
+    "britain": "GB",
+    "great britain": "GB",
+    "uk": "GB",
+    "u.k.": "GB",
+    "united kingdom": "GB",
+}
+COUNTRY_DISPLAY_NAMES = {
+    "BO": "Bolivia",
+    "BN": "Brunei",
+    "CD": "Democratic Republic of the Congo",
+    "CG": "Republic of the Congo",
+    "CI": "Côte d’Ivoire",
+    "GB": "United Kingdom",
+    "IR": "Iran",
+    "KR": "South Korea",
+    "LA": "Laos",
+    "MD": "Moldova",
+    "MK": "North Macedonia",
+    "PS": "Palestine",
+    "RU": "Russia",
+    "SY": "Syria",
+    "TZ": "Tanzania",
+    "US": "United States",
+    "VE": "Venezuela",
+    "VN": "Vietnam",
+}
+
+
+def _country_from_code(value: Any) -> Optional[Dict[str, str]]:
+    """Resolve a genuine ISO country code, rolling UK constituents up to GB."""
+    code = str(value or "").strip().upper().replace("_", "-")
+    if not code:
+        return None
+    if code in UK_CONSTITUENT_CODES:
+        code = "GB"
+    code = COUNTRY_CODE_ALIASES.get(code, code)
+    country = None
+    if len(code) == 2:
+        country = pycountry.countries.get(alpha_2=code)
+    elif len(code) == 3:
+        country = pycountry.countries.get(alpha_3=code)
+    if not country:
+        return None
+    alpha_2 = country.alpha_2
+    return {
+        "country_code": alpha_2,
+        "country_name": COUNTRY_DISPLAY_NAMES.get(alpha_2, country.name),
+    }
+
+
+def _country_from_name(value: Any) -> Optional[Dict[str, str]]:
+    """Resolve an explicit country name without geocoding cities or broad regions."""
+    name = str(value or "").strip()
+    if not name:
+        return None
+    folded = name.casefold()
+    if folded in UK_CONSTITUENT_NAMES:
+        return _country_from_code("GB")
+    alias = COUNTRY_NAME_ALIASES.get(folded)
+    if alias:
+        return _country_from_code(alias)
+    if folded in {"global", "international", "multi", "multiple", "various", "worldwide"}:
+        return None
+    try:
+        country = pycountry.countries.lookup(name)
+    except LookupError:
+        return None
+    return _country_from_code(country.alpha_2)
+
+
+def _beneficiary_countries(normalized_raw: Any, source_raw: Any) -> List[Dict[str, Any]]:
+    """Return only countries explicitly evidenced by beneficiary-geography fields.
+
+    `beneficiary_geography_normalized` is authoritative. The raw source field is
+    used only for explicit ISO country codes or explicit country names that the
+    current, deliberately small enrichment taxonomy has not normalized yet.
+    Headquarters and text-inferred operating geographies are never consulted.
+    """
+    normalized = _json_list(normalized_raw)
+    source = _json_list(source_raw)
+    countries: Dict[str, Dict[str, Any]] = {}
+
+    def add_country(resolved: Dict[str, str], original: Any) -> None:
+        code = resolved["country_code"]
+        current = countries.setdefault(
+            code, {**resolved, "original_geographies": []}
+        )
+        label = str(original or "").strip()
+        if label and label not in current["original_geographies"]:
+            current["original_geographies"].append(label)
+
+    for location in normalized:
+        if not isinstance(location, Mapping):
+            continue
+        scope = str(location.get("scope") or "").strip().casefold()
+        if scope and scope not in {"country", "constituent_country"}:
+            continue
+        resolved = (
+            _country_from_code(location.get("code"))
+            or _country_from_name(location.get("name"))
+        )
+        if resolved:
+            add_country(resolved, location.get("name") or location.get("code"))
+
+    for location in source:
+        if isinstance(location, Mapping):
+            resolved = _country_from_code(location.get("countryCode"))
+            if not resolved and str(location.get("geoCodeType") or "").upper() == "CTRY":
+                resolved = _country_from_name(location.get("name"))
+            if not resolved and not location.get("geoCodeType"):
+                resolved = _country_from_name(location.get("name") or location.get("country"))
+        else:
+            resolved = _country_from_code(location) or _country_from_name(location)
+        if resolved:
+            if isinstance(location, Mapping):
+                original = (
+                    location.get("name")
+                    or location.get("country")
+                    or location.get("countryCode")
+                )
+            else:
+                original = location
+            add_country(resolved, original)
+    return sorted(countries.values(), key=lambda item: item["country_code"])
+
+
+def _funder_headquarters_country(
+    raw_grant_data: Any, directory_headquarters: Any
+) -> tuple[Optional[Dict[str, str]], Optional[str]]:
+    """Resolve an explicit funder address country, then the directory HQ fallback.
+
+    The returned country is an organization-location proxy. It is deliberately kept
+    separate from beneficiary geography and must not be described as a verified
+    payment origin.
+    """
+    raw_record = _json_dict(raw_grant_data)
+    grant_data = raw_record.get("data") if isinstance(raw_record.get("data"), Mapping) else raw_record
+    funders = grant_data.get("fundingOrganization") if isinstance(grant_data, Mapping) else []
+    if isinstance(funders, Mapping):
+        funders = [funders]
+    if not isinstance(funders, list):
+        funders = []
+
+    for funder in funders:
+        if not isinstance(funder, Mapping):
+            continue
+        resolved = _country_from_name(funder.get("addressCountry"))
+        if not resolved:
+            locations = funder.get("location")
+            if isinstance(locations, Mapping):
+                locations = [locations]
+            for location in locations if isinstance(locations, list) else []:
+                if not isinstance(location, Mapping):
+                    continue
+                resolved = (
+                    _country_from_code(location.get("countryCode"))
+                    or _country_from_name(location.get("country") or location.get("name"))
+                )
+                if resolved:
+                    break
+        if resolved:
+            return resolved, "360Giving funding-organization address"
+
+    resolved = _country_from_name(directory_headquarters)
+    if resolved:
+        return resolved, "Organization-directory registered location"
+    return None, None
+
+
+def _matches_funding_regions(
+    normalized_raw: Any,
+    source_raw: Any,
+    countries: List[Dict[str, Any]],
+    selected_regions: set[str],
+) -> bool:
+    """Mirror the directory beneficiary-geography filter against grant rows."""
+    if not selected_regions:
+        return True
+    candidates = {
+        str(country.get("country_name") or "").strip().casefold()
+        for country in countries
+        if country.get("country_name")
+    }
+    for location in _json_list(normalized_raw) + _json_list(source_raw):
+        if isinstance(location, Mapping):
+            for key in ("name", "macro_region", "country", "countryCode"):
+                value = str(location.get(key) or "").strip().casefold()
+                if value:
+                    candidates.add(value)
+        else:
+            value = str(location or "").strip().casefold()
+            if value:
+                candidates.add(value)
+    return bool(candidates.intersection(selected_regions))
+
+
+def _accepted_programme_categories(
+    source_raw: Any, inferred_raw: Any, scores_raw: Any
+) -> List[str]:
+    """Apply the same source-first taxonomy rule used by programme allocation."""
+    source_categories, _ = normalize_programme_sources(_json_list(source_raw))
+    if source_categories:
+        return sorted(set(source_categories))
+    scores = _json_dict(scores_raw)
+    accepted = []
+    for category in _json_list(inferred_raw):
+        if category not in PROGRAMME_TAXONOMY:
+            continue
+        try:
+            confidence = float(scores.get(category, 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        if confidence >= DEFAULT_REVIEW_THRESHOLD:
+            accepted.append(category)
+    return sorted(set(accepted)) or ["Unclassified"]
+
+
+def _top_counter_items(counter: Counter, limit: int = 3) -> List[Dict[str, Any]]:
+    return [
+        {"name": str(name), "count": count}
+        for name, count in sorted(
+            counter.items(), key=lambda item: (-item[1], str(item[0]).casefold())
+        )[:limit]
+    ]
 
 
 def _money_minor_units(value):
@@ -168,7 +401,15 @@ class CharityRepository(ABC):
 
     @abstractmethod
     async def get_grants_map(
-        self, currency: Optional[str] = None, min_coverage: float = 0.30
+        self,
+        currency: Optional[str] = None,
+        min_coverage: float = 0.30,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        foundation_regions: Optional[List[str]] = None,
+        funding_regions: Optional[List[str]] = None,
+        min_annual_giving: Optional[float] = None,
+        min_avg_grant_size: Optional[float] = None,
     ) -> Dict[str, Any]:
         pass
 
@@ -457,7 +698,15 @@ class JSONCharityRepository(CharityRepository):
         }
 
     async def get_grants_map(
-        self, currency: Optional[str] = None, min_coverage: float = 0.30
+        self,
+        currency: Optional[str] = None,
+        min_coverage: float = 0.30,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        foundation_regions: Optional[List[str]] = None,
+        funding_regions: Optional[List[str]] = None,
+        min_annual_giving: Optional[float] = None,
+        min_avg_grant_size: Optional[float] = None,
     ) -> Dict[str, Any]:
         return {
             "status": "transaction_data_unavailable",
@@ -467,6 +716,19 @@ class JSONCharityRepository(CharityRepository):
             "unknown_geography_count": 0,
             "coverage_percentage": 0.0,
             "currencies": [],
+            "selected_currency": currency.upper() if currency else None,
+            "funding_status": "transaction_data_unavailable",
+            "funding_mode_available": False,
+            "grant_country_association_count": 0,
+            "multi_country_grant_count": 0,
+            "funding_excluded_multi_country_count": 0,
+            "funding_excluded_multi_country_amount": 0.0,
+            "funding_excluded_currency_count": 0,
+            "funding_excluded_invalid_amount_count": 0,
+            "connections": [],
+            "connection_grant_count": 0,
+            "connection_excluded_no_headquarters_count": 0,
+            "connection_same_country_count": 0,
             "minimum_coverage_threshold": min_coverage,
             "metadata": {
                 "data_mode": "cached_source_without_transactions",
@@ -646,8 +908,14 @@ class SQLiteCharityRepository(CharityRepository):
         params = []
         
         if search:
-            query += " AND name LIKE ?"
-            params.append(f"%{search}%")
+            query += """ AND (
+                name LIKE ?
+                OR charity_id IN (
+                    SELECT funding_charity_id FROM grants
+                    WHERE funding_name LIKE ?
+                )
+            )"""
+            params.extend([f"%{search}%", f"%{search}%"])
             
         if reg_status:
             query += " AND json_extract(raw_cc_data, '$.all_details.reg_status') = ?"
@@ -677,18 +945,35 @@ class SQLiteCharityRepository(CharityRepository):
             query += " AND (" + " OR ".join(fr_conds) + ")"
 
         if funding_regions:
-            fur_conds = []
-            for r in funding_regions:
-                fur_conds.append("""charity_id IN (
-                    SELECT funding_charity_id FROM grants
-                    WHERE EXISTS (
-                        SELECT 1 FROM json_each(grants.beneficiary_geography_normalized)
-                        WHERE json_extract(value, '$.name') = ?
-                           OR json_extract(value, '$.macro_region') = ?
-                    )
-                )""")
-                params.extend([r, r])
-            query += " AND (" + " OR ".join(fur_conds) + ")"
+            selected_funding_regions = {
+                str(value).strip().casefold()
+                for value in funding_regions
+                if str(value).strip()
+            }
+            cursor.execute("""
+                SELECT funding_charity_id, beneficiary_geography_normalized,
+                       beneficiary_geography
+                FROM grants
+                WHERE funding_charity_id IS NOT NULL
+            """)
+            matching_funder_ids = set()
+            for funder_id, normalized_locations, source_locations in cursor.fetchall():
+                countries = _beneficiary_countries(
+                    normalized_locations, source_locations
+                )
+                if _matches_funding_regions(
+                    normalized_locations,
+                    source_locations,
+                    countries,
+                    selected_funding_regions,
+                ):
+                    matching_funder_ids.add(funder_id)
+            if matching_funder_ids:
+                placeholders = ",".join("?" for _ in matching_funder_ids)
+                query += f" AND charity_id IN ({placeholders})"
+                params.extend(sorted(matching_funder_ids))
+            else:
+                query += " AND 0"
 
         if not foundation_regions and not funding_regions and region:
             query += """ AND (
@@ -742,7 +1027,7 @@ class SQLiteCharityRepository(CharityRepository):
                 "suffix": all_details.get("group_subsid_suffix", 0),
                 "link": raw_cc.get("link", f"https://register-of-charities.charitycommission.gov.uk/charity-details/?regid={r[0]}&subid=0"),
                 "charity_name": r[1],
-                "reg_status": all_details.get("reg_status", "RM"),
+                "reg_status": all_details.get("reg_status", "UNKNOWN"),
                 "reporting_status": all_details.get("reporting_status"),
                 "removal_reason": all_details.get("removal_reason"),
                 "latest_income": r[11],
@@ -781,10 +1066,39 @@ class SQLiteCharityRepository(CharityRepository):
             FROM charities WHERE charity_id = ?
         """, (reg_charity_number,))
         row = cursor.fetchone()
+        cursor.execute("""
+            SELECT name, type, website, email, address, city, state, country,
+                   annual_income, annual_expenditure
+            FROM charities WHERE charity_id = ?
+        """, (reg_charity_number,))
+        profile_row = cursor.fetchone()
         conn.close()
-        
-        if row and row[0]:
-            raw = json.loads(row[0])
+
+        if row and profile_row:
+            raw = _json_dict(row[0])
+            all_details = raw.get("all_details")
+            if not isinstance(all_details, dict):
+                all_details = {}
+            all_details.setdefault("organisation_number", reg_charity_number)
+            all_details.setdefault("reg_charity_number", reg_charity_number)
+            all_details.setdefault("group_subsid_suffix", 0)
+            all_details.setdefault("charity_name", profile_row[0])
+            all_details.setdefault("charity_type", row[16] or profile_row[1])
+            all_details.setdefault("reg_status", "UNKNOWN")
+            all_details.setdefault("latest_income", profile_row[8])
+            all_details.setdefault("latest_expenditure", profile_row[9])
+            all_details.setdefault("address_line_one", profile_row[4] or None)
+            all_details.setdefault("address_line_three", profile_row[6] or None)
+            all_details.setdefault("address_line_four", profile_row[5] or None)
+            all_details.setdefault("email", profile_row[3] or None)
+            all_details.setdefault("web", profile_row[2] or None)
+            raw.setdefault("registered_charity_number", reg_charity_number)
+            raw.setdefault("suffix", all_details.get("group_subsid_suffix", 0))
+            raw.setdefault("link", row[20])
+            raw["all_details"] = all_details
+            raw.setdefault("assets_liabilities", [])
+            raw.setdefault("financial_history", [])
+            raw.setdefault("who_what_how", [])
             raw.update({
                 "programme_areas_source": _json_list(row[1]),
                 "programme_areas_inferred": _json_list(row[2]),
@@ -867,102 +1181,327 @@ class SQLiteCharityRepository(CharityRepository):
         }
 
     async def get_grants_map(
-        self, currency: Optional[str] = None, min_coverage: float = 0.30
+        self,
+        currency: Optional[str] = None,
+        min_coverage: float = 0.30,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        foundation_regions: Optional[List[str]] = None,
+        funding_regions: Optional[List[str]] = None,
+        min_annual_giving: Optional[float] = None,
+        min_avg_grant_size: Optional[float] = None,
     ) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT grant_id, amount, currency, beneficiary_geography_normalized FROM grants")
-        rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT g.grant_id, g.amount, g.currency,
+                   g.beneficiary_geography_normalized, g.beneficiary_geography,
+                   g.funding_name, g.recipient_name, g.programme_area_source,
+                   g.programme_area_inferred, g.programme_area_scores,
+                   g.funding_charity_id, g.raw_grant_data,
+                   c.name, c.headquarters_country, c.headquarters_region,
+                   c.annual_expenditure, c.programme_areas_source,
+                   c.programme_areas_inferred
+            FROM grants AS g
+            LEFT JOIN charities AS c ON c.charity_id = g.funding_charity_id
+            WHERE g.source = ?
+            ORDER BY g.grant_id
+        """, ("360Giving",))
+        source_rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT funding_charity_id, AVG(amount)
+            FROM grants
+            WHERE source = ? AND funding_charity_id IS NOT NULL
+            GROUP BY funding_charity_id
+            HAVING COUNT(DISTINCT UPPER(TRIM(currency))) = 1
+        """, ("360Giving",))
+        average_grants = {row[0]: row[1] for row in cursor.fetchall()}
         conn.close()
 
-        currencies = sorted({str(row[2]).upper() for row in rows if row[2]})
-        selected_currency = currency.upper() if currency else (currencies[0] if len(currencies) == 1 else None)
+        selected_tags = {str(value).casefold() for value in (tags or [])}
+        selected_foundation_regions = {
+            str(value).casefold() for value in (foundation_regions or [])
+        }
+        selected_funding_regions = {
+            str(value).casefold() for value in (funding_regions or [])
+        }
+        search_value = str(search or "").strip().casefold()
+        prepared_rows = []
+        for row in source_rows:
+            countries = _beneficiary_countries(row[3], row[4])
+            if search_value and search_value not in str(row[5] or "").casefold() \
+                    and search_value not in str(row[12] or "").casefold():
+                continue
+            if selected_tags:
+                organization_tags = {
+                    str(value).casefold()
+                    for value in _json_list(row[16]) + _json_list(row[17])
+                }
+                if not selected_tags.intersection(organization_tags):
+                    continue
+            if selected_foundation_regions:
+                organization_regions = {
+                    str(row[13] or "").casefold(),
+                    str(row[14] or "").casefold(),
+                }
+                if not selected_foundation_regions.intersection(organization_regions):
+                    continue
+            if not _matches_funding_regions(
+                row[3], row[4], countries, selected_funding_regions
+            ):
+                continue
+            if min_annual_giving is not None:
+                try:
+                    annual_giving = float(row[15])
+                except (TypeError, ValueError):
+                    continue
+                if annual_giving < min_annual_giving:
+                    continue
+            if min_avg_grant_size is not None and min_avg_grant_size > 0:
+                average_grant = average_grants.get(row[10])
+                if average_grant is None or average_grant < min_avg_grant_size:
+                    continue
+            prepared_rows.append((row, countries))
+
+        currencies = sorted({
+            str(row[2]).upper() for row, _countries in prepared_rows if row[2]
+        })
+        requested_currency = str(currency or "").strip().upper() or None
+        selected_currency = (
+            requested_currency
+            if requested_currency in currencies
+            else currencies[0] if not requested_currency and len(currencies) == 1
+            else None
+        )
+        funding_status = "available" if selected_currency else (
+            "unsupported_currency" if requested_currency else "currency_selection_required"
+        )
+        applied_filters = {
+            "organization_search": str(search or "").strip() or None,
+            "programme_areas": tags or [],
+            "foundation_regions": foundation_regions or [],
+            "funding_regions": funding_regions or [],
+            "min_annual_giving": min_annual_giving,
+            "min_avg_grant_size": min_avg_grant_size,
+        }
         base_metadata = {
             "data_mode": "derived_from_cached_source",
-            "source": ["360Giving"],
+            "source": ["360Giving", "Organization directory"],
             "generated_at": _utc_now(),
-            "record_count": len(rows),
-            "derivation": "Aggregated source-provided beneficiary locations; no headquarters inference.",
-            "limitations": [],
+            "record_count": len(prepared_rows),
+            "derivation": (
+                "Country associations from beneficiary_geography_normalized, with an explicit "
+                "ISO-code fallback to the raw beneficiary_geography source field. Organization "
+                "filters use the matched funder record. Connection origins use an explicit "
+                "360Giving funder address country or the registered organization-directory "
+                "headquarters country."
+            ),
+            "coverage": None,
+            "limitations": [
+                GRANT_SCOPE_NOTE,
+                (
+                    "Connection arrows link a registered funder location to a stated beneficiary "
+                    "country. They are illustrative associations, not verified financial routes."
+                ),
+            ],
+            "filters_applied": applied_filters,
         }
-        if rows and selected_currency is None:
-            base_metadata["limitations"] = [
-                "Multiple currencies are present; select one currency before aggregating amounts."
-            ]
-            return {
-                "status": "mixed_currency_requires_filter",
-                "geographic_dimension": "beneficiary_location",
-                "items": [],
-                "known_geography_count": 0,
-                "unknown_geography_count": len(rows),
-                "coverage_percentage": 0.0,
-                "currencies": currencies,
-                "minimum_coverage_threshold": min_coverage,
-                "metadata": {**base_metadata, "coverage": 0.0},
-            }
 
-        selected_rows = [row for row in rows if not selected_currency or str(row[2]).upper() == selected_currency]
+        aggregates: Dict[str, Dict[str, Any]] = {}
+        connection_aggregates: Dict[tuple[str, str], Dict[str, Any]] = {}
         known_count = 0
-        aggregates = {}
-        excluded_multiple = 0
-        excluded_amount = 0
-        for _, amount, row_currency, raw_locations in selected_rows:
-            locations = _json_list(raw_locations)
-            unique_locations = {}
-            for location in locations:
-                if not isinstance(location, dict):
-                    continue
-                name = str(location.get("name") or "").strip()
-                code = str(location.get("code") or "").strip().upper() or None
-                if name.lower() in {"multi", "multiple", "various"}:
-                    continue
-                if name.lower() in {"worldwide", "global", "international"}:
-                    code, name = "GLOBAL", "Worldwide / global scope"
-                if code or name:
-                    unique_locations[(code or name.lower(), name or code)] = (code, name or code)
-            if len(unique_locations) != 1:
-                excluded_multiple += 1
+        grant_country_associations = 0
+        multi_country_count = 0
+        excluded_multi_country_count = 0
+        excluded_multi_country_minor_units = 0
+        excluded_currency_count = 0
+        excluded_invalid_amount_count = 0
+        connection_grant_ids = set()
+        connection_no_headquarters_grant_ids = set()
+        connection_same_country_grant_ids = set()
+
+        for row, countries in prepared_rows:
+            (
+                grant_id,
+                amount,
+                row_currency,
+                _normalized_locations,
+                _source_locations,
+                funding_name,
+                recipient_name,
+                programme_source,
+                programme_inferred,
+                programme_scores,
+                _funding_charity_id,
+                raw_grant_data,
+                _directory_name,
+                headquarters_country,
+                _headquarters_region,
+                _annual_expenditure,
+                _organization_programme_source,
+                _organization_programme_inferred,
+            ) = row
+            if not countries:
                 continue
             known_count += 1
-            if amount is None or amount <= 0:
-                excluded_amount += 1
-                continue
-            code, name = next(iter(unique_locations.values()))
-            key = (code, name, str(row_currency).upper())
-            current = aggregates.setdefault(key, {"grant_count": 0, "total_amount": 0.0})
-            current["grant_count"] += 1
-            current["total_amount"] += float(amount)
+            grant_country_associations += len(countries)
+            multi_country = len(countries) > 1
+            if multi_country:
+                multi_country_count += 1
+            categories = _accepted_programme_categories(
+                programme_source, programme_inferred, programme_scores
+            )
+            row_currency_code = str(row_currency or "").strip().upper()
+            amount_status, minor_units = _money_minor_units(amount)
 
-        total_selected = len(selected_rows)
+            if selected_currency:
+                if row_currency_code != selected_currency:
+                    excluded_currency_count += 1
+                elif multi_country and amount_status in {"valid", "zero"}:
+                    excluded_multi_country_count += 1
+                    excluded_multi_country_minor_units += minor_units or 0
+                elif not multi_country and amount_status not in {"valid", "zero"}:
+                    excluded_invalid_amount_count += 1
+
+            origin, origin_source = _funder_headquarters_country(
+                raw_grant_data, headquarters_country
+            )
+            if not origin:
+                connection_no_headquarters_grant_ids.add(grant_id)
+
+            for country in countries:
+                code = country["country_code"]
+                current = aggregates.setdefault(code, {
+                    "country_name": country["country_name"],
+                    "grant_ids": set(),
+                    "funders": Counter(),
+                    "recipients": Counter(),
+                    "programme_areas": Counter(),
+                    "original_geographies": Counter(),
+                    "total_minor_units": 0,
+                    "funding_grant_ids": set(),
+                    "excluded_multi_country_grant_ids": set(),
+                    "excluded_invalid_amount_grant_ids": set(),
+                })
+                current["grant_ids"].add(grant_id)
+                if str(funding_name or "").strip():
+                    current["funders"][str(funding_name).strip()] += 1
+                if str(recipient_name or "").strip():
+                    current["recipients"][str(recipient_name).strip()] += 1
+                for category in categories:
+                    current["programme_areas"][category] += 1
+                for original in country["original_geographies"]:
+                    current["original_geographies"][original] += 1
+
+                if origin:
+                    if origin["country_code"] == code:
+                        connection_same_country_grant_ids.add(grant_id)
+                    else:
+                        key = (origin["country_code"], code)
+                        connection = connection_aggregates.setdefault(key, {
+                            "origin_country_name": origin["country_name"],
+                            "destination_country_name": country["country_name"],
+                            "grant_ids": set(),
+                            "funders": Counter(),
+                            "origin_sources": set(),
+                        })
+                        connection["grant_ids"].add(grant_id)
+                        connection_grant_ids.add(grant_id)
+                        if str(funding_name or "").strip():
+                            connection["funders"][str(funding_name).strip()] += 1
+                        if origin_source:
+                            connection["origin_sources"].add(origin_source)
+
+                if not selected_currency or row_currency_code != selected_currency:
+                    continue
+                if multi_country:
+                    current["excluded_multi_country_grant_ids"].add(grant_id)
+                elif amount_status in {"valid", "zero"}:
+                    current["funding_grant_ids"].add(grant_id)
+                    current["total_minor_units"] += minor_units or 0
+                else:
+                    current["excluded_invalid_amount_grant_ids"].add(grant_id)
+
+        total_selected = len(prepared_rows)
         unknown_count = total_selected - known_count
         coverage = known_count / total_selected if total_selected else 0.0
         base_metadata["coverage"] = coverage
-        if excluded_multiple:
+        if multi_country_count:
             base_metadata["limitations"].append(
-                f"{excluded_multiple} grants lacked one unambiguous source-provided beneficiary location."
+                f"{multi_country_count} grants are associated with more than one country. "
+                "They count once in each associated country, but their amounts are not "
+                "allocated to countries."
             )
-        if excluded_amount:
+        if selected_currency and excluded_invalid_amount_count:
             base_metadata["limitations"].append(
-                f"{excluded_amount} geographically known grants had missing or non-positive amounts."
+                f"{excluded_invalid_amount_count} single-country grants in {selected_currency} "
+                "had missing, invalid, or negative amounts and are excluded from funding totals."
+            )
+        if not selected_currency and len(currencies) > 1:
+            base_metadata["limitations"].append(
+                "Multiple currencies are present. Country counts remain available, but a currency "
+                "must be selected before awarded funding can be shown."
+            )
+        if requested_currency and requested_currency not in currencies:
+            base_metadata["limitations"].append(
+                f"{requested_currency} is not available in the filtered grant records."
             )
 
         status_value = "available"
         items = [
             {
                 "region_or_country_code": code,
-                "region_or_country_name": name,
-                "grant_count": values["grant_count"],
-                "total_amount": round(values["total_amount"], 2),
-                "currency": row_currency,
+                "region_or_country_name": values["country_name"],
+                "grant_count": len(values["grant_ids"]),
+                "total_amount": (
+                    _minor_units_to_amount(values["total_minor_units"])
+                    if selected_currency and values["funding_grant_ids"] else None
+                ),
+                "currency": selected_currency,
+                "distinct_funders": len(values["funders"]),
+                "distinct_recipients": len(values["recipients"]),
+                "top_programme_areas": _top_counter_items(values["programme_areas"]),
+                "top_funders": _top_counter_items(values["funders"]),
+                "top_recipients": _top_counter_items(values["recipients"]),
+                "original_geographies": [
+                    item["name"]
+                    for item in _top_counter_items(values["original_geographies"], limit=8)
+                ],
+                "funding_grant_count": len(values["funding_grant_ids"]),
+                "excluded_multi_country_grant_count": len(
+                    values["excluded_multi_country_grant_ids"]
+                ),
+                "excluded_invalid_amount_grant_count": len(
+                    values["excluded_invalid_amount_grant_ids"]
+                ),
             }
-            for (code, name, row_currency), values in aggregates.items()
+            for code, values in aggregates.items()
         ]
-        items.sort(key=lambda item: item["total_amount"], reverse=True)
+        items.sort(key=lambda item: (-item["grant_count"], item["region_or_country_name"]))
+        connections = [
+            {
+                "origin_country_code": origin_code,
+                "origin_country_name": values["origin_country_name"],
+                "destination_country_code": destination_code,
+                "destination_country_name": values["destination_country_name"],
+                "grant_count": len(values["grant_ids"]),
+                "top_funders": _top_counter_items(values["funders"]),
+                "origin_sources": sorted(values["origin_sources"]),
+            }
+            for (origin_code, destination_code), values in connection_aggregates.items()
+        ]
+        connections.sort(key=lambda item: (
+            -item["grant_count"], item["origin_country_name"], item["destination_country_name"]
+        ))
         if not total_selected:
             status_value = "no_data"
+            funding_status = "no_data"
+        elif not known_count:
+            status_value = "no_geography"
         elif coverage < min_coverage:
             status_value = "low_coverage"
             items = []
+            connections = []
             base_metadata["limitations"].append(
                 "Coverage is below the configured display threshold; aggregation is withheld."
             )
@@ -970,11 +1509,30 @@ class SQLiteCharityRepository(CharityRepository):
         return {
             "status": status_value,
             "geographic_dimension": "beneficiary_location",
-            "items": items[:30],
+            "items": items,
             "known_geography_count": known_count,
             "unknown_geography_count": unknown_count,
             "coverage_percentage": round(coverage * 100, 2),
             "currencies": currencies,
+            "selected_currency": selected_currency,
+            "funding_status": funding_status,
+            "funding_mode_available": bool(
+                selected_currency and any(item["funding_grant_count"] for item in items)
+            ),
+            "grant_country_association_count": grant_country_associations,
+            "multi_country_grant_count": multi_country_count,
+            "funding_excluded_multi_country_count": excluded_multi_country_count,
+            "funding_excluded_multi_country_amount": _minor_units_to_amount(
+                excluded_multi_country_minor_units
+            ),
+            "funding_excluded_currency_count": excluded_currency_count,
+            "funding_excluded_invalid_amount_count": excluded_invalid_amount_count,
+            "connections": connections,
+            "connection_grant_count": len(connection_grant_ids),
+            "connection_excluded_no_headquarters_count": len(
+                connection_no_headquarters_grant_ids
+            ),
+            "connection_same_country_count": len(connection_same_country_grant_ids),
             "minimum_coverage_threshold": min_coverage,
             "metadata": base_metadata,
         }

@@ -108,7 +108,17 @@ Geographic concepts are intentionally distinct:
 - Geographic focus: where an organization says it works or funds; source and inferred values remain separate.
 - Beneficiary/project geography: a transaction's destination; used by recipient-region filters and the map.
 
-The current map has normalized beneficiary geography for 1,699 of 3,096 grants (54.88%), above the default 30% display threshold. The remaining 1,397 are reported as unknown rather than assigned to donor headquarters.
+The `Global Grant Distribution` map resolves beneficiary-country geography for 1,946 of the 3,096 currently ingested grants (62.86%), above the default 30% display threshold. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 1,150 records are reported as unmapped rather than assigned a fabricated country.
+
+The map's three-dot control opens a non-layout-shifting, scrollable settings overlay. It mirrors the Organization Directory's organization search, thematic sector, foundation location, beneficiary geography, minimum annual giving, and minimum average grant filters. Filters scope the source grant rows before country aggregation, and the coverage counters explicitly change from ingested to filtered grants. The overlay can be closed with its close button, Apply, Escape, or an outside click.
+
+Selecting a country exposes a direct handoff to the Organization Directory. The handoff preserves the active organization filters and applies the selected country as beneficiary geography. Directory geography matching uses the same canonical resolver as the map, including explicit raw ISO-code/name fallback and UK constituent-country roll-up. A country can still have no Directory result when every observed 360Giving funder for that country is source-only and lacks a matched organization profile; the UI explains that state rather than displaying a blank grid.
+
+Directory profiles without a cached raw Charity Commission detail object still expose a schema-valid partial detail view assembled from normalized organization fields. Their registration status is reported as `UNKNOWN`, unavailable contact/financial sections remain empty, and the API does not invent missing source values or fail the entire profile request.
+
+An optional connection layer draws up to the 36 strongest registered-funder-location-to-beneficiary-country associations. The origin uses an explicit 360Giving funding-organization address country where present and otherwise the matched organization directory's registered headquarters country. These arrows are labelled in both settings and the map as illustrative associations, not verified financial routes; headquarters never substitutes for beneficiary geography or proves where a payment originated.
+
+Grant-count mode counts a grant once in each explicitly associated country; the UI therefore labels the metric as grant-country associations when multi-country records are present. The current cache contains 39 such grants. Funding mode includes only non-negative, single-country amounts in one selected currency. It never repeats or invents allocations for multi-country awards: the current GBP map reports £59,831,607.31 as excluded multi-country amount. The map's country totals must not be added to that excluded amount or interpreted as complete 360Giving/global-market coverage.
 
 ## Grant overview aggregations
 
@@ -199,7 +209,7 @@ All `/api/*` routes require the session cookie returned by `POST /api/auth/login
 | `GET /api/charities/{id}` | Organization detail, provenance, and enrichment evidence |
 | `GET /api/charities/{id}/grants?role=all|funder|recipient` | Observed transactions and coverage status |
 | `GET /api/charities/grants/summary` | Currency-separated network totals and rankings |
-| `GET /api/charities/grants/map` | Beneficiary-geography aggregation and coverage metadata |
+| `GET /api/charities/grants/map?currency=GBP` | Filterable beneficiary-country associations, currency-safe funding totals, disclosed HQ-to-beneficiary connection groups, country explorer rankings, and coverage/exclusion metadata |
 | `GET /api/charities/grants/trends?currency=GBP&months=24` | Award-date monthly grant totals with unknown-coverage months and exclusions |
 | `GET /api/charities/grants/themes?currency=GBP` | Minor-unit-preserving programme allocations and classification coverage |
 | `GET /api/charities/{id}/sankey` | Currency-safe observed donor-to-recipient flow |
@@ -237,10 +247,10 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 
 ## Presentation flow
 
-1. Start on Overview and show the beneficiary map, Monthly Grant Awards, and Grant Allocation by Programme Area; point out the cached-source, currency, temporal-coverage, and classification-coverage labels.
+1. Start on Overview and show the full-width Global Grant Distribution map. Switch between grant-country associations and GBP funding, select a country to open its slim explorer, then show Monthly Grant Awards and Grant Allocation by Programme Area in the balanced row below it.
 2. Open Directory and demonstrate search, programme, headquarters, funding-region, annual-giving, and average-grant filters.
 3. Open Charity Projects (`326568`, whose source grant records use the funder name Comic Relief) to show Charity Commission identity/provenance, source versus inferred classifications, evidence/review state, observed 360Giving grants, and the donor-to-recipient Sankey.
-4. Show the beneficiary map and its 54.88% known-geography disclosure; explain why headquarters is not substituted for missing transaction geography.
+4. Show the map's 62.86% known-country disclosure and 39 multi-country exclusions; explain why headquarters is not substituted for missing transaction geography and why multi-country amounts are not divided or duplicated.
 5. Open Women Win (`-24788`) to show Philea organization type/source and the explicit `organization_level_only` transaction status.
 6. Show the experimental score components, confidence, completeness, missing inputs, version, assumptions, and “not a prediction” label.
 7. Open Admin last. Prefer `quick_consolidate` for the cached rebuild; do not launch an uncontrolled external scrape during the presentation.
