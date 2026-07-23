@@ -27,7 +27,8 @@ import {
 } from "recharts";
 
 // Configuration for API requests
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL
+  || `${window.location.protocol}//${window.location.hostname}:8000`;
 const DEMO_USERNAME = import.meta.env.VITE_BFF_USERNAME || "admin";
 const DEMO_PASSWORD = import.meta.env.VITE_BFF_PASSWORD || "password";
 
