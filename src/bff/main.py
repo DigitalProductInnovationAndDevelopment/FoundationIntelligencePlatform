@@ -10,10 +10,10 @@ from bff.news import router as news_router
 from bff.utils.logging import logger
 
 app = FastAPI(
-    title="Backend for Frontend (BFF) API",
+    title="Foundation Intelligence Platform BFF API",
     description=(
-        "Dedicated Backend for Frontend service for the Register of Charities dashboard. "
-        "Handles user session cookies, token translation, data aggregation, and API proxying."
+        "Backend for the Foundation Intelligence Platform. It serves normalized organization, "
+        "grant, provenance, enrichment, and experimental relevance-score data to the dashboard."
     ),
     version="1.0.0"
 )

@@ -16,7 +16,7 @@ from bff.repositories import CharityRepository, get_charity_repository
 
 router = APIRouter(
     prefix="/api/charities", 
-    tags=["Charity Commission Data"],
+    tags=["Organization and Grant Data"],
     dependencies=[Depends(get_current_user_token)]
 )
 
@@ -76,8 +76,8 @@ async def get_grants_map(
     repo: CharityRepository = Depends(get_charity_repository),
 ):
     """
-    Returns aggregated grant financial and transaction details grouped by geographic region.
-    Used for showing donation distributions on the dashboard map.
+    Returns stored grant transactions grouped by normalized beneficiary geography.
+    Used for showing grant distributions on the dashboard map; headquarters are excluded.
     Requires a valid session cookie/token.
     """
     if min_coverage < 0 or min_coverage > 1:
@@ -137,8 +137,8 @@ async def get_charity_sankey(
     repo: CharityRepository = Depends(get_charity_repository)
 ):
     """
-    Returns structured nodes and links for a financial flow Sankey diagram for a specific charity.
-    Calculates inflows (grants, donations) and outflows (grants made, operational expenses, reserves additions/drawdowns).
+    Returns donor-to-recipient nodes and links built only from stored grant transactions.
+    It does not infer operating expenses, reserves, or unrecorded donations.
     Requires a valid session cookie/token.
     """
     charity = await repo.get_by_id(reg_charity_number)

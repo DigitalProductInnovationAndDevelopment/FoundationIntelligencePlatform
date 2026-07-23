@@ -28,6 +28,8 @@ import {
 
 // Configuration for API requests
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const DEMO_USERNAME = import.meta.env.VITE_BFF_USERNAME || "admin";
+const DEMO_PASSWORD = import.meta.env.VITE_BFF_PASSWORD || "password";
 
 // Interface definitions
 interface Charity {
@@ -450,7 +452,7 @@ export default function App() {
       const resp = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: "admin", password: "password" }),
+        body: JSON.stringify({ username: DEMO_USERNAME, password: DEMO_PASSWORD }),
         credentials: "include"
       });
       if (resp.ok) {
