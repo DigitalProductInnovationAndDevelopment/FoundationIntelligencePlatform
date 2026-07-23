@@ -9,6 +9,8 @@ from bff.schemas import (
     GrantListResponse,
     GrantNetworkSummary,
     SankeyData,
+    ScoreRequest,
+    ScoreResponse,
 )
 from bff.repositories import CharityRepository, get_charity_repository
 
@@ -148,3 +150,20 @@ async def get_charity_sankey(
     if limit < 1 or limit > 100:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
     return await repo.get_sankey_data(reg_charity_number, currency=currency, limit=limit)
+
+
+@router.post("/{reg_charity_number}/score", response_model=ScoreResponse)
+async def score_charity_relevance(
+    reg_charity_number: int,
+    request: ScoreRequest,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return an explainable experimental target-profile relevance score."""
+    charity = await repo.get_by_id(reg_charity_number)
+    if not charity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization {reg_charity_number} not found.",
+        )
+    profile = request.target_profile.model_dump(exclude_none=True) if request.target_profile else None
+    return await repo.get_score(reg_charity_number, target_profile=profile)

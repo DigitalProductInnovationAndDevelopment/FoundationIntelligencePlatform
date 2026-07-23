@@ -246,6 +246,44 @@ class GrantNetworkSummary(BaseModel):
     largest_recipients: List[GrantRankingItem] = []
     metadata: DataMetadata
 
+
+class ScoreTargetProfile(BaseModel):
+    programme_areas: List[str] = []
+    geographies: List[str] = []
+    minimum_annual_expenditure: Optional[float] = None
+    target_average_grant_amount: Optional[float] = None
+    currency: Optional[str] = None
+    organization_types: List[str] = []
+
+
+class ScoreRequest(BaseModel):
+    target_profile: Optional[ScoreTargetProfile] = None
+
+
+class ScoreComponent(BaseModel):
+    score: Optional[float] = None
+    weight: float
+    weighted_score: Optional[float] = None
+    confidence: float
+    available: bool
+    evidence: List[Dict[str, Any]] = []
+    missing_reason: Optional[str] = None
+
+
+class ScoreResponse(BaseModel):
+    score: Optional[float] = None
+    score_target: str
+    score_version: str
+    configuration_status: str
+    confidence: float
+    data_completeness: float
+    components: Dict[str, ScoreComponent]
+    missing_inputs: List[str] = []
+    review_required: bool
+    assumptions: List[str] = []
+    missing_data_behavior: str
+    not_a_prediction: bool = True
+
 class PipelineStatus(BaseModel):
     status: str = Field(..., description="idle, running, success, failed")
     started_at: Optional[str] = None

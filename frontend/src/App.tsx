@@ -129,6 +129,30 @@ interface SankeyData {
   excludedCount: number;
 }
 
+interface ScoreComponent {
+  score: number | null;
+  weight: number;
+  weighted_score: number | null;
+  confidence: number;
+  available: boolean;
+  evidence: Record<string, unknown>[];
+  missing_reason: string | null;
+}
+
+interface ScoreResponse {
+  score: number | null;
+  score_target: string;
+  score_version: string;
+  configuration_status: string;
+  confidence: number;
+  data_completeness: number;
+  components: Record<string, ScoreComponent>;
+  missing_inputs: string[];
+  review_required: boolean;
+  assumptions: string[];
+  not_a_prediction: boolean;
+}
+
 interface PipelineStatus {
   status: string;
   started_at: string | null;
@@ -324,6 +348,7 @@ export default function App() {
   const [charityGrants, setCharityGrants] = useState<GrantDetail[]>([]);
   const [grantStatus, setGrantStatus] = useState("data_unavailable");
   const [sankeyData, setSankeyData] = useState<SankeyData | null>(null);
+  const [scoreData, setScoreData] = useState<ScoreResponse | null>(null);
 
   // News summarizer states
   const [newsLoading, setNewsLoading] = useState(false);
@@ -388,11 +413,13 @@ export default function App() {
       fetchCharityDetail(selectedCharity.registered_charity_number);
       fetchCharityGrants(selectedCharity.registered_charity_number);
       fetchSankeyData(selectedCharity.registered_charity_number);
+      fetchScoreData(selectedCharity.registered_charity_number);
     } else {
       setSelectedCharityDetail(null);
       setNewsSummary(null);
       setNewsError(null);
       setNewsLoading(false);
+      setScoreData(null);
     }
   }, [selectedCharity]);
 
@@ -711,6 +738,31 @@ export default function App() {
       console.error("Failed to fetch sankey metrics", e);
       setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
       setApiError("Grant-flow data is temporarily unavailable.");
+    }
+  };
+
+  const fetchScoreData = async (id: number) => {
+    if (!isBffOnline) {
+      setScoreData(null);
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/api/charities/${id}/score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      if (resp.ok) {
+        setScoreData(await resp.json());
+      } else {
+        setScoreData(null);
+        setApiError(`Experimental score request failed (${resp.status}).`);
+      }
+    } catch (e) {
+      console.error("Failed to fetch experimental relevance score", e);
+      setScoreData(null);
+      setApiError("The experimental relevance score is temporarily unavailable.");
     }
   };
 
@@ -1649,6 +1701,44 @@ export default function App() {
                     <div className="status-badge status-warning" style={{ marginTop: "8px" }}>Low-confidence or ambiguous evidence · review required</div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {isBffOnline && (
+              <div className="glass-card" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", marginBottom: "14px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px" }}>Target-profile relevance</h3>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Example profile · deterministic decision support · not a prediction
+                    </div>
+                  </div>
+                  <span className="status-badge status-warning">Experimental score</span>
+                </div>
+                {scoreData ? (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                      <div><span className="kpi-label">Relevance</span><div className="kpi-value" style={{ fontSize: "22px" }}>{scoreData.score === null ? "Unavailable" : `${scoreData.score.toFixed(1)}/100`}</div></div>
+                      <div><span className="kpi-label">Confidence</span><div className="kpi-value" style={{ fontSize: "22px" }}>{Math.round(scoreData.confidence * 100)}%</div></div>
+                      <div><span className="kpi-label">Completeness</span><div className="kpi-value" style={{ fontSize: "22px" }}>{Math.round(scoreData.data_completeness * 100)}%</div></div>
+                    </div>
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      {Object.entries(scoreData.components).map(([name, component]) => (
+                        <div key={name} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "12px", fontSize: "12px", padding: "8px 10px", border: "1px solid var(--border-glass)", borderRadius: "6px" }}>
+                          <span style={{ color: "var(--text-secondary)" }}>{name.replaceAll("_", " ")} · weight {Math.round(component.weight * 100)}%</span>
+                          <span style={{ fontWeight: 600, color: component.available ? "var(--text-primary)" : "var(--text-muted)" }}>
+                            {component.available ? `${component.score?.toFixed(1)}/100` : component.missing_reason || "Unavailable"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px" }}>
+                      Version {scoreData.score_version}. Missing components are disclosed and excluded from relevance arithmetic; they reduce completeness and confidence.
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>Experimental score unavailable.</div>
+                )}
               </div>
             )}
 

@@ -10,6 +10,7 @@ from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
 from data.db_loader import validate_database
 from preprocessing.enrichment import enrich_organization
+from scoring.engine import load_score_configuration, score_relevance
 
 
 def _utc_now():
@@ -87,6 +88,12 @@ class CharityRepository(ABC):
     @abstractmethod
     async def get_sankey_data(
         self, charity_id: int, currency: Optional[str] = None, limit: int = 30
+    ) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def get_score(
+        self, charity_id: int, target_profile: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         pass
 
@@ -421,6 +428,25 @@ class JSONCharityRepository(CharityRepository):
                 "truncation_applied": False,
             },
         }
+
+    async def get_score(
+        self, charity_id: int, target_profile: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        organization = await self.get_by_id(charity_id)
+        if not organization:
+            raise KeyError(charity_id)
+        config = load_score_configuration()
+        _, expenditure = self._get_financials(organization)
+        score_input = {
+            **organization,
+            "annual_expenditure": expenditure,
+        }
+        return score_relevance(
+            score_input,
+            target_profile or config.example_target_profile,
+            grant_statistics={},
+            configuration=config,
+        )
 
 
 class SQLiteCharityRepository(CharityRepository):
@@ -1086,6 +1112,52 @@ class SQLiteCharityRepository(CharityRepository):
                 "truncation_applied": truncation_applied,
             },
         }
+
+    async def get_score(
+        self, charity_id: int, target_profile: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        organization = await self.get_by_id(charity_id)
+        if not organization:
+            raise KeyError(charity_id)
+        config = load_score_configuration()
+        profile = target_profile or config.example_target_profile
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT annual_expenditure, organization_type FROM charities WHERE charity_id = ?",
+            (charity_id,),
+        )
+        row = cursor.fetchone()
+        requested_currency = str(profile.get("currency") or "").upper()
+        cursor.execute("""
+            SELECT UPPER(currency), AVG(amount), COUNT(*)
+            FROM grants
+            WHERE funding_charity_id = ? AND amount > 0 AND currency IS NOT NULL
+            GROUP BY UPPER(currency)
+        """, (charity_id,))
+        grant_rows = cursor.fetchall()
+        conn.close()
+        selected = None
+        if requested_currency:
+            selected = next((item for item in grant_rows if item[0] == requested_currency), None)
+        elif len(grant_rows) == 1:
+            selected = grant_rows[0]
+        score_input = {
+            **organization,
+            "annual_expenditure": row[0] if row else None,
+            "organization_type": row[1] if row else organization.get("organization_type"),
+        }
+        grant_statistics = {
+            "currency": selected[0],
+            "average_amount": selected[1],
+            "grant_count": selected[2],
+        } if selected else {}
+        return score_relevance(
+            score_input,
+            profile,
+            grant_statistics=grant_statistics,
+            configuration=config,
+        )
 
 
 def get_charity_repository() -> CharityRepository:

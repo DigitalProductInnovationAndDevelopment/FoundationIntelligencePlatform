@@ -504,6 +504,28 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(data["links"], [])
         self.assertEqual(data["metadata"]["grant_count"], 0)
 
+    def test_experimental_score_endpoint(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+        response = self.client.post(
+            "/api/charities/1001/score",
+            json={"target_profile": {
+                "programme_areas": ["Education"],
+                "geographies": ["United Kingdom"],
+                "organization_types": ["charity"],
+            }},
+            cookies={"session_id": session_cookie},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["configuration_status"], "experimental")
+        self.assertEqual(data["score_version"], "example-relevance-v1")
+        self.assertTrue(data["not_a_prediction"])
+        self.assertIn("components", data)
+
 
 class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
