@@ -98,6 +98,21 @@ class CharityBase(BaseModel):
     removal_reason: Optional[str] = None
     latest_income: Optional[float] = None
     latest_expenditure: Optional[float] = None
+    programme_areas_source: List[str] = []
+    programme_areas_inferred: List[str] = []
+    geographic_focus_source: List[Any] = []
+    geographic_focus_inferred: List[str] = []
+    headquarters_country: Optional[str] = None
+    headquarters_region: Optional[str] = None
+    programme_area_review_required: bool = False
+    geography_review_required: bool = False
+    enrichment_rule_version: Optional[str] = None
+    organization_type: str = "unknown"
+    primary_source: Optional[str] = None
+    source_names: List[str] = []
+    source_record_id: Optional[str] = None
+    source_url: Optional[str] = None
+    transaction_coverage: str = "unknown"
 
 class CharityDetail(BaseModel):
     registered_charity_number: int
@@ -108,6 +123,31 @@ class CharityDetail(BaseModel):
     primary_grants: Optional[Any] = None
     who_what_how: Optional[List[Any]] = []
     financial_history: List[CharityFinancialHistoryItem] = []
+    programme_areas_source: List[str] = []
+    programme_areas_inferred: List[str] = []
+    programme_area_scores: Dict[str, float] = {}
+    programme_area_method: Optional[str] = None
+    programme_area_evidence: List[Dict[str, Any]] = []
+    programme_area_review_required: bool = False
+    geographic_focus_source: List[Any] = []
+    geographic_focus_inferred: List[str] = []
+    headquarters_country: Optional[str] = None
+    headquarters_region: Optional[str] = None
+    geography_method: Optional[str] = None
+    geography_confidence: Optional[float] = None
+    geography_evidence: List[Dict[str, Any]] = []
+    geography_review_required: bool = False
+    enrichment_rule_version: Optional[str] = None
+    organization_type: str = "unknown"
+    primary_source: Optional[str] = None
+    source_names: List[str] = []
+    source_record_id: Optional[str] = None
+    source_url: Optional[str] = None
+    source_records: List[Dict[str, Any]] = []
+    ingestion_timestamp: Optional[str] = None
+    transaction_coverage: str = "unknown"
+    deduplication_status: Optional[str] = None
+    deduplication_candidates: List[Dict[str, Any]] = []
 
 class CharityStats(BaseModel):
     total_charities: int
@@ -115,23 +155,336 @@ class CharityStats(BaseModel):
     removed_charities: int
     average_income: float
     average_expenditure: float
+    total_grants: Optional[int] = None
+    data_mode: str = "unknown"
+    source: List[str] = []
+    source_counts: Dict[str, int] = {}
+    organization_type_counts: Dict[str, int] = {}
+
+
+class RegistryOrganizationSummary(BaseModel):
+    """A lightweight official register result, not an assertion of funding activity."""
+    registry_id: str
+    charity_number: str
+    registered_name: str
+    registration_status: Optional[str] = None
+    income: Optional[float] = None
+    expenditure: Optional[float] = None
+    city: Optional[str] = None
+    administrative_region: Optional[str] = None
+    country_code: Optional[str] = None
+    source_record_updated_at: Optional[str] = None
+    has_enriched_profile: bool = False
+    has_grant_data: bool = False
+    has_philea_data: bool = False
+
+
+class RegistryDirectoryPage(BaseModel):
+    results: List[RegistryOrganizationSummary] = []
+    next_cursor: Optional[str] = None
+    has_more: bool = False
+    applied_filters: Dict[str, Any] = {}
+    page_size: int
+    registry_count: Optional[int] = None
+    search_strategy: str = "indexed_prefix"
+
+
+class RegistryEnrichedLink(BaseModel):
+    enriched_organization_id: int
+    organization_name: str
+    match_status: str
+    match_method: str
+    match_confidence: Optional[float] = None
+    match_reason: Optional[str] = None
+    has_grant_data: bool = False
+    has_philea_data: bool = False
+
+
+class RegistryOrganizationDetail(BaseModel):
+    registry_id: str
+    charity_number: str
+    linked_charity_number: Optional[str] = None
+    registered_name: str
+    registration_status: Optional[str] = None
+    registration_date: Optional[str] = None
+    removal_date: Optional[str] = None
+    income: Optional[float] = None
+    expenditure: Optional[float] = None
+    financial_period_end_date: Optional[str] = None
+    address_lines: List[str] = []
+    postcode: Optional[str] = None
+    city: Optional[str] = None
+    administrative_region: Optional[str] = None
+    country_code: Optional[str] = None
+    activity_text: Optional[str] = None
+    source_name: str
+    source_record_updated_at: Optional[str] = None
+    imported_at: str
+    is_current_source_record: bool = True
+    observed_grant_data_message: str
+    enriched_profile: Optional[RegistryEnrichedLink] = None
 
 class GrantMapItem(BaseModel):
-    region: str
-    total_amount_eur: float
-    grants_count: int
+    region_or_country_code: Optional[str] = None
+    region_or_country_name: str
+    grant_count: int
+    total_amount: Optional[float] = None
+    currency: Optional[str] = None
+    distinct_funders: int = 0
+    distinct_recipients: int = 0
+    top_programme_areas: List[Dict[str, Any]] = []
+    top_funders: List[Dict[str, Any]] = []
+    top_recipients: List[Dict[str, Any]] = []
+    original_geographies: List[str] = []
+    funding_grant_count: int = 0
+    excluded_multi_country_grant_count: int = 0
+    excluded_invalid_amount_grant_count: int = 0
+
+class GrantMapConnection(BaseModel):
+    origin_country_code: str
+    origin_country_name: str
+    destination_country_code: str
+    destination_country_name: str
+    grant_count: int
+    top_funders: List[Dict[str, Any]] = []
+    origin_sources: List[str] = []
+
+class DataMetadata(BaseModel):
+    data_mode: str
+    source: List[str] = []
+    generated_at: Optional[str] = None
+    record_count: int = 0
+    derivation: Optional[str] = None
+    coverage: Optional[float] = None
+    limitations: List[str] = []
+
+class GrantMapResponse(BaseModel):
+    status: str
+    geographic_dimension: str
+    items: List[GrantMapItem] = []
+    known_geography_count: int = 0
+    unknown_geography_count: int = 0
+    coverage_percentage: float = 0.0
+    currencies: List[str] = []
+    selected_currency: Optional[str] = None
+    funding_status: str = "unavailable"
+    funding_mode_available: bool = False
+    grant_country_association_count: int = 0
+    multi_country_grant_count: int = 0
+    funding_excluded_multi_country_count: int = 0
+    funding_excluded_multi_country_amount: float = 0.0
+    funding_excluded_currency_count: int = 0
+    funding_excluded_invalid_amount_count: int = 0
+    connections: List[GrantMapConnection] = []
+    connection_grant_count: int = 0
+    connection_excluded_no_headquarters_count: int = 0
+    connection_same_country_count: int = 0
+    minimum_coverage_threshold: float = 0.30
+    metadata: DataMetadata
 
 class GrantDetail(BaseModel):
     grant_id: str
     funding_charity_id: Optional[int] = None
+    funding_name: Optional[str] = None
+    funding_org_source_id: Optional[str] = None
     recipient_name: str
     recipient_charity_id: Optional[int] = None
-    amount_eur: float
+    recipient_org_source_id: Optional[str] = None
+    amount: Optional[float] = None
+    amount_eur: Optional[float] = None
+    exchange_rate: Optional[float] = None
+    exchange_rate_date: Optional[str] = None
+    exchange_rate_source: Optional[str] = None
+    conversion_status: Optional[str] = None
     currency: str
     description: str
     date: str
-    recipient_region: str
+    recipient_region: Optional[str] = None
+    beneficiary_geography: List[Any] = []
     tags: List[str] = []
+    source: Optional[str] = None
+    source_record_id: Optional[str] = None
+    source_url: Optional[str] = None
+    programme_area_source: List[str] = []
+    programme_area_inferred: List[str] = []
+    programme_area_scores: Dict[str, float] = {}
+    programme_area_method: Optional[str] = None
+    programme_area_evidence: List[Dict[str, Any]] = []
+    programme_area_review_required: bool = False
+    beneficiary_geography_normalized: List[Dict[str, Any]] = []
+    geographic_focus_inferred: List[str] = []
+    geography_method: Optional[str] = None
+    geography_confidence: Optional[float] = None
+    geography_evidence: List[Dict[str, Any]] = []
+    geography_review_required: bool = False
+    enrichment_rule_version: Optional[str] = None
+
+class GrantListResponse(BaseModel):
+    status: str
+    organization_id: int
+    role: str
+    transaction_coverage: str
+    grant_count: int
+    currencies: List[str] = []
+    grants: List[GrantDetail] = []
+    metadata: DataMetadata
+
+class GrantRankingItem(BaseModel):
+    organization_id: Optional[int] = None
+    organization_name: str
+    total_amount: float
+    currency: str
+    grant_count: int
+
+class GrantNetworkSummary(BaseModel):
+    status: str
+    total_grant_count: int
+    currencies: List[str] = []
+    largest_donors: List[GrantRankingItem] = []
+    largest_recipients: List[GrantRankingItem] = []
+    metadata: DataMetadata
+
+
+class GrantAggregationExclusions(BaseModel):
+    missing_date: int = 0
+    invalid_date: int = 0
+    missing_amount: int = 0
+    invalid_amount: int = 0
+    negative_amount: int = 0
+    unsupported_currency: int = 0
+    currency_filtered: int = 0
+    unsupported_source: int = 0
+    outside_period: int = 0
+
+
+class GrantAggregationScope(BaseModel):
+    coverage_note: str
+    market_scope: str = "available cached 360Giving records"
+
+
+class GrantAmountPolicy(BaseModel):
+    monetary_precision: str = "minor_units_2_decimal_places"
+    rounding: str = "ROUND_HALF_UP"
+    zero_amounts: str = "included_when_source_value_is_numeric_zero"
+    negative_amounts: str = "excluded_and_reported"
+    upper_bound: str = "no_unapproved_implausibility_threshold_applied"
+    maximum_observed_amount: Optional[float] = None
+
+
+class GrantTrendPeriod(BaseModel):
+    from_month: str = Field(alias="from")
+    to: str
+    months: int
+    anchor: str
+
+    model_config = {"populate_by_name": True}
+
+
+class GrantTrendItem(BaseModel):
+    month: str
+    grant_count: Optional[int] = None
+    source_record_count: int = 0
+    total_amount: Optional[float] = None
+    coverage_status: str
+
+
+class GrantTrendsResponse(BaseModel):
+    status: str
+    currency: Optional[str] = None
+    available_currencies: List[str] = []
+    date_basis: str = "award_date"
+    period: Optional[GrantTrendPeriod] = None
+    items: List[GrantTrendItem] = []
+    excluded: GrantAggregationExclusions
+    zero_amount_count: int = 0
+    latest_award_date: Optional[str] = None
+    last_refreshed_at: Optional[str] = None
+    source: List[str] = []
+    data_mode: str
+    amount_policy: GrantAmountPolicy
+    scope: GrantAggregationScope
+
+
+class ProgrammeAllocationItem(BaseModel):
+    programme_area: str
+    distinct_grant_count: int
+    weighted_grant_count: float
+    allocated_amount: float
+    source_classified_grant_count: int = 0
+    inferred_classified_grant_count: int = 0
+    unclassified_grant_count: int = 0
+
+
+class ProgrammeClassificationCoverage(BaseModel):
+    qualifying_grant_count: int
+    classified_grant_count: int
+    unclassified_grant_count: int
+    classified_percentage: float
+    source_classified_grant_count: int
+    inferred_classified_grant_count: int
+    source_percentage: float
+    inferred_percentage: float
+    multiple_programme_area_grant_count: int
+    invalid_source_label_count: int
+    low_confidence_inference_count: int
+
+
+class GrantThemesResponse(BaseModel):
+    status: str
+    currency: Optional[str] = None
+    available_currencies: List[str] = []
+    allocation_method: str = "equal_split_across_available_categories"
+    classification_precedence: List[str] = []
+    inference_confidence_threshold: float
+    items: List[ProgrammeAllocationItem] = []
+    classification_coverage: ProgrammeClassificationCoverage
+    qualifying_amount: float = 0.0
+    allocated_amount: float = 0.0
+    excluded: GrantAggregationExclusions
+    zero_amount_count: int = 0
+    last_refreshed_at: Optional[str] = None
+    source: List[str] = []
+    data_mode: str
+    amount_policy: GrantAmountPolicy
+    scope: GrantAggregationScope
+
+
+class ScoreTargetProfile(BaseModel):
+    programme_areas: List[str] = []
+    geographies: List[str] = []
+    minimum_annual_expenditure: Optional[float] = None
+    target_average_grant_amount: Optional[float] = None
+    currency: Optional[str] = None
+    organization_types: List[str] = []
+
+
+class ScoreRequest(BaseModel):
+    target_profile: Optional[ScoreTargetProfile] = None
+
+
+class ScoreComponent(BaseModel):
+    score: Optional[float] = None
+    weight: float
+    weighted_score: Optional[float] = None
+    confidence: float
+    available: bool
+    evidence: List[Dict[str, Any]] = []
+    missing_reason: Optional[str] = None
+
+
+class ScoreResponse(BaseModel):
+    score: Optional[float] = None
+    score_target: str
+    score_version: str
+    configuration_status: str
+    confidence: float
+    data_completeness: float
+    components: Dict[str, ScoreComponent]
+    missing_inputs: List[str] = []
+    review_required: bool
+    assumptions: List[str] = []
+    missing_data_behavior: str
+    not_a_prediction: bool = True
 
 class PipelineStatus(BaseModel):
     status: str = Field(..., description="idle, running, success, failed")
@@ -152,15 +505,34 @@ class PipelineTrigger(BaseModel):
 class SankeyNode(BaseModel):
     id: str
     label: str
+    role: Optional[str] = None
 
 class SankeyLink(BaseModel):
     source: str
     target: str
     value: float
+    currency: str
+    grant_count: int
+
+class SankeyMetadata(BaseModel):
+    source: List[str] = []
+    generated_at: str
+    grant_count: int
+    included_grant_count: int
+    excluded_grant_count: int
+    excluded_reasons: Dict[str, int] = {}
+    included_value: float
+    currencies: List[str] = []
+    selected_currency: Optional[str] = None
+    conversion_method: str = "none"
+    filters_applied: Dict[str, Any] = {}
+    truncation_applied: bool = False
 
 class SankeyData(BaseModel):
+    status: str
     nodes: List[SankeyNode]
     links: List[SankeyLink]
+    metadata: SankeyMetadata
 
 # Foundation News Schemas
 class NewsSource(BaseModel):

@@ -45,6 +45,8 @@ def parse_charity_number(org_id):
 
 
 from preprocessing.consolidate import consolidate_uk_datasets
+from preprocessing.enrichment import build_enrichment_report
+from preprocessing.philea_adapter import integrate_philea_organizations
 from preprocessing.extract_impressum import crawl_impressum
 import data.db_loader as db_loader
 from data.db_loader import insert_charities, insert_grants
@@ -68,6 +70,7 @@ def run_pipeline(args):
     # Setup Paths
     raw_cc_path = args.raw_cc_output or os.path.join(PROJECT_ROOT, "data/raw/register_of_charities_results.json")
     raw_ts_path = args.raw_ts_output or os.path.join(PROJECT_ROOT, "data/raw/threesixtygiving_results.json")
+    raw_philea_path = os.path.join(PROJECT_ROOT, "data/raw/philea_members.json")
     charities_jsonl_path = os.path.join(PROJECT_ROOT, "data/preprocessed/charities.jsonl")
     grants_jsonl_path = os.path.join(PROJECT_ROOT, "data/preprocessed/grants.jsonl")
     db_file = os.path.join(PROJECT_ROOT, "data/charities.db")
@@ -285,6 +288,17 @@ def run_pipeline(args):
                     except Exception as e:
                         logger.warning(f"  -> Failed to crawl {c['name']}: {e}")
 
+        philea_records = load_existing_raw(raw_philea_path)
+        charities_list, philea_report = integrate_philea_organizations(
+            charities_list, philea_records
+        )
+        logger.info(
+            "Integrated cached Philea organizations: %s added, %s merged, %s rejected.",
+            philea_report["philea_added_count"],
+            philea_report["philea_merged_count"],
+            philea_report["philea_rejected_count"],
+        )
+
         # Step 3: Export flat JSON Lines files
         logger.info("Step 3: Exporting flat relational tables to JSONL...")
         os.makedirs(os.path.dirname(charities_jsonl_path), exist_ok=True)
@@ -299,26 +313,40 @@ def run_pipeline(args):
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
         logger.info(f"Exported grants table to: {grants_jsonl_path}")
 
+        enrichment_report = build_enrichment_report(charities_list, grants_list)
+        enrichment_report_path = os.path.join(PROJECT_ROOT, "data/preprocessed/enrichment_report.json")
+        with open(enrichment_report_path, "w", encoding="utf-8") as f:
+            json.dump(enrichment_report, f, ensure_ascii=False, indent=2)
+        logger.info(f"Exported enrichment coverage report to: {enrichment_report_path}")
+        philea_report_path = os.path.join(PROJECT_ROOT, "data/preprocessed/philea_integration_report.json")
+        with open(philea_report_path, "w", encoding="utf-8") as f:
+            json.dump(philea_report, f, ensure_ascii=False, indent=2)
+        logger.info(f"Exported Philea integration report to: {philea_report_path}")
+
         # Step 4: Loading SQLite DB
         logger.info("Step 4: Loading data into SQLite Database...")
         db_loader.main(db_path=db_file, preprocessed_dir=os.path.dirname(charities_jsonl_path))
         logger.info(f"SQLite database successfully loaded at: {db_file}")
 
     elif source == "full_run":
-        # 1. Initialize SQLite Database & retrieve completed list
-        conn = db_loader.create_connection(db_file)
+        # 1. Work against a staging database so a failed run cannot damage the active DB.
+        active_db_valid, validation_reason = db_loader.validate_database(db_file)
+        if os.path.exists(db_file) and not active_db_valid:
+            logger.warning(f"Existing database will not be reused: {validation_reason}")
+        staging_db_file, conn = db_loader.create_staging_database(
+            db_file,
+            preserve_existing=active_db_valid and not args.fresh,
+        )
         completed_numbers = set()
         
         if args.fresh:
-            logger.info("Fresh flag set. Dropping and re-creating database tables...")
-            db_loader.create_tables(conn)
+            logger.info("Fresh flag set. Using a clean, fully initialized staging database...")
         else:
-            # Query existing charity_ids from DB
+            # The staging helper always creates the schema, including on a first run.
             if conn:
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='charities';")
-                    if cursor.fetchone():
+                    if active_db_valid:
+                        cursor = conn.cursor()
                         cursor.execute("SELECT charity_id FROM charities;")
                         completed_numbers = {int(row[0]) for row in cursor.fetchall()}
                         logger.info(f"Loaded {len(completed_numbers)} completed charity numbers from SQLite database cache.")
@@ -377,7 +405,13 @@ def run_pipeline(args):
         if not target_tuples:
             logger.info("No foundations to process.")
             if conn:
+                philea_only, philea_report = integrate_philea_organizations(
+                    [], load_existing_raw(raw_philea_path)
+                )
+                insert_charities(conn, philea_only)
+                logger.info("Loaded %s cached Philea organizations.", len(philea_only))
                 conn.close()
+            db_loader.publish_staging_database(staging_db_file, db_file)
             return
             
         logger.info(f"Found {len(target_tuples)} target foundations to process.")
@@ -460,6 +494,10 @@ def run_pipeline(args):
                     insert_grants(conn, grants_list)
                 except Exception as e:
                     logger.error(f"Failed to write to database for charity {reg_no}: {e}")
+                    conn.close()
+                    if os.path.exists(staging_db_file):
+                        os.unlink(staging_db_file)
+                    raise RuntimeError(f"Database insertion failed for charity {reg_no}") from e
                     
             # Step F: Update raw cache files in background to preserve sync
             for rec in cc_records:
@@ -475,8 +513,17 @@ def run_pipeline(args):
             logger.info(f"[{idx}/{len(target_tuples)}] Foundation {reg_no} successfully integrated.")
             
         if conn:
+            philea_only, philea_report = integrate_philea_organizations(
+                [], load_existing_raw(raw_philea_path)
+            )
+            insert_charities(conn, philea_only)
+            logger.info(
+                "Loaded %s cached Philea organization-level records in full-run mode.",
+                len(philea_only),
+            )
             conn.close()
             logger.info("Database connection closed.")
+        db_loader.publish_staging_database(staging_db_file, db_file)
 
     else:
         logger.error(f"Unsupported pipeline source: {source}")

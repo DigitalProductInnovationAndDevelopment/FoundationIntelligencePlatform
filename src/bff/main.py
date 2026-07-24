@@ -7,13 +7,14 @@ from bff.charity import router as charity_router
 from bff.proxy import router as proxy_router
 from bff.admin import router as admin_router
 from bff.news import router as news_router
+from bff.repositories import get_charity_repository
 from bff.utils.logging import logger
 
 app = FastAPI(
-    title="Backend for Frontend (BFF) API",
+    title="Foundation Intelligence Platform BFF API",
     description=(
-        "Dedicated Backend for Frontend service for the Register of Charities dashboard. "
-        "Handles user session cookies, token translation, data aggregation, and API proxying."
+        "Backend for the Foundation Intelligence Platform. It serves normalized organization, "
+        "grant, provenance, enrichment, and experimental relevance-score data to the dashboard."
     ),
     version="1.0.0"
 )
@@ -26,7 +27,9 @@ origins = [
     "http://localhost:5173",  # Vite default (React/Vue/Svelte)
     "http://localhost:8000",  # FastAPI docs / local
     "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173"
+    "http://127.0.0.1:5173",
+    # Vite selects the next port when a previous local dev session owns 5173.
+    "http://127.0.0.1:5174",
 ]
 
 app.add_middleware(
@@ -36,6 +39,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def warm_repository() -> None:
+    """Initialize indexes/cache before the browser makes its first request."""
+    repository = get_charity_repository()
+    await repository.get_grant_overview(
+        sources=["360Giving", "Charity Commission for England and Wales", "Philea"]
+    )
 
 # Request-Response logging middleware
 @app.middleware("http")

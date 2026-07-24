@@ -1,19 +1,21 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Building2,
   TrendingUp,
   Activity,
-  Database,
-  LogOut,
   Search,
   SlidersHorizontal,
   Terminal,
-  Sparkles,
   ArrowRight,
   TrendingDown,
   DollarSign,
+  Database,
   Play,
-  Newspaper
+  Newspaper,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RotateCcw,
 } from "lucide-react";
 import {
   BarChart,
@@ -27,10 +29,22 @@ import {
   Area,
   Sankey
 } from "recharts";
+import GrantWorldMap from "./components/GrantWorldMap";
+import OverviewDashboard from "./components/OverviewDashboard";
+import RegistryDirectory from "./components/RegistryDirectory";
+import amplifyLogo from "./assets/amplify-logo.svg";
+import type {
+  GrantMapFilters,
+  GrantMapResponse,
+} from "./components/GrantWorldMap";
 
 // Configuration for API requests
-const API_BASE = "http://localhost:8000";
-
+const API_BASE = import.meta.env.VITE_API_BASE_URL
+  || `${window.location.protocol}//${window.location.hostname}:8000`;
+const DEMO_USERNAME = import.meta.env.VITE_BFF_USERNAME || "admin";
+const DEMO_PASSWORD = import.meta.env.VITE_BFF_PASSWORD || "password";
+const SHOW_LEGACY_OVERVIEW = import.meta.env.VITE_LEGACY_OVERVIEW === "true";
+const DEFAULT_DATA_SOURCES = ["360Giving", "Charity Commission for England and Wales", "Philea"];
 // Interface definitions
 interface Charity {
   registered_charity_number: number;
@@ -40,8 +54,23 @@ interface Charity {
   reg_status: string;
   reporting_status: string;
   removal_reason: string | null;
-  latest_income: number;
-  latest_expenditure: number;
+  latest_income: number | null;
+  latest_expenditure: number | null;
+  programme_areas_source?: string[];
+  programme_areas_inferred?: string[];
+  geographic_focus_source?: unknown[];
+  geographic_focus_inferred?: string[];
+  headquarters_country?: string | null;
+  headquarters_region?: string | null;
+  programme_area_review_required?: boolean;
+  geography_review_required?: boolean;
+  enrichment_rule_version?: string | null;
+  organization_type?: string;
+  primary_source?: string | null;
+  source_names?: string[];
+  source_record_id?: string | null;
+  source_url?: string | null;
+  transaction_coverage?: string;
 }
 
 interface KPIStats {
@@ -50,20 +79,87 @@ interface KPIStats {
   removed_charities: number;
   average_income: number;
   average_expenditure: number;
+  total_grants?: number | null;
+  data_mode?: string;
+  source?: string[];
 }
 
-interface GrantMapItem {
-  region: string;
-  total_amount_eur: number;
-  grants_count: number;
+interface GrantTrendItem {
+  month: string;
+  grant_count: number | null;
+  source_record_count: number;
+  total_amount: number | null;
+  coverage_status: "observed" | "partial" | "unknown";
+}
+
+interface GrantTrendsResponse {
+  status: string;
+  currency: string | null;
+  available_currencies: string[];
+  date_basis: string;
+  period: { from: string; to: string; months: number; anchor: string } | null;
+  items: GrantTrendItem[];
+  excluded: Record<string, number>;
+  zero_amount_count: number;
+  latest_award_date: string | null;
+  last_refreshed_at: string | null;
+  source: string[];
+  data_mode: string;
+  scope: { coverage_note: string };
+}
+
+interface ProgrammeAllocationItem {
+  programme_area: string;
+  distinct_grant_count: number;
+  weighted_grant_count: number;
+  allocated_amount: number;
+  source_classified_grant_count: number;
+  inferred_classified_grant_count: number;
+}
+
+interface GrantThemesResponse {
+  status: string;
+  currency: string | null;
+  available_currencies: string[];
+  allocation_method: string;
+  classification_precedence: string[];
+  inference_confidence_threshold: number;
+  items: ProgrammeAllocationItem[];
+  classification_coverage: {
+    qualifying_grant_count: number;
+    classified_grant_count: number;
+    unclassified_grant_count: number;
+    classified_percentage: number;
+    source_classified_grant_count: number;
+    inferred_classified_grant_count: number;
+    source_percentage: number;
+    inferred_percentage: number;
+    multiple_programme_area_grant_count: number;
+    invalid_source_label_count: number;
+    low_confidence_inference_count: number;
+  };
+  qualifying_amount: number;
+  allocated_amount: number;
+  excluded: Record<string, number>;
+  zero_amount_count: number;
+  last_refreshed_at: string | null;
+  source: string[];
+  data_mode: string;
+  scope: { coverage_note: string };
 }
 
 interface GrantDetail {
   grant_id: string;
   funding_charity_id: number | null;
+  funding_name: string | null;
   recipient_name: string;
   recipient_charity_id: number | null;
-  amount_eur: number;
+  amount: number | null;
+  amount_eur: number | null;
+  exchange_rate: number | null;
+  exchange_rate_date: string | null;
+  exchange_rate_source: string | null;
+  conversion_status: string | null;
   currency: string;
   description: string;
   date: string;
@@ -82,8 +178,35 @@ interface SankeyLink {
 }
 
 interface SankeyData {
+  status: string;
   nodes: SankeyNode[];
   links: SankeyLink[];
+  currency: string | null;
+  excludedCount: number;
+}
+
+interface ScoreComponent {
+  score: number | null;
+  weight: number;
+  weighted_score: number | null;
+  confidence: number;
+  available: boolean;
+  evidence: Record<string, unknown>[];
+  missing_reason: string | null;
+}
+
+interface ScoreResponse {
+  score: number | null;
+  score_target: string;
+  score_version: string;
+  configuration_status: string;
+  confidence: number;
+  data_completeness: number;
+  components: Record<string, ScoreComponent>;
+  missing_inputs: string[];
+  review_required: boolean;
+  assumptions: string[];
+  not_a_prediction: boolean;
 }
 
 interface PipelineStatus {
@@ -121,30 +244,35 @@ const MOCK_CHARITIES: Charity[] = [
   { registered_charity_number: 1160558, suffix: 0, link: "#", charity_name: "Great Ormond Street Hospital Charity", reg_status: "R", reporting_status: "Registered", removal_reason: null, latest_income: 98000000, latest_expenditure: 91000000 }
 ];
 
-const MOCK_MAP: GrantMapItem[] = [
-  { region: "London", total_amount_eur: 120500000, grants_count: 512 },
-  { region: "North West", total_amount_eur: 42100000, grants_count: 188 },
-  { region: "South East", total_amount_eur: 65800000, grants_count: 244 },
-  { region: "Scotland", total_amount_eur: 31000000, grants_count: 98 },
-  { region: "Wales", total_amount_eur: 5200000, grants_count: 42 }
-];
-
-const MOCK_THEMATIC_DATA = [
-  { name: "Poverty relief", amount: 145 },
-  { name: "Health & Cancer", amount: 210 },
-  { name: "Youth Development", amount: 95 },
-  { name: "Environment", amount: 120 },
-  { name: "Humanitarian", amount: 180 }
-];
-
-const MOCK_TRENDS_DATA = [
-  { month: "Jan", income: 240, expenditure: 220 },
-  { month: "Mar", income: 280, expenditure: 260 },
-  { month: "May", income: 310, expenditure: 290 },
-  { month: "Jul", income: 295, expenditure: 285 },
-  { month: "Sep", income: 330, expenditure: 310 },
-  { month: "Nov", income: 360, expenditure: 345 }
-];
+const EMPTY_MAP: GrantMapResponse = {
+  status: "data_unavailable",
+  geographic_dimension: "beneficiary_location",
+  items: [],
+  known_geography_count: 0,
+  unknown_geography_count: 0,
+  coverage_percentage: 0,
+  currencies: [],
+  selected_currency: null,
+  funding_status: "unavailable",
+  funding_mode_available: false,
+  grant_country_association_count: 0,
+  multi_country_grant_count: 0,
+  funding_excluded_multi_country_count: 0,
+  funding_excluded_multi_country_amount: 0,
+  funding_excluded_currency_count: 0,
+  funding_excluded_invalid_amount_count: 0,
+  connections: [],
+  connection_grant_count: 0,
+  connection_excluded_no_headquarters_count: 0,
+  connection_same_country_count: 0,
+  minimum_coverage_threshold: 0.30,
+  metadata: {
+    data_mode: "unavailable",
+    source: [],
+    record_count: 0,
+    limitations: ["The transaction geography endpoint has not been loaded."],
+  },
+};
 
 const renderMarkdown = (text: string) => {
   if (!text) return null;
@@ -241,7 +369,7 @@ const AVG_GRANT_SIZE_STEPS = [0, 1000, 5000, 10000, 50000, 100000, 250000, 50000
 const AVG_GRANT_SIZE_LABELS = ["£0", "£1k", "£5k", "£10k", "£50k", "£100k", "£250k", "£500k", "£1M"];
 
 const SECTORS = [
-  { value: "Social/Human Services", label: "Social Services" },
+  { value: "Socio-economic Development, Poverty", label: "Poverty & Economic Development" },
   { value: "Environment/Climate", label: "Climate & Environment" },
   { value: "Youth/Children Development", label: "Children & Youth" },
   { value: "Food, Agriculture & Nutrition", label: "Food & Nutrition" },
@@ -249,22 +377,59 @@ const SECTORS = [
   { value: "Sciences & Research", label: "Sciences & Research" },
   { value: "Health", label: "Health" },
   { value: "Arts & Culture", label: "Arts & Culture" },
-  { value: "Humanitarian & Disaster Relief", label: "Humanitarian & Disaster" }
+  { value: "Humanitarian & Disaster Relief", label: "Humanitarian & Disaster" },
+  { value: "Human/Civil Rights", label: "Human & Civil Rights" },
+  { value: "Diversity & Inclusion", label: "Diversity & Inclusion" },
+  { value: "Civil society, Voluntarism & Non-Profit Sector", label: "Civil Society" },
+  { value: "Citizenship, Social Justice & Public Affairs", label: "Citizenship & Public Affairs" },
+  { value: "Peace & Conflict Resolution", label: "Peace & Conflict Resolution" }
 ];
 
-const REGIONS = ["London", "South East", "North West", "West Midlands", "South West", "Scotland", "Wales", "Northern Ireland"];
+const HEADQUARTERS_LOCATIONS = ["United Kingdom", "Germany", "Austria", "Switzerland", "France", "Netherlands", "Denmark", "Norway"];
+const BENEFICIARY_GEOGRAPHIES = ["United Kingdom", "Ghana", "Kenya", "Tanzania", "Uganda", "South Africa", "India", "Worldwide", "Europe (DACH)"];
+
+const EMPTY_GRANT_MAP_FILTERS: GrantMapFilters = {
+  search: "",
+  tags: [],
+  foundationRegions: [],
+  fundingRegions: [],
+  minAnnualGiving: 0,
+  minAvgGrantSize: 0,
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"overview" | "directory" | "admin">("overview");
+  const [directoryMode, setDirectoryMode] = useState<"profiles" | "registry">("profiles");
+  const [overviewFilterCount, setOverviewFilterCount] = useState(0);
+  const [overviewFiltersOpen, setOverviewFiltersOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = window.localStorage.getItem("sidebar-collapsed");
+    return saved === null ? window.innerWidth < 1280 : saved === "true";
+  });
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   // Data states
   const [stats, setStats] = useState<KPIStats>(MOCK_STATS);
+  const [dataSourceSelections, setDataSourceSelections] = useState<Record<string, boolean>>({});
   const [charities, setCharities] = useState<Charity[]>(MOCK_CHARITIES);
-  const [mapData, setMapData] = useState<GrantMapItem[]>(MOCK_MAP);
+  const [profileOffset, setProfileOffset] = useState(0);
+  const [profilesHaveMore, setProfilesHaveMore] = useState(false);
+  const [loadingMoreProfiles, setLoadingMoreProfiles] = useState(false);
+  const [mapData, setMapData] = useState<GrantMapResponse>(EMPTY_MAP);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapFilters] = useState<GrantMapFilters>(EMPTY_GRANT_MAP_FILTERS);
+  const [grantTrends, setGrantTrends] = useState<GrantTrendsResponse | null>(null);
+  const [grantThemes, setGrantThemes] = useState<GrantThemesResponse | null>(null);
+  const [grantAnalyticsLoading, setGrantAnalyticsLoading] = useState(false);
+  const [grantAnalyticsError, setGrantAnalyticsError] = useState<string | null>(null);
+  const [grantAnalyticsCurrency, setGrantAnalyticsCurrency] = useState("");
   const [selectedCharity, setSelectedCharity] = useState<Charity | null>(null);
   const [selectedCharityDetail, setSelectedCharityDetail] = useState<any>(null);
   const [charityGrants, setCharityGrants] = useState<GrantDetail[]>([]);
+  const [grantStatus, setGrantStatus] = useState("data_unavailable");
   const [sankeyData, setSankeyData] = useState<SankeyData | null>(null);
+  const [scoreData, setScoreData] = useState<ScoreResponse | null>(null);
 
   // News summarizer states
   const [newsLoading, setNewsLoading] = useState(false);
@@ -273,14 +438,51 @@ export default function App() {
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
+  const [organizationSuggestions, setOrganizationSuggestions] = useState<Charity[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedFoundationRegions, setSelectedFoundationRegions] = useState<string[]>([]);
   const [selectedRecipientRegions, setSelectedRecipientRegions] = useState<string[]>([]);
+  const [beneficiaryLocationOptions, setBeneficiaryLocationOptions] = useState<string[]>(BENEFICIARY_GEOGRAPHIES);
+  const [directoryHandoff, setDirectoryHandoff] = useState({ version: 0, query: "", beneficiaryGeography: "" });
   const [annualGivingIndex, setAnnualGivingIndex] = useState<number>(0);
   const [avgGrantSizeIndex, setAvgGrantSizeIndex] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [isBffOnline, setIsBffOnline] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  // The stats endpoint returns a fresh array on every response. Keep the
+  // source list referentially stable while its values are unchanged so it
+  // cannot retrigger directory and overview requests indefinitely.
+  const dataSourceNamesKey = (stats.source?.length ? stats.source : DEFAULT_DATA_SOURCES).join("\u001f");
+  const dataSourceNames = useMemo(
+    () => dataSourceNamesKey.split("\u001f").filter(Boolean),
+    [dataSourceNamesKey],
+  );
+  const isDataSourceSelected = (source: string) => dataSourceSelections[source] !== false;
+  const selectedDataSources = useMemo(
+    () => dataSourceNames.filter(source => dataSourceSelections[source] !== false),
+    [dataSourceNames, dataSourceSelections],
+  );
+  const selectedCharityId = selectedCharity?.registered_charity_number ?? null;
+  const financialHistoryData = useMemo(() => {
+    const history = selectedCharityDetail?.financial_history;
+    if (!Array.isArray(history)) return [];
+    return [...history]
+      .sort((left: any, right: any) =>
+        new Date(left.financial_period_end_date || "").getTime()
+        - new Date(right.financial_period_end_date || "").getTime(),
+      )
+      .map((item: any) => ({
+        year: item.financial_period_end_date
+          ? new Date(item.financial_period_end_date).getFullYear().toString()
+          : "N/A",
+        Income: item.income || 0,
+        Expenditure: item.expenditure || 0,
+      }));
+  }, [selectedCharityDetail?.financial_history]);
 
 
   // Admin & pipeline states
@@ -308,25 +510,104 @@ export default function App() {
 
   useEffect(() => {
     fetchStats();
-    fetchCharities();
-    fetchMapData();
-  }, [selectedTags, selectedFoundationRegions, selectedRecipientRegions, annualGivingIndex, avgGrantSizeIndex]);
+  }, [isBffOnline]);
 
   useEffect(() => {
-    if (selectedCharity) {
+    fetchCharities();
+  }, [isBffOnline, selectedTags, selectedFoundationRegions, selectedRecipientRegions, annualGivingIndex, avgGrantSizeIndex, selectedDataSources]);
+
+  useEffect(() => {
+    const debounce = window.setTimeout(() => {
+      fetchCharities();
+    }, 350);
+    return () => window.clearTimeout(debounce);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (!isBffOnline) return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/charities/grants/beneficiary-geographies`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Beneficiary geography request failed (${response.status}).`);
+        return response.json() as Promise<string[]>;
+      })
+      .then(options => {
+        if (Array.isArray(options) && options.length) {
+          setBeneficiaryLocationOptions(options);
+        }
+      })
+      .catch(error => {
+        if ((error as Error).name !== "AbortError") {
+          console.warn("Beneficiary geography options unavailable", error);
+        }
+      });
+    return () => controller.abort();
+  }, [isBffOnline]);
+
+  useEffect(() => {
+    const query = searchTerm.trim();
+    if (query.length < 2) {
+      setOrganizationSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const debounce = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        if (!isBffOnline) {
+          setOrganizationSuggestions(
+            MOCK_CHARITIES
+              .filter(charity => charity.charity_name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+              .slice(0, 6),
+          );
+          return;
+        }
+        const parameters = new URLSearchParams({ search: query, limit: "6" });
+        parameters.set("sources", selectedDataSources.join(","));
+        const response = await fetch(`${API_BASE}/api/charities?${parameters.toString()}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Organization suggestion request failed (${response.status}).`);
+        setOrganizationSuggestions(await response.json());
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          console.warn("Organization suggestions unavailable", error);
+          setOrganizationSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsLoading(false);
+      }
+    }, 180);
+    return () => {
+      controller.abort();
+      window.clearTimeout(debounce);
+    };
+  }, [isBffOnline, searchTerm, selectedDataSources]);
+
+  useEffect(() => {
+    if (selectedCharityId !== null) {
+      setSelectedCharityDetail(null);
       setNewsSummary(null);
       setNewsError(null);
       setNewsLoading(false);
-      fetchCharityDetail(selectedCharity.registered_charity_number);
-      fetchCharityGrants(selectedCharity.registered_charity_number);
-      fetchSankeyData(selectedCharity.registered_charity_number);
+      fetchCharityDetail(selectedCharityId);
+      fetchCharityGrants(selectedCharityId);
+      fetchSankeyData(selectedCharityId);
+      fetchScoreData(selectedCharityId);
     } else {
       setSelectedCharityDetail(null);
       setNewsSummary(null);
       setNewsError(null);
       setNewsLoading(false);
+      setScoreData(null);
     }
-  }, [selectedCharity]);
+  }, [selectedCharityId]);
 
   useEffect(() => {
     if (activeTab === "admin") {
@@ -340,7 +621,10 @@ export default function App() {
     if (pipelineStatus.status === "success") {
       fetchStats();
       fetchCharities();
-      fetchMapData();
+      // The active Overview owns one aggregated request for its complete grant
+      // population. Notify it after ingestion instead of reviving legacy map
+      // and chart calls in the background.
+      window.dispatchEvent(new Event("overview-refresh"));
     }
   }, [pipelineStatus.status]);
 
@@ -350,21 +634,40 @@ export default function App() {
     }
   }, [logs]);
 
+  useEffect(() => {
+    window.localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const receiveFilterCount = (event: Event) => setOverviewFilterCount(Number((event as CustomEvent<number>).detail) || 0);
+    window.addEventListener("overview-filter-count", receiveFilterCount);
+    return () => window.removeEventListener("overview-filter-count", receiveFilterCount);
+  }, []);
+
+  useEffect(() => {
+    const receiveFilterDrawerState = (event: Event) => setOverviewFiltersOpen(Boolean((event as CustomEvent<boolean>).detail));
+    window.addEventListener("overview-filter-drawer-state", receiveFilterDrawerState);
+    return () => window.removeEventListener("overview-filter-drawer-state", receiveFilterDrawerState);
+  }, []);
+
   const autoLogin = async () => {
     try {
       const resp = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: "admin", password: "password" }),
+        body: JSON.stringify({ username: DEMO_USERNAME, password: DEMO_PASSWORD }),
         credentials: "include"
       });
       if (resp.ok) {
+        setAuthError(null);
         setIsBffOnline(true);
         console.log("Logged in to BFF successfully.");
         return true;
       }
+      setAuthError("The backend is reachable, but automatic demo authentication failed.");
     } catch (e) {
       console.error("Auto login failed", e);
+      setAuthError("The backend is reachable, but automatic demo authentication failed.");
     }
     return false;
   };
@@ -378,20 +681,18 @@ export default function App() {
         const loggedIn = await autoLogin();
         if (loggedIn) {
           setIsBffOnline(true);
-          // Load initial live dataset
-          await Promise.all([
-            fetchStats(true),
-            fetchCharities(true),
-            fetchMapData(true)
-          ]);
-          setInitialLoading(false);
+          setApiError(null);
+          // The online-state effects load the live dataset once. Calling the
+          // same fetches here as well used to race the first directory render.
           return;
         }
       }
       setIsBffOnline(false);
+      setApiError("Backend unavailable. Values marked as illustrative are local prototype data.");
       console.warn("BFF offline. Falling back to mock dataset.");
     } catch {
       setIsBffOnline(false);
+      setApiError("Backend unavailable. Values marked as illustrative are local prototype data.");
       console.warn("BFF offline. Falling back to mock dataset.");
     } finally {
       setInitialLoading(false);
@@ -406,15 +707,25 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setStats(data);
+      } else {
+        setApiError(`Statistics request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch stats", e);
+      setApiError("Statistics are temporarily unavailable.");
     }
   };
 
-  const fetchCharities = async (forceOnline?: boolean) => {
+  const fetchCharities = async (forceOnline?: boolean, append = false) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
-    setLoading(true);
+    const pageSize = 50;
+    const offset = append ? profileOffset : 0;
+    if (append) {
+      setLoadingMoreProfiles(true);
+    } else {
+      setLoading(true);
+      setProfilesHaveMore(false);
+    }
     if (!isOnline) {
       // Offline local filtering of mocks
       let filtered = [...MOCK_CHARITIES];
@@ -429,13 +740,18 @@ export default function App() {
       if (minAvgGrant > 0) {
         filtered = filtered.filter(c => ((c.latest_expenditure || 0) / 10) >= minAvgGrant);
       }
-      setCharities(filtered);
+      const nextPage = filtered.slice(offset, offset + pageSize);
+      setCharities(current => append ? [...current, ...nextPage] : nextPage);
+      setProfileOffset(offset + nextPage.length);
+      setProfilesHaveMore(offset + nextPage.length < filtered.length);
       setLoading(false);
+      setLoadingMoreProfiles(false);
       return;
     }
     try {
-      let url = `${API_BASE}/api/charities?limit=50`;
+      let url = `${API_BASE}/api/charities?limit=${pageSize + 1}&skip=${offset}`;
       if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
+      url += `&sources=${encodeURIComponent(selectedDataSources.join(","))}`;
       if (selectedTags.length > 0) {
         url += `&tags=${encodeURIComponent(selectedTags.join(","))}`;
       }
@@ -456,13 +772,24 @@ export default function App() {
 
       const resp = await fetch(url, { credentials: "include" });
       if (resp.ok) {
-        const data = await resp.json();
-        setCharities(data);
+        const data: Charity[] = await resp.json();
+        const nextPage = data.slice(0, pageSize);
+        setCharities(current => append ? [...current, ...nextPage] : nextPage);
+        setProfileOffset(offset + nextPage.length);
+        setProfilesHaveMore(data.length > pageSize);
+        setApiError(null);
+      } else {
+        setApiError(`Directory request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch charities", e);
+      setApiError("The organization directory is temporarily unavailable.");
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMoreProfiles(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -497,9 +824,15 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setSelectedCharityDetail(data);
+        setApiError(null);
+      } else {
+        setSelectedCharityDetail(null);
+        setApiError(`Organization detail request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch charity details", e);
+      setSelectedCharityDetail(null);
+      setApiError("Organization details are temporarily unavailable.");
     }
   };
 
@@ -541,71 +874,167 @@ export default function App() {
     }
   };
 
-  const fetchMapData = async (forceOnline?: boolean) => {
+  const fetchMapData = async (
+    forceOnline?: boolean,
+    currencyOverride?: string,
+    filtersOverride?: GrantMapFilters,
+  ) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
-    if (!isOnline) return;
+    if (!isOnline) {
+      setMapData(EMPTY_MAP);
+      setMapLoading(false);
+      return;
+    }
+    setMapLoading(true);
+    setMapError(null);
+    const requestedCurrency = currencyOverride ?? grantAnalyticsCurrency;
+    const requestedFilters = filtersOverride ?? mapFilters;
+    const params = new URLSearchParams();
+    if (requestedCurrency) params.set("currency", requestedCurrency);
+    if (requestedFilters.search.trim()) params.set("search", requestedFilters.search.trim());
+    if (requestedFilters.tags.length) params.set("tags", requestedFilters.tags.join(","));
+    if (requestedFilters.foundationRegions.length) {
+      params.set("foundation_regions", requestedFilters.foundationRegions.join(","));
+    }
+    if (requestedFilters.fundingRegions.length) {
+      params.set("funding_regions", requestedFilters.fundingRegions.join(","));
+    }
+    if (requestedFilters.minAnnualGiving > 0) {
+      params.set("min_annual_giving", String(requestedFilters.minAnnualGiving));
+    }
+    if (requestedFilters.minAvgGrantSize > 0) {
+      params.set("min_avg_grant_size", String(requestedFilters.minAvgGrantSize));
+    }
+    const query = params.toString();
     try {
-      const resp = await fetch(`${API_BASE}/api/charities/grants/map`, { credentials: "include" });
+      const resp = await fetch(
+        `${API_BASE}/api/charities/grants/map${query ? `?${query}` : ""}`,
+        { credentials: "include" },
+      );
       if (resp.ok) {
-        const data = await resp.json();
+        const data: GrantMapResponse = await resp.json();
         setMapData(data);
+      } else {
+        setMapError(`Map-data request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch map metrics", e);
+      setMapData(EMPTY_MAP);
+      setMapError("Map data is temporarily unavailable.");
+    } finally {
+      setMapLoading(false);
+    }
+  };
+
+  const openOrganizationDirectoryFromMap = (filters: GrantMapFilters) => {
+    setSearchTerm(filters.search);
+    setSelectedTags(filters.tags);
+    setSelectedFoundationRegions(filters.foundationRegions);
+    setSelectedRecipientRegions(filters.fundingRegions);
+    setAnnualGivingIndex(Math.max(0, ANNUAL_GIVING_STEPS.indexOf(filters.minAnnualGiving)));
+    setAvgGrantSizeIndex(Math.max(0, AVG_GRANT_SIZE_STEPS.indexOf(filters.minAvgGrantSize)));
+    setDirectoryHandoff(previous => ({
+      version: previous.version + 1,
+      query: filters.search,
+      beneficiaryGeography: filters.fundingRegions.length === 1 ? filters.fundingRegions[0] : "",
+    }));
+    setSelectedCharity(null);
+    setDirectoryMode("profiles");
+    setActiveTab("directory");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const resetDirectoryFilters = () => {
+    setSearchTerm("");
+    setOrganizationSuggestions([]);
+    setSuggestionsOpen(false);
+    setSelectedTags([]);
+    setSelectedFoundationRegions([]);
+    setSelectedRecipientRegions([]);
+    setAnnualGivingIndex(0);
+    setAvgGrantSizeIndex(0);
+    setProfileOffset(0);
+    setProfilesHaveMore(false);
+  };
+
+  const fetchGrantAnalytics = async (forceOnline?: boolean, currencyOverride?: string) => {
+    const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
+    if (!isOnline) {
+      setGrantTrends(null);
+      setGrantThemes(null);
+      setGrantAnalyticsError("Grant analytics require the cached SQLite transaction database.");
+      return;
+    }
+    setGrantAnalyticsLoading(true);
+    setGrantAnalyticsError(null);
+    const requestedCurrency = currencyOverride || grantAnalyticsCurrency;
+    const currencyQuery = requestedCurrency
+      ? `&currency=${encodeURIComponent(requestedCurrency)}`
+      : "";
+    try {
+      const [trendsResponse, themesResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/charities/grants/trends?months=24${currencyQuery}`, {
+          credentials: "include"
+        }),
+        fetch(`${API_BASE}/api/charities/grants/themes?${currencyQuery.slice(1)}`, {
+          credentials: "include"
+        })
+      ]);
+      if (!trendsResponse.ok || !themesResponse.ok) {
+        setGrantAnalyticsError(
+          `Grant analytics request failed (${trendsResponse.status}/${themesResponse.status}).`
+        );
+        return;
+      }
+      const trends: GrantTrendsResponse = await trendsResponse.json();
+      const themes: GrantThemesResponse = await themesResponse.json();
+      setGrantTrends(trends);
+      setGrantThemes(themes);
+      const resolvedCurrency = trends.currency || themes.currency;
+      if (resolvedCurrency) setGrantAnalyticsCurrency(resolvedCurrency);
+    } catch (error) {
+      console.error("Failed to fetch grant analytics", error);
+      setGrantAnalyticsError("Grant analytics are temporarily unavailable.");
+      setGrantTrends(null);
+      setGrantThemes(null);
+    } finally {
+      setGrantAnalyticsLoading(false);
     }
   };
 
   const fetchCharityGrants = async (id: number) => {
     if (!isBffOnline) {
-      // Mock grants made / received
-      setCharityGrants([
-        {
-          grant_id: "360G-SEED-01",
-          funding_charity_id: 326568,
-          recipient_name: "Oxfam GB",
-          recipient_charity_id: 202918,
-          amount_eur: 250000.0,
-          currency: "GBP",
-          description: "Capacity building and disaster preparedness program support.",
-          date: "2024-04-12",
-          recipient_region: "Oxford",
-          tags: ["Humanitarian & Disaster Relief", "Socio-economic Development, Poverty"]
-        }
-      ]);
+      setCharityGrants([]);
+      setGrantStatus("transaction_data_unavailable");
       return;
     }
     try {
       const resp = await fetch(`${API_BASE}/api/charities/${id}/grants`, { credentials: "include" });
       if (resp.ok) {
         const data = await resp.json();
-        setCharityGrants(data);
+        setCharityGrants(data.grants || []);
+        setGrantStatus(data.status || "data_unavailable");
+      } else {
+        setCharityGrants([]);
+        setGrantStatus("request_failed");
+        setApiError(`Grant transaction request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch grants", e);
+      setCharityGrants([]);
+      setGrantStatus("request_failed");
+      setApiError("Grant transactions are temporarily unavailable.");
     }
   };
 
   const fetchSankeyData = async (id: number) => {
     if (!isBffOnline) {
-      // Static mock layout
       setSankeyData({
-        nodes: [
-          { name: "Grants Received" },
-          { name: "Other Income" },
-          { name: "Oxfam GB" },
-          { name: "Total Expenditure" },
-          { name: "Reserves Surplus" },
-          { name: "Grants Made" },
-          { name: "Operating Expenses" }
-        ],
-        links: [
-          { source: 0, target: 2, value: 20000000 },
-          { source: 1, target: 2, value: 310000000 },
-          { source: 2, target: 3, value: 300000000 },
-          { source: 2, target: 4, value: 30000000 },
-          { source: 3, target: 5, value: 80000000 },
-          { source: 3, target: 6, value: 220000000 }
-        ]
+        status: "transaction_data_unavailable",
+        nodes: [],
+        links: [],
+        currency: null,
+        excludedCount: 0,
       });
       return;
     }
@@ -624,12 +1053,45 @@ export default function App() {
         }));
 
         setSankeyData({
+          status: data.status,
           nodes: data.nodes.map((n: any) => ({ name: n.label })),
-          links: formattedLinks
+          links: formattedLinks,
+          currency: data.metadata?.selected_currency || null,
+          excludedCount: data.metadata?.excluded_grant_count || 0,
         });
+      } else {
+        setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
+        setApiError(`Sankey request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch sankey metrics", e);
+      setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
+      setApiError("Grant-flow data is temporarily unavailable.");
+    }
+  };
+
+  const fetchScoreData = async (id: number) => {
+    if (!isBffOnline) {
+      setScoreData(null);
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/api/charities/${id}/score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      if (resp.ok) {
+        setScoreData(await resp.json());
+      } else {
+        setScoreData(null);
+        setApiError(`Experimental score request failed (${resp.status}).`);
+      }
+    } catch (e) {
+      console.error("Failed to fetch experimental relevance score", e);
+      setScoreData(null);
+      setApiError("The experimental relevance score is temporarily unavailable.");
     }
   };
 
@@ -709,11 +1171,34 @@ export default function App() {
   };
 
 
-  const formatCurrency = (val: number) => {
-    if (val >= 1000000) return `£${(val / 1000000).toFixed(1)}M`;
-    if (val >= 1000) return `£${(val / 1000).toFixed(0)}k`;
-    return `£${val}`;
+  const formatCurrency = (val: number | null | undefined, currency = "GBP") => {
+    if (val === null || val === undefined || !Number.isFinite(val)) return "Unavailable";
+    const compact = Math.abs(val) >= 1000;
+    try {
+      return new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency,
+        notation: compact ? "compact" : "standard",
+        maximumFractionDigits: compact ? 1 : 0,
+      }).format(val);
+    } catch {
+      return `${currency} ${val.toLocaleString("en-GB")}`;
+    }
   };
+
+  const grantAnalyticsCurrencies = Array.from(new Set([
+    ...(grantTrends?.available_currencies || []),
+    ...(grantThemes?.available_currencies || [])
+  ])).sort();
+  const classificationPercentage = grantThemes?.classification_coverage.classified_percentage ?? 0;
+  const unknownTrendMonths = grantTrends?.items.filter(
+    item => item.coverage_status === "unknown"
+  ).length ?? 0;
+  const latestAnalyticsRefresh = grantTrends?.last_refreshed_at || grantThemes?.last_refreshed_at;
+  const analyticsAreStale = Boolean(
+    latestAnalyticsRefresh
+    && Date.now() - Date.parse(latestAnalyticsRefresh) > 30 * 24 * 60 * 60 * 1000
+  );
 
   if (initialLoading) {
     return (
@@ -785,34 +1270,48 @@ export default function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container${sidebarCollapsed ? " sidebar-collapsed" : ""}${mobileNavigationOpen ? " sidebar-drawer-open" : ""}`}>
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div>
           <div className="sidebar-logo">
-            <Activity size={24} />
-            <span>Netlight x TUM</span>
+            <img src={amplifyLogo} alt="Amplify" />
             {!isBffOnline && <span style={{ fontSize: "10px", color: "var(--nl-sunny)", background: "var(--nl-sunny-glow)", padding: "2px 6px", borderRadius: "4px" }}>Offline</span>}
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setSidebarCollapsed(current => !current)}
+              aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
           </div>
 
           <nav className="sidebar-nav">
             <button
               className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => setActiveTab("overview")}
+              onClick={() => { setActiveTab("overview"); setMobileNavigationOpen(false); }}
+              title="Overview"
             >
               <TrendingUp size={18} />
               <span>Overview</span>
             </button>
             <button
               className={`nav-item ${activeTab === "directory" ? "active" : ""}`}
-              onClick={() => setActiveTab("directory")}
+              onClick={() => {
+                setDirectoryMode("profiles");
+                setActiveTab("directory");
+                setMobileNavigationOpen(false);
+              }}
+              title="Organization Directory"
             >
               <Building2 size={18} />
-              <span>Charities Directory</span>
+              <span>Organization Directory</span>
             </button>
             <button
               className={`nav-item ${activeTab === "admin" ? "active" : ""}`}
-              onClick={() => setActiveTab("admin")}
+              onClick={() => { setActiveTab("admin"); setMobileNavigationOpen(false); }}
+              title="Pipeline Monitor"
             >
               <Terminal size={18} />
               <span>Pipeline Monitor</span>
@@ -828,35 +1327,103 @@ export default function App() {
               <span className="user-role">Administrator</span>
             </div>
           </div>
-          <button className="nav-item" style={{ color: "var(--semantic-error)" }} onClick={() => checkBffHealth()}>
-            <LogOut size={16} />
-            <span>Check BFF Inflow</span>
-          </button>
+          {activeTab === "admin" && <button className="sidebar-health-check" onClick={() => checkBffHealth()}>
+            <Activity size={15} />
+            <span>Check backend connection</span>
+          </button>}
         </div>
       </aside>
+      {mobileNavigationOpen && <button type="button" className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobileNavigationOpen(false)} />}
 
       {/* Main Container Window */}
       <main className="main-content">
         <header className="header-bar">
+          <button type="button" className="mobile-menu-trigger" onClick={() => setMobileNavigationOpen(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <h1 className="header-title">
             {activeTab === "overview" && "Foundation Intelligence Platform"}
-            {activeTab === "directory" && "Charities Registry Directory"}
+            {activeTab === "directory" && "Foundation & Organization Directory"}
             {activeTab === "admin" && "Administrative Pipeline Monitor"}
           </h1>
+          <div className="header-actions">
+            {activeTab === "overview" && <>
+              <button
+                type="button"
+                className="header-overview-filter"
+                onClick={() => window.dispatchEvent(new Event("overview-open-filters"))}
+                aria-controls="overview-filter-drawer"
+                aria-expanded={overviewFiltersOpen}
+              >
+                <SlidersHorizontal size={16} /> Filters {overviewFilterCount > 0 && <b>{overviewFilterCount}</b>}
+              </button>
+              <button
+                type="button"
+                className="header-overview-reset"
+                onClick={() => window.dispatchEvent(new Event("overview-reset-filters"))}
+                disabled={overviewFilterCount === 0}
+                title="Reset all grant filters"
+              >
+                <RotateCcw size={15} /> Reset
+              </button>
+            </>}
+            {isBffOnline && (
+              <details className="data-sources-disclosure">
+                <summary>
+                  <Database size={15} aria-hidden="true" />
+                  <span>Data sources</span>
+                </summary>
+                <div className="data-sources-panel">
+                  <strong>Cached source data</strong>
+                  <span>Selections filter each view. Grant analytics currently uses observed 360Giving transactions; the directory also responds to Charity Commission and Philea selections.</span>
+                  <div className="data-source-options" aria-label="Selected data source labels">
+                    {dataSourceNames.map(source => (
+                      <button
+                        type="button"
+                        key={source}
+                        className={`data-source-option${isDataSourceSelected(source) ? " selected" : ""}`}
+                        aria-pressed={isDataSourceSelected(source)}
+                        onClick={() => setDataSourceSelections(current => ({ ...current, [source]: current[source] === false }))}
+                      >
+                        {source}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            )}
+          </div>
         </header>
 
         {/* Dynamic Pages */}
         <div className="page-container">
-
+          {(authError || apiError) && (
+            <div className="data-notice data-notice-error" role="status">
+              {authError || apiError}
+            </div>
+          )}
+          {!isBffOnline && (
+            <div className="data-notice data-notice-warning" role="status">
+              Illustrative prototype mode — displayed values are local examples, not live source data.
+            </div>
+          )}
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
-            <div className="flex-col-gap">
+            <OverviewDashboard
+              apiBase={API_BASE}
+              online={isBffOnline}
+              selectedSources={selectedDataSources}
+              onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+            />
+          )}
+
+          {/* Retained for rollback only; the active Overview is the compact, globally-filtered dashboard above. */}
+          {SHOW_LEGACY_OVERVIEW && activeTab === "overview" && (
+            <div className="flex-col-gap overview-layout">
               {/* KPIs */}
-              <div className="grid-cols-4">
+              <div className="grid-cols-4 overview-kpi-grid">
                 <div className="glass-card kpi-card">
                   <div className="kpi-icon"><Building2 size={24} /></div>
                   <div className="kpi-value-container">
-                    <span className="kpi-label">Registered Charities</span>
+                    <span className="kpi-label">Organizations Indexed</span>
                     <span className="kpi-value">{stats.total_charities}</span>
                   </div>
                 </div>
@@ -881,116 +1448,169 @@ export default function App() {
                   <div className="kpi-icon accent-sunny"><Activity size={24} /></div>
                   <div className="kpi-value-container">
                     <span className="kpi-label">Grants Monitored</span>
-                    <span className="kpi-value">2,576</span>
+                    <span className="kpi-value">{stats.total_grants ?? "Unavailable"}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Map and Thematic allocations */}
-              <div className="grid-cols-1-2">
-                {/* SVG Visual Map Outline (Replacement for Leaflet pins error) */}
-                <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px", minHeight: "450px" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: "600" }}>UK Regional Funding Map</h3>
-                  <div style={{ display: "flex", flexGrow: "1", position: "relative", justifyContent: "center", alignItems: "center" }}>
-                    {/* SVG outline of the UK */}
-                    <svg viewBox="0 0 400 500" style={{ height: "350px", width: "100%", opacity: 0.85 }}>
-                      <path
-                        d="M150,100 L160,80 L180,60 L200,80 L220,110 L240,130 L220,150 L200,160 L180,180 L170,220 L190,260 L180,280 L160,300 L150,330 L160,360 L180,380 L190,420 L160,430 L140,410 L120,380 L100,360 L80,350 L70,320 L100,300 L120,290 L110,240 L130,220 L140,180 L130,160 L140,130 Z"
-                        fill="var(--nl-ash-dark)"
-                        stroke="var(--border-glass)"
-                        strokeWidth="1.5"
-                      />
-                      {/* Pulse indicators on active regions */}
-                      {mapData.map((reg, idx) => {
-                        // Approximate coordinate offsets
-                        let x = 180;
-                        let y = 350;
-                        if (reg.region.includes("London")) { x = 200; y = 390; }
-                        else if (reg.region.includes("North West")) { x = 160; y = 290; }
-                        else if (reg.region.includes("South East")) { x = 210; y = 405; }
-                        else if (reg.region.includes("Scotland")) { x = 170; y = 140; }
-                        else if (reg.region.includes("Wales")) { x = 130; y = 340; }
+              <GrantWorldMap
+                data={mapData}
+                loading={mapLoading}
+                error={mapError}
+                filters={mapFilters}
+                onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+              />
 
-                        const size = Math.max(12, Math.min(30, reg.total_amount_eur / 5000000));
-
-                        return (
-                          <g key={idx} cursor="pointer" onClick={() => setSelectedRegion(reg.region)}>
-                            <circle
-                              cx={x}
-                              cy={y}
-                              r={size}
-                              fill="var(--nl-unicorn-glow)"
-                              stroke="var(--nl-unicorn)"
-                              strokeWidth="2"
-                            />
-                            <circle
-                              cx={x}
-                              cy={y}
-                              r={size + 4}
-                              fill="none"
-                              stroke="var(--nl-unicorn)"
-                              strokeWidth="1"
-                              opacity="0.35"
-                              className="pulse-ring"
-                            />
-                            <text x={x} y={y - size - 4} fill="var(--text-primary)" fontSize="10" textAnchor="middle" fontWeight="bold">
-                              {reg.region}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
-
-                    <div style={{ position: "absolute", bottom: "10px", left: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--nl-unicorn)", display: "inline-block" }}></span>
-                        <span>Seeded Funding Node</span>
-                      </div>
+              <div className="analytics-charts-grid">
+                {/* Monthly source-derived grant awards */}
+                <div className="glass-card analytics-chart-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div>
+                      <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>Monthly Grant Awards</h3>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Derived from cached 360Giving records · award-date basis
+                      </span>
                     </div>
+                    {grantAnalyticsCurrencies.length > 0 && (
+                      <label style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Currency
+                        <select
+                          value={grantAnalyticsCurrency}
+                          onChange={(event) => {
+                            setGrantAnalyticsCurrency(event.target.value);
+                            fetchGrantAnalytics(undefined, event.target.value);
+                            fetchMapData(undefined, event.target.value);
+                          }}
+                          style={{ marginLeft: "8px", padding: "5px 8px" }}
+                        >
+                          {grantAnalyticsCurrencies.map(currency => (
+                            <option key={currency} value={currency}>{currency}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
+                  {grantAnalyticsLoading ? (
+                    <div className="loading-container" style={{ minHeight: "300px" }}><div className="spinner" /></div>
+                  ) : grantAnalyticsError ? (
+                    <div className="data-notice data-notice-warning">{grantAnalyticsError}</div>
+                  ) : grantTrends?.status === "currency_selection_required" ? (
+                    <div className="data-notice data-notice-warning">Select one currency; grant amounts are never combined across currencies.</div>
+                  ) : grantTrends?.status === "available" && grantTrends.items.length > 0 ? (
+                    <>
+                      <div className="analytics-chart-plot">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={grantTrends.items}>
+                            <defs>
+                              <linearGradient id="colorGrantAwards" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                            <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={10} tickFormatter={(month) => String(month).slice(2)} />
+                            <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(Number(value), grantTrends.currency || "GBP")} />
+                            <Tooltip
+                              filterNull={false}
+                              content={({ active, payload, label }: any) => {
+                                if (!active || !payload?.length) return null;
+                                const item = payload[0]?.payload as GrantTrendItem;
+                                return (
+                                  <div style={{ background: "var(--bg-surface-opaque)", border: "1px solid var(--border-glass)", padding: "10px", borderRadius: "8px" }}>
+                                    <strong>{label}</strong>
+                                    {item.coverage_status === "unknown" ? (
+                                      <div>No source coverage established; not a confirmed zero.</div>
+                                    ) : item.coverage_status === "partial" ? (
+                                      <div>Source records exist, but no valid amount can be aggregated.</div>
+                                    ) : (
+                                      <>
+                                        <div>{formatCurrency(item.total_amount, grantTrends.currency || "GBP")}</div>
+                                        <div>{item.grant_count} recorded grants</div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="total_amount"
+                              name="Recorded grant awards"
+                              connectNulls={false}
+                              stroke="var(--nl-unicorn)"
+                              fillOpacity={1}
+                              fill="url(#colorGrantAwards)"
+                              isAnimationActive={false}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Active currency: {grantTrends.currency} · Period {grantTrends.period?.from}–{grantTrends.period?.to}, anchored to the latest available award month. {unknownTrendMonths} month(s) have unknown source coverage.
+                      </span>
+                      {analyticsAreStale && (
+                        <div className="data-notice data-notice-warning">Cached grant data was last refreshed more than 30 days ago.</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="data-notice data-notice-warning">
+                      No qualifying monthly grant awards are available for the selected currency.
+                    </div>
+                  )}
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    Coverage reflects available source records and is not representative of the entire funding market.
+                  </span>
                 </div>
 
-                {/* Thematic Recharts Area Chart */}
-                <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Monthly Funding Trends</h3>
-                  <div style={{ width: "100%", height: "350px" }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={MOCK_TRENDS_DATA}>
-                        <defs>
-                          <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="colorExpenditure" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2} />
-                            <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                        <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={11} />
-                        <YAxis stroke="var(--text-muted)" fontSize={11} />
-                        <Tooltip contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                        <Area type="monotone" dataKey="income" name="Income (Millions)" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorIncome)" />
-                        <Area type="monotone" dataKey="expenditure" name="Expenses (Millions)" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExpenditure)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
+                {/* Programme allocation derived from stored source/inferred classifications */}
+                <div className="glass-card analytics-chart-card">
+                <div style={{ marginBottom: "16px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>Grant Allocation by Programme Area</h3>
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    Derived from cached 360Giving records · active currency: {grantThemes?.currency || grantAnalyticsCurrency || "unselected"}
+                  </span>
                 </div>
-              </div>
-
-              {/* Bar Charts for projects */}
-              <div className="glass-card">
-                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "20px" }}>Thematic Allocations (Share of Seed Funding)</h3>
-                <div style={{ width: "100%", height: "240px" }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={MOCK_THEMATIC_DATA}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                      <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} />
-                      <YAxis stroke="var(--text-muted)" fontSize={11} />
-                      <Tooltip contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                      <Bar dataKey="amount" fill="var(--nl-unicorn)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                {grantAnalyticsLoading ? (
+                  <div className="loading-container" style={{ minHeight: "300px" }}><div className="spinner" /></div>
+                ) : grantAnalyticsError ? (
+                  <div className="data-notice data-notice-warning">{grantAnalyticsError}</div>
+                ) : grantThemes?.status === "currency_selection_required" ? (
+                  <div className="data-notice data-notice-warning">Select one currency before comparing programme allocations.</div>
+                ) : grantThemes?.status === "available" && grantThemes.items.length > 0 ? (
+                  <>
+                    <div className="analytics-chart-plot">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={grantThemes.items} layout="vertical" margin={{ left: 25, right: 30 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                          <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(Number(value), grantThemes.currency || "GBP")} />
+                          <YAxis type="category" width={210} dataKey="programme_area" stroke="var(--text-muted)" fontSize={11} />
+                          <Tooltip
+                            formatter={(value) => formatCurrency(Number(value), grantThemes.currency || "GBP")}
+                            labelFormatter={(label) => String(label)}
+                            contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }}
+                          />
+                          <Bar dataKey="allocated_amount" name="Allocated source amount" fill="var(--nl-unicorn)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "12px" }}>
+                      Classified: {grantThemes.classification_coverage.classified_grant_count} / {grantThemes.classification_coverage.qualifying_grant_count} grants ({classificationPercentage}%). Unclassified remains visible. Multi-category amounts and counts are split equally to preserve totals.
+                    </div>
+                    {classificationPercentage < 50 ? (
+                      <div className="data-notice data-notice-warning">Strong coverage warning: fewer than half of qualifying grants have an accepted programme classification.</div>
+                    ) : classificationPercentage < 80 ? (
+                      <div className="data-notice data-notice-warning">Moderate coverage warning: programme classification coverage is below the 80% presentation threshold.</div>
+                    ) : null}
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "8px" }}>
+                      Allocation method: equal split across accepted categories · source categories precede inferred categories · inference threshold {grantThemes.inference_confidence_threshold}.
+                    </div>
+                  </>
+                ) : (
+                  <div className="data-notice data-notice-warning">No qualifying programme-area allocation is available for the selected currency.</div>
+                )}
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginTop: "12px" }}>
+                  Coverage reflects available source records and is not representative of the entire funding market. Philea organization metadata is not included as grant flow.
+                </span>
                 </div>
               </div>
             </div>
@@ -998,6 +1618,59 @@ export default function App() {
 
           {/* TAB 2: DIRECTORY */}
           {activeTab === "directory" && (
+            <div className="directory-mode-toggle" role="tablist" aria-label="Organization directory view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={directoryMode === "profiles"}
+                className={directoryMode === "profiles" ? "active" : ""}
+                onClick={() => setDirectoryMode("profiles")}
+              >
+                Organization profiles
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={directoryMode === "registry"}
+                className={directoryMode === "registry" ? "active" : ""}
+                onClick={() => setDirectoryMode("registry")}
+              >
+                Full Charity Commission register
+              </button>
+            </div>
+          )}
+
+          {activeTab === "directory" && directoryMode === "registry" && (
+            <RegistryDirectory
+              key={directoryHandoff.version}
+              apiBase={API_BASE}
+              online={isBffOnline}
+              initialQuery={directoryHandoff.query}
+              initialBeneficiaryGeography={directoryHandoff.beneficiaryGeography}
+              onOpenEnrichedProfile={(id, name) => {
+                setSelectedCharity({
+                  registered_charity_number: id,
+                  suffix: 0,
+                  link: "",
+                  charity_name: name,
+                  reg_status: "UNKNOWN",
+                  reporting_status: "",
+                  removal_reason: null,
+                  latest_income: null,
+                  latest_expenditure: null,
+                  programme_areas_source: [],
+                  programme_areas_inferred: [],
+                  geographic_focus_source: [],
+                  geographic_focus_inferred: [],
+                  organization_type: "unknown",
+                  source_names: [],
+                  transaction_coverage: "unknown",
+                });
+              }}
+            />
+          )}
+
+          {activeTab === "directory" && directoryMode === "profiles" && (
             <div className="grid-cols-1-2" style={{ gridTemplateColumns: "280px 1fr" }}>
               {/* Sidebar Filters */}
               <div className="glass-card filter-group" style={{ height: "fit-content" }}>
@@ -1013,11 +1686,42 @@ export default function App() {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Charity name..."
+                      placeholder="Organization name..."
                       style={{ paddingLeft: "32px" }}
                       value={searchTerm}
-                      onChange={(e) => { setSearchTerm(e.target.value); fetchCharities(); }}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setSuggestionsOpen(true);
+                      }}
+                      onFocus={() => setSuggestionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
                     />
+                    {suggestionsOpen && searchTerm.trim().length >= 2 && (
+                      <div className="organization-suggestions" role="listbox" aria-label="Organization suggestions">
+                        {suggestionsLoading ? (
+                          <span className="organization-suggestions-status">Looking for organizations…</span>
+                        ) : organizationSuggestions.length > 0 ? (
+                          organizationSuggestions.map(suggestion => (
+                            <button
+                              key={`${suggestion.registered_charity_number}-${suggestion.source_record_id || ""}`}
+                              type="button"
+                              role="option"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                setSearchTerm(suggestion.charity_name);
+                                setSuggestionsOpen(false);
+                                setSelectedCharity(suggestion);
+                              }}
+                            >
+                              <strong>{suggestion.charity_name}</strong>
+                              <span>{suggestion.primary_source || "Organization profile"}{suggestion.headquarters_country ? ` · ${suggestion.headquarters_country}` : ""}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <span className="organization-suggestions-status">No matching organization profiles.</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1067,7 +1771,7 @@ export default function App() {
                     flexDirection: "column",
                     gap: "6px"
                   }}>
-                    {REGIONS.map((reg) => (
+                    {HEADQUARTERS_LOCATIONS.map((reg) => (
                       <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
                         <input
                           type="checkbox"
@@ -1088,7 +1792,7 @@ export default function App() {
                 </div>
 
                 <div className="filter-group" style={{ marginTop: "12px" }}>
-                  <span className="filter-label">Donation Destination</span>
+                  <span className="filter-label">Beneficiary Geography</span>
                   <div style={{
                     maxHeight: "130px",
                     overflowY: "auto",
@@ -1100,7 +1804,11 @@ export default function App() {
                     flexDirection: "column",
                     gap: "6px"
                   }}>
-                    {REGIONS.map((reg) => (
+                    {Array.from(new Set([
+                      ...BENEFICIARY_GEOGRAPHIES,
+                      ...beneficiaryLocationOptions,
+                      ...selectedRecipientRegions,
+                    ])).sort((left, right) => left.localeCompare(right)).map((reg) => (
                       <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
                         <input
                           type="checkbox"
@@ -1167,14 +1875,7 @@ export default function App() {
                 <button
                   className="btn btn-secondary"
                   style={{ marginTop: "16px" }}
-                  onClick={() => {
-                    setSearchTerm("");
-                    setSelectedTags([]);
-                    setSelectedFoundationRegions([]);
-                    setSelectedRecipientRegions([]);
-                    setAnnualGivingIndex(0);
-                    setAvgGrantSizeIndex(0);
-                  }}
+                  onClick={resetDirectoryFilters}
                 >
                   Reset Filters
                 </button>
@@ -1193,9 +1894,27 @@ export default function App() {
                         onClick={() => setSelectedCharity(ch)}
                       >
                         <div className="charity-card-header">
-                          <span className="charity-card-id">#{ch.registered_charity_number}</span>
+                          <span className="charity-card-id">
+                            {ch.primary_source === "Philea" ? `Philea #${ch.source_record_id}` : `#${ch.registered_charity_number}`}
+                          </span>
                           <h3 className="charity-card-name">{ch.charity_name}</h3>
                         </div>
+                        {isBffOnline && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                            {ch.primary_source && <span className="status-badge">Source · {ch.primary_source}</span>}
+                            {ch.organization_type && <span className="status-badge">Type · {ch.organization_type}</span>}
+                            {ch.headquarters_country && <span className="status-badge">HQ · {ch.headquarters_country}</span>}
+                            {[...(ch.programme_areas_source || []), ...(ch.programme_areas_inferred || [])].slice(0, 2).map((area) => (
+                              <span className="status-badge" key={area}>{area}</span>
+                            ))}
+                            {(ch.programme_area_review_required || ch.geography_review_required) && (
+                              <span className="status-badge status-warning">Review suggested</span>
+                            )}
+                            {ch.transaction_coverage === "organization_level_only" && (
+                              <span className="status-badge status-warning">Organization-level data only</span>
+                            )}
+                          </div>
+                        )}
                         <div className="charity-card-meta">
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>LATEST INCOME</span>
@@ -1205,7 +1924,32 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                    {charities.length === 0 && (
+                      <div className="glass-card directory-empty-state">
+                        <div className="directory-empty-icon"><Building2 size={22} /></div>
+                        <h3>No linked organizations found</h3>
+                        <p>
+                          No Organization Directory profile matches this filter combination.
+                          {selectedRecipientRegions.length > 0 && (
+                            <> The map can still contain 360Giving grants for {selectedRecipientRegions.join(", ")} when their funder exists only as a source transaction and has no linked Directory profile.</>
+                          )}
+                        </p>
+                        <button type="button" className="btn btn-secondary" onClick={resetDirectoryFilters}>
+                          Reset directory filters
+                        </button>
+                      </div>
+                    )}
                   </div>
+                )}
+                {!loading && profilesHaveMore && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary directory-load-more"
+                    onClick={() => fetchCharities(undefined, true)}
+                    disabled={loadingMoreProfiles}
+                  >
+                    {loadingMoreProfiles ? "Loading organization profiles…" : "Load 50 more organization profiles"}
+                  </button>
                 )}
               </div>
             </div>
@@ -1452,7 +2196,9 @@ export default function App() {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px" }}>
               <div>
-                <span className="charity-card-id">#{selectedCharity.registered_charity_number}</span>
+                <span className="charity-card-id">
+                  {selectedCharity.primary_source === "Philea" ? `Philea #${selectedCharity.source_record_id}` : `#${selectedCharity.registered_charity_number}`}
+                </span>
                 <h2 style={{ fontSize: "22px", fontWeight: "700", marginTop: "4px" }}>{selectedCharity.charity_name}</h2>
               </div>
               <button
@@ -1507,9 +2253,95 @@ export default function App() {
               </div>
             )}
 
-            {/* Inflow vs Outflow Sankey Flow Widget */}
+            {selectedCharityDetail && isBffOnline && (
+              <div className="glass-card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", backgroundColor: "rgba(255,255,255,0.02)" }}>
+                <div>
+                  <span className="kpi-label">Programme areas</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                    {(selectedCharityDetail.programme_areas_source || []).map((area: string) => (
+                      <span className="status-badge" key={`source-${area}`}>{area} · source</span>
+                    ))}
+                    {(selectedCharityDetail.programme_areas_inferred || []).map((area: string) => (
+                      <span className="status-badge" key={`inferred-${area}`}>{area} · rule-inferred</span>
+                    ))}
+                    {!(selectedCharityDetail.programme_areas_source || []).length && !(selectedCharityDetail.programme_areas_inferred || []).length && (
+                      <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>Unavailable</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="kpi-label">Geography</span>
+                  <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Headquarters: {selectedCharityDetail.headquarters_country || "Unavailable"}
+                    {selectedCharityDetail.headquarters_region ? ` · ${selectedCharityDetail.headquarters_region}` : ""}
+                  </div>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Stated/inferred focus: {(selectedCharityDetail.geographic_focus_inferred || []).join(", ") || "Unavailable"}
+                  </div>
+                </div>
+                <div>
+                  <span className="kpi-label">Classification provenance</span>
+                  <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Deterministic rules · {selectedCharityDetail.enrichment_rule_version || "version unavailable"}
+                  </div>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Source: {(selectedCharityDetail.source_names || []).join(" · ") || "Unavailable"}
+                  </div>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Type: {selectedCharityDetail.organization_type || "unknown"} · Coverage: {selectedCharityDetail.transaction_coverage || "unknown"}
+                  </div>
+                  {(selectedCharityDetail.programme_area_review_required || selectedCharityDetail.geography_review_required) && (
+                    <div className="status-badge status-warning" style={{ marginTop: "8px" }}>Low-confidence or ambiguous evidence · review required</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {isBffOnline && (
+              <div className="glass-card" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start", marginBottom: "14px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px" }}>Target-profile relevance</h3>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Example profile · deterministic decision support · not a prediction
+                    </div>
+                  </div>
+                  <span className="status-badge status-warning">Experimental score</span>
+                </div>
+                {scoreData ? (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                      <div><span className="kpi-label">Relevance</span><div className="kpi-value" style={{ fontSize: "22px" }}>{scoreData.score === null ? "Unavailable" : `${scoreData.score.toFixed(1)}/100`}</div></div>
+                      <div><span className="kpi-label">Confidence</span><div className="kpi-value" style={{ fontSize: "22px" }}>{Math.round(scoreData.confidence * 100)}%</div></div>
+                      <div><span className="kpi-label">Completeness</span><div className="kpi-value" style={{ fontSize: "22px" }}>{Math.round(scoreData.data_completeness * 100)}%</div></div>
+                    </div>
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      {Object.entries(scoreData.components).map(([name, component]) => (
+                        <div key={name} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "12px", fontSize: "12px", padding: "8px 10px", border: "1px solid var(--border-glass)", borderRadius: "6px" }}>
+                          <span style={{ color: "var(--text-secondary)" }}>{name.replaceAll("_", " ")} · weight {Math.round(component.weight * 100)}%</span>
+                          <span style={{ fontWeight: 600, color: component.available ? "var(--text-primary)" : "var(--text-muted)" }}>
+                            {component.available ? `${component.score?.toFixed(1)}/100` : component.missing_reason || "Unavailable"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px" }}>
+                      Version {scoreData.score_version}. Missing components are disclosed and excluded from relevance arithmetic; they reduce completeness and confidence.
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>Experimental score unavailable.</div>
+                )}
+              </div>
+            )}
+
+            {/* Real grant-relationship Sankey */}
             <div>
-              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "12px", color: "var(--text-secondary)" }}>Balanced Inflow & Outflow Sankey Flow</h3>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Relationships</h3>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
+                Derived from stored 360Giving donor → recipient transactions{(sankeyData?.currency) ? ` · ${sankeyData.currency}${sankeyData.currency === "EUR" ? " (ECB converted)" : " original"}` : ""}
+                {(sankeyData?.excludedCount || 0) > 0 ? ` · ${sankeyData?.excludedCount} records excluded` : ""}
+              </div>
               {sankeyData && sankeyData.nodes.length > 0 ? (
                 <div style={{ width: "100%", height: "300px", padding: "10px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
                   <ResponsiveContainer width="100%" height="100%">
@@ -1518,7 +2350,7 @@ export default function App() {
                       nodePadding={40}
                       nodeWidth={16}
                       margin={{ left: 130, right: 130, top: 15, bottom: 15 }}
-                      link={{ stroke: "rgba(124, 58, 237, 0.15)" }}
+                      link={{ stroke: "rgba(102, 100, 241, 0.22)" }}
                       node={(props) => {
                         const { x, y, width, height, name } = props;
                         const isRightNode = x > 300;
@@ -1547,12 +2379,18 @@ export default function App() {
                         );
                       }}
                     >
-                      <Tooltip contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value), sankeyData?.currency || "EUR")} contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
                     </Sankey>
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)" }}>Calculating Sankey flows...</div>
+                <div className="data-notice data-notice-warning" style={{ padding: "20px", textAlign: "center" }}>
+                  {sankeyData?.status === "organization_level_only"
+                      ? "This source provides organization-level intelligence only; transaction-level grant coverage is unavailable."
+                    : sankeyData?.status === "request_failed"
+                      ? "Grant-flow data could not be loaded."
+                      : "No observed grant transactions are available for this organization."}
+                </div>
               )}
             </div>
 
@@ -1582,13 +2420,7 @@ export default function App() {
                 <div style={{ width: "100%", height: "200px", padding: "10px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={[...selectedCharityDetail.financial_history].sort((a: any, b: any) =>
-                        new Date(a.financial_period_end_date || "").getTime() - new Date(b.financial_period_end_date || "").getTime()
-                      ).map((h: any) => ({
-                        year: h.financial_period_end_date ? new Date(h.financial_period_end_date).getFullYear().toString() : "N/A",
-                        Income: h.income || 0,
-                        Expenditure: h.expenditure || 0
-                      }))}
+                      data={financialHistoryData}
                       margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
                     >
                       <defs>
@@ -1604,8 +2436,8 @@ export default function App() {
                       <XAxis dataKey="year" fontSize={11} tickLine={false} />
                       <YAxis fontSize={11} tickLine={false} tickFormatter={(v) => formatCurrency(v).replace("€", "")} />
                       <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                      <Area type="monotone" dataKey="Income" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorInc)" strokeWidth={2} />
-                      <Area type="monotone" dataKey="Expenditure" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExp)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="Income" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorInc)" strokeWidth={2} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="Expenditure" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExp)" strokeWidth={2} isAnimationActive={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1677,14 +2509,15 @@ export default function App() {
 
             {/* Individual Grants Transaction Table */}
             <div>
-              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "12px", color: "var(--text-secondary)" }}>Recent Grants Transaction Log</h3>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Transactions</h3>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>Cached 360Giving records · EUR values use the historical ECB award-date reference rate; original source amounts are retained.</div>
               <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto" }}>
                 <table className="custom-table">
                   <thead>
                     <tr>
                       <th>Grant ID</th>
                       <th>Funder / Recipient Name</th>
-                      <th>Amount (EUR)</th>
+                      <th>Awarded amount</th>
                       <th>Description</th>
                       <th>Date</th>
                     </tr>
@@ -1693,15 +2526,26 @@ export default function App() {
                     {charityGrants.map((gr, idx) => (
                       <tr key={idx}>
                         <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{gr.grant_id}</td>
-                        <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : "Institutional Grant Link"}</td>
-                        <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }}>{formatCurrency(gr.amount_eur)}</td>
+                        <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : (gr.funding_name || "Unknown funder")}</td>
+                        <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }} title={gr.exchange_rate_date ? `ECB reference rate date: ${gr.exchange_rate_date}` : undefined}>
+                          {gr.amount_eur !== null && gr.amount_eur !== undefined ? <>
+                            {formatCurrency(gr.amount_eur, "EUR")}
+                            {gr.currency !== "EUR" && <small style={{ display: "block", fontWeight: "500", color: "var(--text-muted)", marginTop: "2px" }}>({formatCurrency(gr.amount, gr.currency)})</small>}
+                          </> : formatCurrency(gr.amount, gr.currency)}
+                        </td>
                         <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{gr.description}</td>
                         <td style={{ whiteSpace: "nowrap" }}>{gr.date}</td>
                       </tr>
                     ))}
                     {charityGrants.length === 0 && (
                       <tr>
-                        <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>No grants recorded for this entity.</td>
+                        <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                          {grantStatus === "transaction_data_unavailable"
+                            ? "Transaction data is unavailable in the current data source."
+                            : grantStatus === "organization_level_only"
+                              ? "Philea provides organization-level intelligence only; no transaction records are assigned."
+                            : "No matching observed grant transactions were found. Absence is not proof that no grants exist."}
+                        </td>
                       </tr>
                     )}
                   </tbody>

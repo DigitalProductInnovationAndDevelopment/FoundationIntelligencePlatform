@@ -351,6 +351,7 @@ class TestBFF(unittest.TestCase):
                 tags=None,
                 foundation_regions=None,
                 funding_regions=None,
+                sources=None,
                 min_annual_giving=None,
                 min_avg_grant_size=None,
                 skip=0,
@@ -379,11 +380,27 @@ class TestBFF(unittest.TestCase):
                 tags=None,
                 foundation_regions=None,
                 funding_regions=None,
+                sources=None,
                 min_annual_giving=None,
                 min_avg_grant_size=None,
                 skip=0,
                 limit=20
             )
+
+    def test_list_charities_parses_selected_sources(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch.object(self.test_repo, "get_all", return_value=[]) as mock_get_all:
+            response = self.client.get(
+                "/api/charities?sources=360Giving,Philea",
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(mock_get_all.call_args.kwargs["sources"], ["360Giving", "Philea"])
 
     def test_get_grants_map(self):
         login_resp = self.client.post(
@@ -392,15 +409,15 @@ class TestBFF(unittest.TestCase):
         )
         session_cookie = login_resp.cookies.get("session_id")
 
-        mock_map_data = [{"region": "London", "total_amount_eur": 100000.0, "grants_count": 5}]
-        with patch.object(self.test_repo, "get_grants_map", return_value=mock_map_data) as mock_grants_map:
-            response = self.client.get(
-                "/api/charities/grants/map",
-                cookies={"session_id": session_cookie}
-            )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), mock_map_data)
-            mock_grants_map.assert_called_once()
+        response = self.client.get(
+            "/api/charities/grants/map",
+            cookies={"session_id": session_cookie}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "transaction_data_unavailable")
+        self.assertEqual(data["items"], [])
+        self.assertEqual(data["metadata"]["data_mode"], "cached_source_without_transactions")
 
     def test_get_charity_grants_success(self):
         login_resp = self.client.post(
@@ -415,8 +432,9 @@ class TestBFF(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["grant_id"], "MOCK-G1")
+        self.assertEqual(data["status"], "transaction_data_unavailable")
+        self.assertEqual(data["grant_count"], 0)
+        self.assertEqual(data["grants"], [])
 
     def test_get_pipeline_status_success(self):
         login_resp = self.client.post(
@@ -498,15 +516,32 @@ class TestBFF(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn("nodes", data)
-        self.assertIn("links", data)
-        
-        nodes = data["nodes"]
-        self.assertTrue(any(n["id"] == "Grants Received" for n in nodes))
-        self.assertTrue(any(n["id"] == "Charity" for n in nodes))
-        
-        links = data["links"]
-        self.assertTrue(any(l["source"] == "Grants Received" and l["target"] == "Charity" for l in links))
+        self.assertEqual(data["status"], "transaction_data_unavailable")
+        self.assertEqual(data["nodes"], [])
+        self.assertEqual(data["links"], [])
+        self.assertEqual(data["metadata"]["grant_count"], 0)
+
+    def test_experimental_score_endpoint(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+        response = self.client.post(
+            "/api/charities/1001/score",
+            json={"target_profile": {
+                "programme_areas": ["Education"],
+                "geographies": ["United Kingdom"],
+                "organization_types": ["charity"],
+            }},
+            cookies={"session_id": session_cookie},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["configuration_status"], "experimental")
+        self.assertEqual(data["score_version"], "example-relevance-v1")
+        self.assertTrue(data["not_a_prediction"])
+        self.assertIn("components", data)
 
 
 class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
@@ -521,13 +556,33 @@ class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
         # Insert a predictable seed charity
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO charities (charity_id, name, type, annual_income, annual_expenditure, thematic_focus, geographic_focus, raw_cc_data)
-            VALUES (202918, 'Oxfam GB', 'Charity', 400000000.0, 395000000.0, '["Socio-economic Development, Poverty"]', '{"Europe (Western / General)": ["United Kingdom"]}', '{"all_details": {"reg_status": "R", "organisation_number": 202918}}')
+            INSERT INTO charities (
+                charity_id, name, type, annual_income, annual_expenditure,
+                thematic_focus, geographic_focus, programme_areas_inferred,
+                headquarters_country, raw_cc_data
+            ) VALUES (
+                202918, 'Oxfam GB', 'Charity', 400000000.0, 395000000.0,
+                '["Socio-economic Development, Poverty"]',
+                '{"Europe (Western / General)": ["United Kingdom"]}',
+                '["Socio-economic Development, Poverty"]', 'United Kingdom',
+                '{"all_details": {"reg_status": "R", "organisation_number": 202918}}'
+            )
         """)
         # Insert a predictable grant
         cursor.execute("""
-            INSERT INTO grants (grant_id, funding_charity_id, recipient_name, recipient_charity_id, amount_eur, currency, description, date, recipient_region, tags, geographic_focus)
-            VALUES ('G1', 202918, 'Test Recipient', 1002, 10000.0, 'GBP', 'Test Grant', '2024-01-01', 'London', '["Health"]', '{"Europe (Western / General)": ["United Kingdom"]}')
+            INSERT INTO grants (
+                grant_id, funding_charity_id, funding_name, funding_org_source_id,
+                recipient_name, recipient_charity_id, recipient_org_source_id,
+                amount, amount_eur, conversion_status, currency, description, date, beneficiary_geography,
+                beneficiary_geography_normalized, tags, source, source_record_id, source_url
+            ) VALUES (
+                'G1', 202918, 'Oxfam GB', 'GB-CHC-202918',
+                'Test Recipient', 1002, 'GB-CHC-1002',
+                10000.0, 10000.0, 'ecb_award_date', 'GBP', 'Test Grant', '2024-01-01',
+                '[{"name": "United Kingdom", "countryCode": "GB"}]',
+                '[{"name": "United Kingdom", "code": "GB", "macro_region": "Europe (Western / General)", "scope": "country"}]',
+                '["Health"]', '360Giving', 'G1', 'https://example.test/grants/G1'
+            )
         """)
         conn.commit()
         conn.close()
@@ -564,20 +619,27 @@ class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_grants_map(self):
         res = await self.repo.get_grants_map()
-        self.assertIsNotNone(res)
+        self.assertEqual(res["status"], "available")
+        self.assertEqual(res["known_geography_count"], 1)
+        self.assertEqual(res["items"][0]["region_or_country_code"], "GB")
+        self.assertEqual(res["items"][0]["total_amount"], 10000.0)
 
     async def test_get_grants_for_charity(self):
         res = await self.repo.get_grants_for_charity(202918, role="all")
-        self.assertIsNotNone(res)
+        self.assertEqual(res["grant_count"], 1)
+        self.assertEqual(res["grants"][0]["amount"], 10000.0)
+        self.assertEqual(res["grants"][0]["source"], "360Giving")
         res_funder = await self.repo.get_grants_for_charity(202918, role="funder")
-        self.assertIsNotNone(res_funder)
+        self.assertEqual(res_funder["grant_count"], 1)
         res_recipient = await self.repo.get_grants_for_charity(202918, role="recipient")
-        self.assertIsNotNone(res_recipient)
+        self.assertEqual(res_recipient["grant_count"], 0)
 
     async def test_get_sankey_data(self):
         res = await self.repo.get_sankey_data(202918)
-        self.assertIn("nodes", res)
-        self.assertIn("links", res)
+        self.assertEqual(res["status"], "available")
+        self.assertEqual(len(res["links"]), 1)
+        self.assertEqual(res["links"][0]["value"], 10000.0)
+        self.assertEqual(res["metadata"]["included_grant_count"], 1)
 
 
 class TestAdminPipelineExtra(unittest.TestCase):
