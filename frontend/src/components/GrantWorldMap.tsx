@@ -98,7 +98,9 @@ interface ConnectionGeometry {
   opacity: number;
 }
 
-const MAP_COLORS = ["#ede9fe", "#ddd6fe", "#c4b5fd", "#a78bfa", "#7c3aed"];
+// A single Netlight-purple scale keeps geographic intensity legible without
+// introducing category colours that imply different meanings.
+const MAP_COLORS = ["#f1f0ff", "#e2e1ff", "#c6c6ff", "#a29aff", "#6664f1"];
 const MAX_VISIBLE_CONNECTIONS = 36;
 // Keep the populated grant regions legible: the source map's full canvas gives
 // disproportionate space to Greenland and Antarctica on a wide dashboard card.

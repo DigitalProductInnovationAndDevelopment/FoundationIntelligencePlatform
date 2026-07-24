@@ -2350,7 +2350,7 @@ export default function App() {
                       nodePadding={40}
                       nodeWidth={16}
                       margin={{ left: 130, right: 130, top: 15, bottom: 15 }}
-                      link={{ stroke: "rgba(124, 58, 237, 0.15)" }}
+                      link={{ stroke: "rgba(102, 100, 241, 0.22)" }}
                       node={(props) => {
                         const { x, y, width, height, name } = props;
                         const isRightNode = x > 300;
