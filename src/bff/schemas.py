@@ -161,6 +161,69 @@ class CharityStats(BaseModel):
     source_counts: Dict[str, int] = {}
     organization_type_counts: Dict[str, int] = {}
 
+
+class RegistryOrganizationSummary(BaseModel):
+    """A lightweight official register result, not an assertion of funding activity."""
+    registry_id: str
+    charity_number: str
+    registered_name: str
+    registration_status: Optional[str] = None
+    income: Optional[float] = None
+    expenditure: Optional[float] = None
+    city: Optional[str] = None
+    administrative_region: Optional[str] = None
+    country_code: Optional[str] = None
+    source_record_updated_at: Optional[str] = None
+    has_enriched_profile: bool = False
+    has_grant_data: bool = False
+    has_philea_data: bool = False
+
+
+class RegistryDirectoryPage(BaseModel):
+    results: List[RegistryOrganizationSummary] = []
+    next_cursor: Optional[str] = None
+    has_more: bool = False
+    applied_filters: Dict[str, Any] = {}
+    page_size: int
+    registry_count: Optional[int] = None
+    search_strategy: str = "indexed_prefix"
+
+
+class RegistryEnrichedLink(BaseModel):
+    enriched_organization_id: int
+    organization_name: str
+    match_status: str
+    match_method: str
+    match_confidence: Optional[float] = None
+    match_reason: Optional[str] = None
+    has_grant_data: bool = False
+    has_philea_data: bool = False
+
+
+class RegistryOrganizationDetail(BaseModel):
+    registry_id: str
+    charity_number: str
+    linked_charity_number: Optional[str] = None
+    registered_name: str
+    registration_status: Optional[str] = None
+    registration_date: Optional[str] = None
+    removal_date: Optional[str] = None
+    income: Optional[float] = None
+    expenditure: Optional[float] = None
+    financial_period_end_date: Optional[str] = None
+    address_lines: List[str] = []
+    postcode: Optional[str] = None
+    city: Optional[str] = None
+    administrative_region: Optional[str] = None
+    country_code: Optional[str] = None
+    activity_text: Optional[str] = None
+    source_name: str
+    source_record_updated_at: Optional[str] = None
+    imported_at: str
+    is_current_source_record: bool = True
+    observed_grant_data_message: str
+    enriched_profile: Optional[RegistryEnrichedLink] = None
+
 class GrantMapItem(BaseModel):
     region_or_country_code: Optional[str] = None
     region_or_country_name: str
@@ -229,6 +292,10 @@ class GrantDetail(BaseModel):
     recipient_org_source_id: Optional[str] = None
     amount: Optional[float] = None
     amount_eur: Optional[float] = None
+    exchange_rate: Optional[float] = None
+    exchange_rate_date: Optional[str] = None
+    exchange_rate_source: Optional[str] = None
+    conversion_status: Optional[str] = None
     currency: str
     description: str
     date: str

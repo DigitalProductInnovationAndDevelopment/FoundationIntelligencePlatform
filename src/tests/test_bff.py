@@ -351,6 +351,7 @@ class TestBFF(unittest.TestCase):
                 tags=None,
                 foundation_regions=None,
                 funding_regions=None,
+                sources=None,
                 min_annual_giving=None,
                 min_avg_grant_size=None,
                 skip=0,
@@ -379,11 +380,27 @@ class TestBFF(unittest.TestCase):
                 tags=None,
                 foundation_regions=None,
                 funding_regions=None,
+                sources=None,
                 min_annual_giving=None,
                 min_avg_grant_size=None,
                 skip=0,
                 limit=20
             )
+
+    def test_list_charities_parses_selected_sources(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"}
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        with patch.object(self.test_repo, "get_all", return_value=[]) as mock_get_all:
+            response = self.client.get(
+                "/api/charities?sources=360Giving,Philea",
+                cookies={"session_id": session_cookie}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(mock_get_all.call_args.kwargs["sources"], ["360Giving", "Philea"])
 
     def test_get_grants_map(self):
         login_resp = self.client.post(
@@ -556,12 +573,12 @@ class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
             INSERT INTO grants (
                 grant_id, funding_charity_id, funding_name, funding_org_source_id,
                 recipient_name, recipient_charity_id, recipient_org_source_id,
-                amount, currency, description, date, beneficiary_geography,
+                amount, amount_eur, conversion_status, currency, description, date, beneficiary_geography,
                 beneficiary_geography_normalized, tags, source, source_record_id, source_url
             ) VALUES (
                 'G1', 202918, 'Oxfam GB', 'GB-CHC-202918',
                 'Test Recipient', 1002, 'GB-CHC-1002',
-                10000.0, 'GBP', 'Test Grant', '2024-01-01',
+                10000.0, 10000.0, 'ecb_award_date', 'GBP', 'Test Grant', '2024-01-01',
                 '[{"name": "United Kingdom", "countryCode": "GB"}]',
                 '[{"name": "United Kingdom", "code": "GB", "macro_region": "Europe (Western / General)", "scope": "country"}]',
                 '["Health"]', '360Giving', 'G1', 'https://example.test/grants/G1'

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Building2, MoreHorizontal, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, Building2, X } from "lucide-react";
 import worldMap from "@svg-maps/world";
 
 export interface MapRankingItem {
@@ -43,16 +43,6 @@ export interface GrantMapFilters {
   minAvgGrantSize: number;
 }
 
-export interface GrantMapFilterOptions {
-  sectors: { value: string; label: string }[];
-  headquartersLocations: string[];
-  beneficiaryGeographies: string[];
-  annualGivingSteps: number[];
-  annualGivingLabels: string[];
-  averageGrantSteps: number[];
-  averageGrantLabels: string[];
-}
-
 export interface GrantMapResponse {
   status: string;
   geographic_dimension: string;
@@ -89,9 +79,8 @@ interface GrantWorldMapProps {
   loading: boolean;
   error: string | null;
   filters: GrantMapFilters;
-  filterOptions: GrantMapFilterOptions;
-  onFiltersChange: (filters: GrantMapFilters) => void;
   onOpenOrganizationDirectory: (filters: GrantMapFilters) => void;
+  onCountrySelectionChange?: (countryName: string | null) => void;
 }
 
 type MapMetric = "count" | "funding";
@@ -111,6 +100,11 @@ interface ConnectionGeometry {
 
 const MAP_COLORS = ["#ede9fe", "#ddd6fe", "#c4b5fd", "#a78bfa", "#7c3aed"];
 const MAX_VISIBLE_CONNECTIONS = 36;
+// Keep the populated grant regions legible: the source map's full canvas gives
+// disproportionate space to Greenland and Antarctica on a wide dashboard card.
+// This crops only the presentation viewport; country paths and data semantics
+// remain exactly the same.
+const FOCUSED_WORLD_VIEWBOX = "0 95 1010 500";
 
 function compactNumber(value: number) {
   return new Intl.NumberFormat("en-GB", {
@@ -164,83 +158,27 @@ function RankingList({ items }: { items: MapRankingItem[] }) {
   );
 }
 
-function FilterChecklist({
-  label,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: string[];
-  onChange: (values: string[]) => void;
-}) {
-  return (
-    <fieldset className="map-settings-section">
-      <legend>{label}</legend>
-      <div className="map-settings-checklist">
-        {options.map(option => (
-          <label key={option.value}>
-            <input
-              type="checkbox"
-              checked={selected.includes(option.value)}
-              onChange={event => onChange(
-                event.target.checked
-                  ? [...selected, option.value]
-                  : selected.filter(value => value !== option.value),
-              )}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
 export default function GrantWorldMap({
   data,
   loading,
   error,
   filters,
-  filterOptions,
-  onFiltersChange,
   onOpenOrganizationDirectory,
+  onCountrySelectionChange,
 }: GrantWorldMapProps) {
   const [metric, setMetric] = useState<MapMetric>("count");
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState<GrantMapFilters>(filters);
   const [showConnections, setShowConnections] = useState(false);
   const [connectionGeometry, setConnectionGeometry] = useState<ConnectionGeometry[]>([]);
-  const controlsRef = useRef<HTMLDivElement>(null);
   const pathRefs = useRef(new Map<string, SVGPathElement>());
+  const countryExplorerRef = useRef<HTMLElement>(null);
+  const lastScrolledCountryCode = useRef<string | null>(null);
   const fundingAvailable = data.funding_mode_available;
   const activeMetric: MapMetric = metric === "funding" && !fundingAvailable ? "count" : metric;
   const countLabel = data.multi_country_grant_count
     ? "Grant-country associations"
     : "Number of grants";
-
-  useEffect(() => setDraftFilters(filters), [filters]);
-
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (controlsRef.current && !controlsRef.current.contains(event.target as Node)) {
-        setSettingsOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSettingsOpen(false);
-    };
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [settingsOpen]);
 
   const visibleConnections = useMemo(
     () => (data.connections || []).slice(0, MAX_VISIBLE_CONNECTIONS),
@@ -329,37 +267,26 @@ export default function GrantWorldMap({
     legendLabels.push(`More than ${formatter(scale.thresholds.at(-1) || 0)}`);
   }
 
+  useEffect(() => {
+    if (!selectedCode || !selectedItem || lastScrolledCountryCode.current === selectedCode) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      countryExplorerRef.current?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      lastScrolledCountryCode.current = selectedCode;
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [selectedCode, selectedItem]);
+
   const selectCountry = (code: string) => {
-    setSelectedCode(previous => previous === code ? null : code);
+    const isDeselecting = selectedCode === code;
+    const nextCode = isDeselecting ? null : code;
+    setSelectedCode(nextCode);
+    if (nextCode) lastScrolledCountryCode.current = null;
+    onCountrySelectionChange?.(nextCode ? itemByCode.get(nextCode)?.region_or_country_name || null : null);
   };
 
-  const activeFilterCount = (
-    (filters.search.trim() ? 1 : 0)
-    + filters.tags.length
-    + filters.foundationRegions.length
-    + filters.fundingRegions.length
-    + (filters.minAnnualGiving > 0 ? 1 : 0)
-    + (filters.minAvgGrantSize > 0 ? 1 : 0)
-  );
-  const annualGivingIndex = Math.max(
-    0,
-    filterOptions.annualGivingSteps.indexOf(draftFilters.minAnnualGiving),
-  );
-  const averageGrantIndex = Math.max(
-    0,
-    filterOptions.averageGrantSteps.indexOf(draftFilters.minAvgGrantSize),
-  );
-  const resetFilters = () => {
-    const emptyFilters: GrantMapFilters = {
-      search: "",
-      tags: [],
-      foundationRegions: [],
-      fundingRegions: [],
-      minAnnualGiving: 0,
-      minAvgGrantSize: 0,
-    };
-    setDraftFilters(emptyFilters);
-    onFiltersChange(emptyFilters);
+  const clearCountrySelection = () => {
+    setSelectedCode(null);
+    onCountrySelectionChange?.(null);
   };
 
   return (
@@ -372,7 +299,7 @@ export default function GrantWorldMap({
             This is not complete 360Giving or global-market coverage.
           </p>
         </div>
-        <div className="map-controls-anchor" ref={controlsRef}>
+        <div className="map-controls-anchor">
           <div className="map-mode-control" role="group" aria-label="World map display and settings">
             <button
               type="button"
@@ -387,155 +314,28 @@ export default function GrantWorldMap({
               className={activeMetric === "funding" ? "active" : ""}
               aria-pressed={activeMetric === "funding"}
               disabled={!fundingAvailable}
-              title={!fundingAvailable ? "Select one available currency before comparing awarded funding." : undefined}
+              title={!fundingAvailable ? "No eligible awarded amounts are available for this scope." : undefined}
               onClick={() => setMetric("funding")}
             >
               Awarded funding{data.selected_currency ? ` (${data.selected_currency})` : ""}
             </button>
-            <span className="map-mode-divider" aria-hidden="true" />
             <button
               type="button"
-              className={`map-settings-trigger${settingsOpen ? " active" : ""}`}
-              aria-label={`Map settings${activeFilterCount ? `, ${activeFilterCount} active filters` : ""}`}
-              aria-expanded={settingsOpen}
-              aria-controls="grant-map-settings"
-              aria-haspopup="dialog"
-              onClick={() => setSettingsOpen(previous => !previous)}
+              className={showConnections ? "active" : ""}
+              aria-pressed={showConnections}
+              onClick={() => setShowConnections(current => !current)}
             >
-              <MoreHorizontal size={19} />
-              {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+              Connections
             </button>
           </div>
-
-          {settingsOpen && (
-            <section
-              id="grant-map-settings"
-              className="map-settings-popover"
-              role="dialog"
-              aria-modal="false"
-              aria-labelledby="grant-map-settings-title"
-            >
-              <div className="map-settings-header">
-                <div>
-                  <span><SlidersHorizontal size={14} /> Map controls</span>
-                  <h4 id="grant-map-settings-title">Filter grant distribution</h4>
-                </div>
-                <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close map settings">
-                  <X size={17} />
-                </button>
-              </div>
-
-              <div className="map-settings-scroll">
-                <label className="map-settings-search">
-                  <span>Funder organization</span>
-                  <div>
-                    <Search size={15} />
-                    <input
-                      type="search"
-                      value={draftFilters.search}
-                      placeholder="Search organization name…"
-                      onChange={event => setDraftFilters(current => ({
-                        ...current,
-                        search: event.target.value,
-                      }))}
-                    />
-                  </div>
-                </label>
-
-                <FilterChecklist
-                  label="Thematic sector"
-                  options={filterOptions.sectors}
-                  selected={draftFilters.tags}
-                  onChange={tags => setDraftFilters(current => ({ ...current, tags }))}
-                />
-                <FilterChecklist
-                  label="Foundation location"
-                  options={filterOptions.headquartersLocations.map(value => ({ value, label: value }))}
-                  selected={draftFilters.foundationRegions}
-                  onChange={foundationRegions => setDraftFilters(current => ({
-                    ...current,
-                    foundationRegions,
-                  }))}
-                />
-                <FilterChecklist
-                  label="Beneficiary geography"
-                  options={filterOptions.beneficiaryGeographies.map(value => ({ value, label: value }))}
-                  selected={draftFilters.fundingRegions}
-                  onChange={fundingRegions => setDraftFilters(current => ({
-                    ...current,
-                    fundingRegions,
-                  }))}
-                />
-
-                <label className="map-settings-range">
-                  <span><b>Minimum annual giving</b><strong>{filterOptions.annualGivingLabels[annualGivingIndex]}</strong></span>
-                  <input
-                    type="range"
-                    min="0"
-                    max={filterOptions.annualGivingSteps.length - 1}
-                    value={annualGivingIndex}
-                    onChange={event => setDraftFilters(current => ({
-                      ...current,
-                      minAnnualGiving: filterOptions.annualGivingSteps[Number(event.target.value)],
-                    }))}
-                  />
-                </label>
-
-                <label className="map-settings-range">
-                  <span><b>Minimum average grant</b><strong>{filterOptions.averageGrantLabels[averageGrantIndex]}</strong></span>
-                  <input
-                    type="range"
-                    min="0"
-                    max={filterOptions.averageGrantSteps.length - 1}
-                    value={averageGrantIndex}
-                    onChange={event => setDraftFilters(current => ({
-                      ...current,
-                      minAvgGrantSize: filterOptions.averageGrantSteps[Number(event.target.value)],
-                    }))}
-                  />
-                </label>
-
-                <label className="map-settings-toggle">
-                  <span>
-                    <b>Connection arrows</b>
-                    <small>Registered funder location → beneficiary country</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={showConnections}
-                    onChange={event => setShowConnections(event.target.checked)}
-                  />
-                </label>
-                <p className="map-settings-disclosure">
-                  Arrows are illustrative associations, not verified financial routes. Up to the
-                  {` ${MAX_VISIBLE_CONNECTIONS} `}strongest country connections are shown.
-                </p>
-              </div>
-
-              <div className="map-settings-footer">
-                <button type="button" className="map-settings-reset" onClick={resetFilters}>Reset filters</button>
-                <button
-                  type="button"
-                  className="map-settings-apply"
-                  onClick={() => {
-                    onFiltersChange(draftFilters);
-                    setSettingsOpen(false);
-                  }}
-                >
-                  Apply filters
-                </button>
-              </div>
-            </section>
-          )}
         </div>
       </div>
 
-      <div className="map-coverage-grid" aria-label="Map data coverage">
-        <div><strong>{totalFiltered.toLocaleString("en-GB")}</strong><span>{activeFilterCount ? "Filtered grants" : "Ingested grants"}</span></div>
-        <div><strong>{data.known_geography_count.toLocaleString("en-GB")}</strong><span>Mapped grants</span></div>
-        <div><strong>{data.unknown_geography_count.toLocaleString("en-GB")}</strong><span>Unmapped grants</span></div>
-        <div><strong>{data.coverage_percentage}%</strong><span>Country coverage</span></div>
+      <div className="map-coverage-inline" aria-label="Map data coverage">
+        <span>{totalFiltered.toLocaleString("en-GB")} filtered grants</span>
+        <span>{data.known_geography_count.toLocaleString("en-GB")} mapped</span>
+        <span>{data.unknown_geography_count.toLocaleString("en-GB")} unmapped</span>
+        <span>{data.coverage_percentage}% country coverage</span>
       </div>
 
       {loading ? (
@@ -557,7 +357,7 @@ export default function GrantWorldMap({
           <div className="world-map-stage">
             <svg
               className="world-map-svg"
-              viewBox={worldMap.viewBox}
+              viewBox={FOCUSED_WORLD_VIEWBOX}
               role="group"
               aria-labelledby="global-grant-map-title global-grant-map-description"
               preserveAspectRatio="xMidYMid meet"
@@ -665,9 +465,9 @@ export default function GrantWorldMap({
                 </>
               ) : (
                 <>
-                  <span className="map-hover-eyebrow">Explore the map</span>
-                  <strong>Point to a shaded country</strong>
-                  <p>Hover, focus, or tap for a summary. Select a country to open the detail panel.</p>
+                  <span className="map-hover-eyebrow">Map help</span>
+                  <strong>Select a shaded country</strong>
+                  <p>Tap, click, or focus a country for its grant summary.</p>
                 </>
               )}
             </aside>
@@ -696,16 +496,21 @@ export default function GrantWorldMap({
                 Excluded multi-country amount: {currencyAmount(data.funding_excluded_multi_country_amount, data.selected_currency)}.
               </span>
             )}
+            {data.funding_excluded_currency_count > 0 && data.selected_currency === "EUR" && (
+              <span>
+                {data.funding_excluded_currency_count} grants have no usable historical EUR conversion and are excluded from funding totals.
+              </span>
+            )}
           </div>
 
           {selectedItem && (
-            <section className="country-explorer" aria-labelledby="country-explorer-title">
+            <section className="country-explorer" ref={countryExplorerRef} aria-labelledby="country-explorer-title">
               <div className="country-explorer-header">
                 <div>
                   <span>Country summary</span>
                   <h4 id="country-explorer-title">{selectedItem.region_or_country_name}</h4>
                 </div>
-                <button type="button" className="country-explorer-close" onClick={() => setSelectedCode(null)} aria-label="Close country summary">
+                <button type="button" className="country-explorer-close" onClick={clearCountrySelection} aria-label="Close country summary">
                   <X size={18} />
                 </button>
               </div>

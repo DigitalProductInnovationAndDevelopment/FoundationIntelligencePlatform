@@ -86,10 +86,10 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
             INSERT INTO grants (
                 grant_id, funding_charity_id, funding_name, funding_org_source_id,
                 recipient_name, recipient_charity_id, recipient_org_source_id,
-                amount, currency, description, date, beneficiary_geography,
+                amount, amount_eur, conversion_status, currency, description, date, beneficiary_geography,
                 beneficiary_geography_normalized, source, source_record_id, source_url,
                 ingestion_timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 grant_id,
@@ -100,6 +100,8 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
                 recipient_id,
                 recipient_source_id,
                 amount,
+                amount,
+                "native_eur" if currency == "EUR" and amount is not None else "ecb_award_date" if amount is not None else "invalid_source_amount",
                 currency,
                 f"Description for {grant_id}",
                 "2025-01-01",
@@ -156,16 +158,17 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
             "self_link": 1,
         })
 
-    async def test_sankey_requires_currency_filter_and_reports_filtering(self):
+    async def test_sankey_auto_uses_eur_and_raw_currency_filter_remains_available(self):
         self._grant("GBP", amount=100, currency="GBP")
         self._grant("EUR", amount=200, currency="EUR")
 
         mixed = await self.repo.get_sankey_data(1)
         selected = await self.repo.get_sankey_data(1, currency="GBP")
 
-        self.assertEqual(mixed["status"], "mixed_currency_requires_filter")
-        self.assertEqual(mixed["links"], [])
+        self.assertEqual(mixed["status"], "available")
+        self.assertEqual(mixed["links"][0]["value"], 300.0)
         self.assertEqual(mixed["metadata"]["currencies"], ["EUR", "GBP"])
+        self.assertEqual(mixed["metadata"]["selected_currency"], "EUR")
         self.assertEqual(selected["links"][0]["value"], 100.0)
         self.assertEqual(selected["metadata"]["excluded_reasons"]["currency_filtered"], 1)
 

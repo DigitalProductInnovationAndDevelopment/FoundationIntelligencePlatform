@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Building2,
   TrendingUp,
   Activity,
-  LogOut,
   Search,
   SlidersHorizontal,
   Terminal,
@@ -12,7 +11,11 @@ import {
   DollarSign,
   Database,
   Play,
-  Newspaper
+  Newspaper,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RotateCcw,
 } from "lucide-react";
 import {
   BarChart,
@@ -27,9 +30,10 @@ import {
   Sankey
 } from "recharts";
 import GrantWorldMap from "./components/GrantWorldMap";
+import OverviewDashboard from "./components/OverviewDashboard";
+import RegistryDirectory from "./components/RegistryDirectory";
 import amplifyLogo from "./assets/amplify-logo.svg";
 import type {
-  GrantMapFilterOptions,
   GrantMapFilters,
   GrantMapResponse,
 } from "./components/GrantWorldMap";
@@ -39,7 +43,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL
   || `${window.location.protocol}//${window.location.hostname}:8000`;
 const DEMO_USERNAME = import.meta.env.VITE_BFF_USERNAME || "admin";
 const DEMO_PASSWORD = import.meta.env.VITE_BFF_PASSWORD || "password";
-
+const SHOW_LEGACY_OVERVIEW = import.meta.env.VITE_LEGACY_OVERVIEW === "true";
+const DEFAULT_DATA_SOURCES = ["360Giving", "Charity Commission for England and Wales", "Philea"];
 // Interface definitions
 interface Charity {
   registered_charity_number: number;
@@ -151,6 +156,10 @@ interface GrantDetail {
   recipient_charity_id: number | null;
   amount: number | null;
   amount_eur: number | null;
+  exchange_rate: number | null;
+  exchange_rate_date: string | null;
+  exchange_rate_source: string | null;
+  conversion_status: string | null;
   currency: string;
   description: string;
   date: string;
@@ -388,26 +397,28 @@ const EMPTY_GRANT_MAP_FILTERS: GrantMapFilters = {
   minAvgGrantSize: 0,
 };
 
-const GRANT_MAP_FILTER_OPTIONS: GrantMapFilterOptions = {
-  sectors: SECTORS,
-  headquartersLocations: HEADQUARTERS_LOCATIONS,
-  beneficiaryGeographies: BENEFICIARY_GEOGRAPHIES,
-  annualGivingSteps: ANNUAL_GIVING_STEPS,
-  annualGivingLabels: ANNUAL_GIVING_LABELS,
-  averageGrantSteps: AVG_GRANT_SIZE_STEPS,
-  averageGrantLabels: AVG_GRANT_SIZE_LABELS,
-};
-
 export default function App() {
   const [activeTab, setActiveTab] = useState<"overview" | "directory" | "admin">("overview");
+  const [directoryMode, setDirectoryMode] = useState<"profiles" | "registry">("profiles");
+  const [overviewFilterCount, setOverviewFilterCount] = useState(0);
+  const [overviewFiltersOpen, setOverviewFiltersOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = window.localStorage.getItem("sidebar-collapsed");
+    return saved === null ? window.innerWidth < 1280 : saved === "true";
+  });
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   // Data states
   const [stats, setStats] = useState<KPIStats>(MOCK_STATS);
+  const [dataSourceSelections, setDataSourceSelections] = useState<Record<string, boolean>>({});
   const [charities, setCharities] = useState<Charity[]>(MOCK_CHARITIES);
+  const [profileOffset, setProfileOffset] = useState(0);
+  const [profilesHaveMore, setProfilesHaveMore] = useState(false);
+  const [loadingMoreProfiles, setLoadingMoreProfiles] = useState(false);
   const [mapData, setMapData] = useState<GrantMapResponse>(EMPTY_MAP);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [mapFilters, setMapFilters] = useState<GrantMapFilters>(EMPTY_GRANT_MAP_FILTERS);
+  const [mapFilters] = useState<GrantMapFilters>(EMPTY_GRANT_MAP_FILTERS);
   const [grantTrends, setGrantTrends] = useState<GrantTrendsResponse | null>(null);
   const [grantThemes, setGrantThemes] = useState<GrantThemesResponse | null>(null);
   const [grantAnalyticsLoading, setGrantAnalyticsLoading] = useState(false);
@@ -427,9 +438,14 @@ export default function App() {
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
+  const [organizationSuggestions, setOrganizationSuggestions] = useState<Charity[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedFoundationRegions, setSelectedFoundationRegions] = useState<string[]>([]);
   const [selectedRecipientRegions, setSelectedRecipientRegions] = useState<string[]>([]);
+  const [beneficiaryLocationOptions, setBeneficiaryLocationOptions] = useState<string[]>(BENEFICIARY_GEOGRAPHIES);
+  const [directoryHandoff, setDirectoryHandoff] = useState({ version: 0, query: "", beneficiaryGeography: "" });
   const [annualGivingIndex, setAnnualGivingIndex] = useState<number>(0);
   const [avgGrantSizeIndex, setAvgGrantSizeIndex] = useState<number>(0);
   const [loading, setLoading] = useState(false);
@@ -437,6 +453,36 @@ export default function App() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  // The stats endpoint returns a fresh array on every response. Keep the
+  // source list referentially stable while its values are unchanged so it
+  // cannot retrigger directory and overview requests indefinitely.
+  const dataSourceNamesKey = (stats.source?.length ? stats.source : DEFAULT_DATA_SOURCES).join("\u001f");
+  const dataSourceNames = useMemo(
+    () => dataSourceNamesKey.split("\u001f").filter(Boolean),
+    [dataSourceNamesKey],
+  );
+  const isDataSourceSelected = (source: string) => dataSourceSelections[source] !== false;
+  const selectedDataSources = useMemo(
+    () => dataSourceNames.filter(source => dataSourceSelections[source] !== false),
+    [dataSourceNames, dataSourceSelections],
+  );
+  const selectedCharityId = selectedCharity?.registered_charity_number ?? null;
+  const financialHistoryData = useMemo(() => {
+    const history = selectedCharityDetail?.financial_history;
+    if (!Array.isArray(history)) return [];
+    return [...history]
+      .sort((left: any, right: any) =>
+        new Date(left.financial_period_end_date || "").getTime()
+        - new Date(right.financial_period_end_date || "").getTime(),
+      )
+      .map((item: any) => ({
+        year: item.financial_period_end_date
+          ? new Date(item.financial_period_end_date).getFullYear().toString()
+          : "N/A",
+        Income: item.income || 0,
+        Expenditure: item.expenditure || 0,
+      }));
+  }, [selectedCharityDetail?.financial_history]);
 
 
   // Admin & pipeline states
@@ -464,8 +510,11 @@ export default function App() {
 
   useEffect(() => {
     fetchStats();
+  }, [isBffOnline]);
+
+  useEffect(() => {
     fetchCharities();
-  }, [selectedTags, selectedFoundationRegions, selectedRecipientRegions, annualGivingIndex, avgGrantSizeIndex]);
+  }, [isBffOnline, selectedTags, selectedFoundationRegions, selectedRecipientRegions, annualGivingIndex, avgGrantSizeIndex, selectedDataSources]);
 
   useEffect(() => {
     const debounce = window.setTimeout(() => {
@@ -475,15 +524,82 @@ export default function App() {
   }, [searchTerm]);
 
   useEffect(() => {
-    if (selectedCharity) {
+    if (!isBffOnline) return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/charities/grants/beneficiary-geographies`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Beneficiary geography request failed (${response.status}).`);
+        return response.json() as Promise<string[]>;
+      })
+      .then(options => {
+        if (Array.isArray(options) && options.length) {
+          setBeneficiaryLocationOptions(options);
+        }
+      })
+      .catch(error => {
+        if ((error as Error).name !== "AbortError") {
+          console.warn("Beneficiary geography options unavailable", error);
+        }
+      });
+    return () => controller.abort();
+  }, [isBffOnline]);
+
+  useEffect(() => {
+    const query = searchTerm.trim();
+    if (query.length < 2) {
+      setOrganizationSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const debounce = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        if (!isBffOnline) {
+          setOrganizationSuggestions(
+            MOCK_CHARITIES
+              .filter(charity => charity.charity_name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+              .slice(0, 6),
+          );
+          return;
+        }
+        const parameters = new URLSearchParams({ search: query, limit: "6" });
+        parameters.set("sources", selectedDataSources.join(","));
+        const response = await fetch(`${API_BASE}/api/charities?${parameters.toString()}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Organization suggestion request failed (${response.status}).`);
+        setOrganizationSuggestions(await response.json());
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          console.warn("Organization suggestions unavailable", error);
+          setOrganizationSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsLoading(false);
+      }
+    }, 180);
+    return () => {
+      controller.abort();
+      window.clearTimeout(debounce);
+    };
+  }, [isBffOnline, searchTerm, selectedDataSources]);
+
+  useEffect(() => {
+    if (selectedCharityId !== null) {
       setSelectedCharityDetail(null);
       setNewsSummary(null);
       setNewsError(null);
       setNewsLoading(false);
-      fetchCharityDetail(selectedCharity.registered_charity_number);
-      fetchCharityGrants(selectedCharity.registered_charity_number);
-      fetchSankeyData(selectedCharity.registered_charity_number);
-      fetchScoreData(selectedCharity.registered_charity_number);
+      fetchCharityDetail(selectedCharityId);
+      fetchCharityGrants(selectedCharityId);
+      fetchSankeyData(selectedCharityId);
+      fetchScoreData(selectedCharityId);
     } else {
       setSelectedCharityDetail(null);
       setNewsSummary(null);
@@ -491,7 +607,7 @@ export default function App() {
       setNewsLoading(false);
       setScoreData(null);
     }
-  }, [selectedCharity]);
+  }, [selectedCharityId]);
 
   useEffect(() => {
     if (activeTab === "admin") {
@@ -505,8 +621,10 @@ export default function App() {
     if (pipelineStatus.status === "success") {
       fetchStats();
       fetchCharities();
-      fetchMapData();
-      fetchGrantAnalytics();
+      // The active Overview owns one aggregated request for its complete grant
+      // population. Notify it after ingestion instead of reviving legacy map
+      // and chart calls in the background.
+      window.dispatchEvent(new Event("overview-refresh"));
     }
   }, [pipelineStatus.status]);
 
@@ -515,6 +633,22 @@ export default function App() {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs]);
+
+  useEffect(() => {
+    window.localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const receiveFilterCount = (event: Event) => setOverviewFilterCount(Number((event as CustomEvent<number>).detail) || 0);
+    window.addEventListener("overview-filter-count", receiveFilterCount);
+    return () => window.removeEventListener("overview-filter-count", receiveFilterCount);
+  }, []);
+
+  useEffect(() => {
+    const receiveFilterDrawerState = (event: Event) => setOverviewFiltersOpen(Boolean((event as CustomEvent<boolean>).detail));
+    window.addEventListener("overview-filter-drawer-state", receiveFilterDrawerState);
+    return () => window.removeEventListener("overview-filter-drawer-state", receiveFilterDrawerState);
+  }, []);
 
   const autoLogin = async () => {
     try {
@@ -548,14 +682,8 @@ export default function App() {
         if (loggedIn) {
           setIsBffOnline(true);
           setApiError(null);
-          // Load initial live dataset
-          await Promise.all([
-            fetchStats(true),
-            fetchCharities(true),
-            fetchMapData(true),
-            fetchGrantAnalytics(true)
-          ]);
-          setInitialLoading(false);
+          // The online-state effects load the live dataset once. Calling the
+          // same fetches here as well used to race the first directory render.
           return;
         }
       }
@@ -588,9 +716,16 @@ export default function App() {
     }
   };
 
-  const fetchCharities = async (forceOnline?: boolean) => {
+  const fetchCharities = async (forceOnline?: boolean, append = false) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
-    setLoading(true);
+    const pageSize = 50;
+    const offset = append ? profileOffset : 0;
+    if (append) {
+      setLoadingMoreProfiles(true);
+    } else {
+      setLoading(true);
+      setProfilesHaveMore(false);
+    }
     if (!isOnline) {
       // Offline local filtering of mocks
       let filtered = [...MOCK_CHARITIES];
@@ -605,13 +740,18 @@ export default function App() {
       if (minAvgGrant > 0) {
         filtered = filtered.filter(c => ((c.latest_expenditure || 0) / 10) >= minAvgGrant);
       }
-      setCharities(filtered);
+      const nextPage = filtered.slice(offset, offset + pageSize);
+      setCharities(current => append ? [...current, ...nextPage] : nextPage);
+      setProfileOffset(offset + nextPage.length);
+      setProfilesHaveMore(offset + nextPage.length < filtered.length);
       setLoading(false);
+      setLoadingMoreProfiles(false);
       return;
     }
     try {
-      let url = `${API_BASE}/api/charities?limit=50`;
+      let url = `${API_BASE}/api/charities?limit=${pageSize + 1}&skip=${offset}`;
       if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
+      url += `&sources=${encodeURIComponent(selectedDataSources.join(","))}`;
       if (selectedTags.length > 0) {
         url += `&tags=${encodeURIComponent(selectedTags.join(","))}`;
       }
@@ -632,8 +772,11 @@ export default function App() {
 
       const resp = await fetch(url, { credentials: "include" });
       if (resp.ok) {
-        const data = await resp.json();
-        setCharities(data);
+        const data: Charity[] = await resp.json();
+        const nextPage = data.slice(0, pageSize);
+        setCharities(current => append ? [...current, ...nextPage] : nextPage);
+        setProfileOffset(offset + nextPage.length);
+        setProfilesHaveMore(data.length > pageSize);
         setApiError(null);
       } else {
         setApiError(`Directory request failed (${resp.status}).`);
@@ -642,7 +785,11 @@ export default function App() {
       console.error("Failed to fetch charities", e);
       setApiError("The organization directory is temporarily unavailable.");
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMoreProfiles(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -786,18 +933,28 @@ export default function App() {
     setSelectedRecipientRegions(filters.fundingRegions);
     setAnnualGivingIndex(Math.max(0, ANNUAL_GIVING_STEPS.indexOf(filters.minAnnualGiving)));
     setAvgGrantSizeIndex(Math.max(0, AVG_GRANT_SIZE_STEPS.indexOf(filters.minAvgGrantSize)));
+    setDirectoryHandoff(previous => ({
+      version: previous.version + 1,
+      query: filters.search,
+      beneficiaryGeography: filters.fundingRegions.length === 1 ? filters.fundingRegions[0] : "",
+    }));
     setSelectedCharity(null);
+    setDirectoryMode("profiles");
     setActiveTab("directory");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const resetDirectoryFilters = () => {
     setSearchTerm("");
+    setOrganizationSuggestions([]);
+    setSuggestionsOpen(false);
     setSelectedTags([]);
     setSelectedFoundationRegions([]);
     setSelectedRecipientRegions([]);
     setAnnualGivingIndex(0);
     setAvgGrantSizeIndex(0);
+    setProfileOffset(0);
+    setProfilesHaveMore(false);
   };
 
   const fetchGrantAnalytics = async (forceOnline?: boolean, currencyOverride?: string) => {
@@ -1113,33 +1270,48 @@ export default function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container${sidebarCollapsed ? " sidebar-collapsed" : ""}${mobileNavigationOpen ? " sidebar-drawer-open" : ""}`}>
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div>
           <div className="sidebar-logo">
             <img src={amplifyLogo} alt="Amplify" />
             {!isBffOnline && <span style={{ fontSize: "10px", color: "var(--nl-sunny)", background: "var(--nl-sunny-glow)", padding: "2px 6px", borderRadius: "4px" }}>Offline</span>}
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setSidebarCollapsed(current => !current)}
+              aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
           </div>
 
           <nav className="sidebar-nav">
             <button
               className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => setActiveTab("overview")}
+              onClick={() => { setActiveTab("overview"); setMobileNavigationOpen(false); }}
+              title="Overview"
             >
               <TrendingUp size={18} />
               <span>Overview</span>
             </button>
             <button
               className={`nav-item ${activeTab === "directory" ? "active" : ""}`}
-              onClick={() => setActiveTab("directory")}
+              onClick={() => {
+                setDirectoryMode("profiles");
+                setActiveTab("directory");
+                setMobileNavigationOpen(false);
+              }}
+              title="Organization Directory"
             >
               <Building2 size={18} />
               <span>Organization Directory</span>
             </button>
             <button
               className={`nav-item ${activeTab === "admin" ? "active" : ""}`}
-              onClick={() => setActiveTab("admin")}
+              onClick={() => { setActiveTab("admin"); setMobileNavigationOpen(false); }}
+              title="Pipeline Monitor"
             >
               <Terminal size={18} />
               <span>Pipeline Monitor</span>
@@ -1155,38 +1327,70 @@ export default function App() {
               <span className="user-role">Administrator</span>
             </div>
           </div>
-          <button className="nav-item" style={{ color: "var(--semantic-error)" }} onClick={() => checkBffHealth()}>
-            <LogOut size={16} />
-            <span>Check BFF Inflow</span>
-          </button>
+          {activeTab === "admin" && <button className="sidebar-health-check" onClick={() => checkBffHealth()}>
+            <Activity size={15} />
+            <span>Check backend connection</span>
+          </button>}
         </div>
       </aside>
+      {mobileNavigationOpen && <button type="button" className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobileNavigationOpen(false)} />}
 
       {/* Main Container Window */}
       <main className="main-content">
         <header className="header-bar">
+          <button type="button" className="mobile-menu-trigger" onClick={() => setMobileNavigationOpen(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <h1 className="header-title">
             {activeTab === "overview" && "Foundation Intelligence Platform"}
             {activeTab === "directory" && "Foundation & Organization Directory"}
             {activeTab === "admin" && "Administrative Pipeline Monitor"}
           </h1>
-          {isBffOnline && (
-            <details className="data-sources-disclosure">
-              <summary>
-                <Database size={15} aria-hidden="true" />
-                <span>Data sources</span>
-              </summary>
-              <div className="data-sources-panel">
-                <strong>Cached source data</strong>
-                <span>Used for the current dashboard view</span>
-                <ul>
-                  {(stats.source || ["Charity Commission", "360Giving"]).map(source => (
-                    <li key={source}>{source}</li>
-                  ))}
-                </ul>
-              </div>
-            </details>
-          )}
+          <div className="header-actions">
+            {activeTab === "overview" && <>
+              <button
+                type="button"
+                className="header-overview-filter"
+                onClick={() => window.dispatchEvent(new Event("overview-open-filters"))}
+                aria-controls="overview-filter-drawer"
+                aria-expanded={overviewFiltersOpen}
+              >
+                <SlidersHorizontal size={16} /> Filters {overviewFilterCount > 0 && <b>{overviewFilterCount}</b>}
+              </button>
+              <button
+                type="button"
+                className="header-overview-reset"
+                onClick={() => window.dispatchEvent(new Event("overview-reset-filters"))}
+                disabled={overviewFilterCount === 0}
+                title="Reset all grant filters"
+              >
+                <RotateCcw size={15} /> Reset
+              </button>
+            </>}
+            {isBffOnline && (
+              <details className="data-sources-disclosure">
+                <summary>
+                  <Database size={15} aria-hidden="true" />
+                  <span>Data sources</span>
+                </summary>
+                <div className="data-sources-panel">
+                  <strong>Cached source data</strong>
+                  <span>Selections filter each view. Grant analytics currently uses observed 360Giving transactions; the directory also responds to Charity Commission and Philea selections.</span>
+                  <div className="data-source-options" aria-label="Selected data source labels">
+                    {dataSourceNames.map(source => (
+                      <button
+                        type="button"
+                        key={source}
+                        className={`data-source-option${isDataSourceSelected(source) ? " selected" : ""}`}
+                        aria-pressed={isDataSourceSelected(source)}
+                        onClick={() => setDataSourceSelections(current => ({ ...current, [source]: current[source] === false }))}
+                      >
+                        {source}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            )}
+          </div>
         </header>
 
         {/* Dynamic Pages */}
@@ -1203,6 +1407,16 @@ export default function App() {
           )}
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
+            <OverviewDashboard
+              apiBase={API_BASE}
+              online={isBffOnline}
+              selectedSources={selectedDataSources}
+              onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+            />
+          )}
+
+          {/* Retained for rollback only; the active Overview is the compact, globally-filtered dashboard above. */}
+          {SHOW_LEGACY_OVERVIEW && activeTab === "overview" && (
             <div className="flex-col-gap overview-layout">
               {/* KPIs */}
               <div className="grid-cols-4 overview-kpi-grid">
@@ -1244,11 +1458,6 @@ export default function App() {
                 loading={mapLoading}
                 error={mapError}
                 filters={mapFilters}
-                filterOptions={GRANT_MAP_FILTER_OPTIONS}
-                onFiltersChange={nextFilters => {
-                  setMapFilters(nextFilters);
-                  fetchMapData(undefined, undefined, nextFilters);
-                }}
                 onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
               />
 
@@ -1331,6 +1540,7 @@ export default function App() {
                               stroke="var(--nl-unicorn)"
                               fillOpacity={1}
                               fill="url(#colorGrantAwards)"
+                              isAnimationActive={false}
                             />
                           </AreaChart>
                         </ResponsiveContainer>
@@ -1379,7 +1589,7 @@ export default function App() {
                             labelFormatter={(label) => String(label)}
                             contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }}
                           />
-                          <Bar dataKey="allocated_amount" name="Allocated source amount" fill="var(--nl-unicorn)" radius={[0, 4, 4, 0]} />
+                          <Bar dataKey="allocated_amount" name="Allocated source amount" fill="var(--nl-unicorn)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -1408,6 +1618,59 @@ export default function App() {
 
           {/* TAB 2: DIRECTORY */}
           {activeTab === "directory" && (
+            <div className="directory-mode-toggle" role="tablist" aria-label="Organization directory view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={directoryMode === "profiles"}
+                className={directoryMode === "profiles" ? "active" : ""}
+                onClick={() => setDirectoryMode("profiles")}
+              >
+                Organization profiles
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={directoryMode === "registry"}
+                className={directoryMode === "registry" ? "active" : ""}
+                onClick={() => setDirectoryMode("registry")}
+              >
+                Full Charity Commission register
+              </button>
+            </div>
+          )}
+
+          {activeTab === "directory" && directoryMode === "registry" && (
+            <RegistryDirectory
+              key={directoryHandoff.version}
+              apiBase={API_BASE}
+              online={isBffOnline}
+              initialQuery={directoryHandoff.query}
+              initialBeneficiaryGeography={directoryHandoff.beneficiaryGeography}
+              onOpenEnrichedProfile={(id, name) => {
+                setSelectedCharity({
+                  registered_charity_number: id,
+                  suffix: 0,
+                  link: "",
+                  charity_name: name,
+                  reg_status: "UNKNOWN",
+                  reporting_status: "",
+                  removal_reason: null,
+                  latest_income: null,
+                  latest_expenditure: null,
+                  programme_areas_source: [],
+                  programme_areas_inferred: [],
+                  geographic_focus_source: [],
+                  geographic_focus_inferred: [],
+                  organization_type: "unknown",
+                  source_names: [],
+                  transaction_coverage: "unknown",
+                });
+              }}
+            />
+          )}
+
+          {activeTab === "directory" && directoryMode === "profiles" && (
             <div className="grid-cols-1-2" style={{ gridTemplateColumns: "280px 1fr" }}>
               {/* Sidebar Filters */}
               <div className="glass-card filter-group" style={{ height: "fit-content" }}>
@@ -1426,8 +1689,39 @@ export default function App() {
                       placeholder="Organization name..."
                       style={{ paddingLeft: "32px" }}
                       value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setSuggestionsOpen(true);
+                      }}
+                      onFocus={() => setSuggestionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
                     />
+                    {suggestionsOpen && searchTerm.trim().length >= 2 && (
+                      <div className="organization-suggestions" role="listbox" aria-label="Organization suggestions">
+                        {suggestionsLoading ? (
+                          <span className="organization-suggestions-status">Looking for organizations…</span>
+                        ) : organizationSuggestions.length > 0 ? (
+                          organizationSuggestions.map(suggestion => (
+                            <button
+                              key={`${suggestion.registered_charity_number}-${suggestion.source_record_id || ""}`}
+                              type="button"
+                              role="option"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                setSearchTerm(suggestion.charity_name);
+                                setSuggestionsOpen(false);
+                                setSelectedCharity(suggestion);
+                              }}
+                            >
+                              <strong>{suggestion.charity_name}</strong>
+                              <span>{suggestion.primary_source || "Organization profile"}{suggestion.headquarters_country ? ` · ${suggestion.headquarters_country}` : ""}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <span className="organization-suggestions-status">No matching organization profiles.</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1512,8 +1806,9 @@ export default function App() {
                   }}>
                     {Array.from(new Set([
                       ...BENEFICIARY_GEOGRAPHIES,
+                      ...beneficiaryLocationOptions,
                       ...selectedRecipientRegions,
-                    ])).map((reg) => (
+                    ])).sort((left, right) => left.localeCompare(right)).map((reg) => (
                       <label key={reg} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-secondary)" }}>
                         <input
                           type="checkbox"
@@ -1645,6 +1940,16 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                )}
+                {!loading && profilesHaveMore && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary directory-load-more"
+                    onClick={() => fetchCharities(undefined, true)}
+                    disabled={loadingMoreProfiles}
+                  >
+                    {loadingMoreProfiles ? "Loading organization profiles…" : "Load 50 more organization profiles"}
+                  </button>
                 )}
               </div>
             </div>
@@ -2034,7 +2339,7 @@ export default function App() {
             <div>
               <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Relationships</h3>
               <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
-                Derived from stored 360Giving donor → recipient transactions{(sankeyData?.currency) ? ` · ${sankeyData.currency}` : ""}
+                Derived from stored 360Giving donor → recipient transactions{(sankeyData?.currency) ? ` · ${sankeyData.currency}${sankeyData.currency === "EUR" ? " (ECB converted)" : " original"}` : ""}
                 {(sankeyData?.excludedCount || 0) > 0 ? ` · ${sankeyData?.excludedCount} records excluded` : ""}
               </div>
               {sankeyData && sankeyData.nodes.length > 0 ? (
@@ -2074,15 +2379,13 @@ export default function App() {
                         );
                       }}
                     >
-                      <Tooltip contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value), sankeyData?.currency || "EUR")} contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
                     </Sankey>
                   </ResponsiveContainer>
                 </div>
               ) : (
                 <div className="data-notice data-notice-warning" style={{ padding: "20px", textAlign: "center" }}>
-                  {sankeyData?.status === "mixed_currency_requires_filter"
-                    ? "Grant flows span multiple currencies; no amounts are combined without a currency filter."
-                    : sankeyData?.status === "organization_level_only"
+                  {sankeyData?.status === "organization_level_only"
                       ? "This source provides organization-level intelligence only; transaction-level grant coverage is unavailable."
                     : sankeyData?.status === "request_failed"
                       ? "Grant-flow data could not be loaded."
@@ -2117,13 +2420,7 @@ export default function App() {
                 <div style={{ width: "100%", height: "200px", padding: "10px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={[...selectedCharityDetail.financial_history].sort((a: any, b: any) =>
-                        new Date(a.financial_period_end_date || "").getTime() - new Date(b.financial_period_end_date || "").getTime()
-                      ).map((h: any) => ({
-                        year: h.financial_period_end_date ? new Date(h.financial_period_end_date).getFullYear().toString() : "N/A",
-                        Income: h.income || 0,
-                        Expenditure: h.expenditure || 0
-                      }))}
+                      data={financialHistoryData}
                       margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
                     >
                       <defs>
@@ -2139,8 +2436,8 @@ export default function App() {
                       <XAxis dataKey="year" fontSize={11} tickLine={false} />
                       <YAxis fontSize={11} tickLine={false} tickFormatter={(v) => formatCurrency(v).replace("€", "")} />
                       <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                      <Area type="monotone" dataKey="Income" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorInc)" strokeWidth={2} />
-                      <Area type="monotone" dataKey="Expenditure" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExp)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="Income" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorInc)" strokeWidth={2} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="Expenditure" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExp)" strokeWidth={2} isAnimationActive={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -2213,14 +2510,14 @@ export default function App() {
             {/* Individual Grants Transaction Table */}
             <div>
               <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Transactions</h3>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>Cached 360Giving records · source amounts are not converted</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>Cached 360Giving records · EUR values use the historical ECB award-date reference rate; original source amounts are retained.</div>
               <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto" }}>
                 <table className="custom-table">
                   <thead>
                     <tr>
                       <th>Grant ID</th>
                       <th>Funder / Recipient Name</th>
-                      <th>Source amount</th>
+                      <th>Awarded amount</th>
                       <th>Description</th>
                       <th>Date</th>
                     </tr>
@@ -2230,7 +2527,12 @@ export default function App() {
                       <tr key={idx}>
                         <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{gr.grant_id}</td>
                         <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : (gr.funding_name || "Unknown funder")}</td>
-                        <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }}>{formatCurrency(gr.amount, gr.currency)}</td>
+                        <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }} title={gr.exchange_rate_date ? `ECB reference rate date: ${gr.exchange_rate_date}` : undefined}>
+                          {gr.amount_eur !== null && gr.amount_eur !== undefined ? <>
+                            {formatCurrency(gr.amount_eur, "EUR")}
+                            {gr.currency !== "EUR" && <small style={{ display: "block", fontWeight: "500", color: "var(--text-muted)", marginTop: "2px" }}>({formatCurrency(gr.amount, gr.currency)})</small>}
+                          </> : formatCurrency(gr.amount, gr.currency)}
+                        </td>
                         <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{gr.description}</td>
                         <td style={{ whiteSpace: "nowrap" }}>{gr.date}</td>
                       </tr>

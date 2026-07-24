@@ -1,5 +1,6 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from bff.auth import get_current_user_token
 from bff.schemas import (
     CharityBase,
@@ -10,6 +11,8 @@ from bff.schemas import (
     GrantNetworkSummary,
     GrantThemesResponse,
     GrantTrendsResponse,
+    RegistryDirectoryPage,
+    RegistryOrganizationDetail,
     SankeyData,
     ScoreRequest,
     ScoreResponse,
@@ -32,6 +35,7 @@ async def list_charities(
     tags: Optional[str] = None,
     foundation_regions: Optional[str] = None,
     funding_regions: Optional[str] = None,
+    sources: Optional[str] = Query(default=None, max_length=500),
     min_annual_giving: Optional[float] = None,
     min_avg_grant_size: Optional[float] = None,
     skip: int = 0,
@@ -47,6 +51,7 @@ async def list_charities(
     tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
     foundation_regions_list = [r.strip() for r in foundation_regions.split(",") if r.strip()] if foundation_regions else None
     funding_regions_list = [r.strip() for r in funding_regions.split(",") if r.strip()] if funding_regions else None
+    sources_list = [source.strip() for source in sources.split(",") if source.strip()] if sources is not None else None
 
     return await repo.get_all(
         search=search, 
@@ -57,11 +62,86 @@ async def list_charities(
         tags=tags_list,
         foundation_regions=foundation_regions_list,
         funding_regions=funding_regions_list,
+        sources=sources_list,
         min_annual_giving=min_annual_giving,
         min_avg_grant_size=min_avg_grant_size,
         skip=skip, 
         limit=limit
     )
+
+
+@router.get("/grants/beneficiary-geographies", response_model=List[str])
+async def list_beneficiary_geographies(
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return every beneficiary country currently represented in observed grants.
+
+    This keeps the Directory's beneficiary filter aligned with the actual map
+    taxonomy instead of maintaining a short, stale front-end list.
+    """
+    return await repo.get_beneficiary_geography_options(sources=["360Giving"])
+
+
+@router.get("/directory/organizations", response_model=RegistryDirectoryPage)
+async def list_registry_organizations(
+    query: Optional[str] = Query(default=None, max_length=160),
+    charity_number: Optional[str] = Query(default=None, max_length=64),
+    status: Optional[str] = Query(default=None, max_length=80),
+    income_min: Optional[float] = Query(default=None, ge=0),
+    income_max: Optional[float] = Query(default=None, ge=0),
+    expenditure_min: Optional[float] = Query(default=None, ge=0),
+    expenditure_max: Optional[float] = Query(default=None, ge=0),
+    country: Optional[str] = Query(default=None, max_length=8),
+    region: Optional[str] = Query(default=None, max_length=120),
+    beneficiary_geography: Optional[str] = Query(default=None, max_length=120),
+    has_enriched_profile: Optional[bool] = None,
+    has_grant_data: Optional[bool] = None,
+    cursor: Optional[str] = Query(default=None, max_length=500),
+    limit: int = Query(default=50, ge=1, le=100),
+    sort: str = Query(default="name", pattern="^(name|income_desc|expenditure_desc)$"),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return a bounded, cursor-paginated official registry directory page.
+
+    The response is intentionally summary-only. Registry presence never implies
+    observed funding data, and no grant histories are serialized here.
+    """
+    if income_min is not None and income_max is not None and income_min > income_max:
+        raise HTTPException(status_code=400, detail="income_min cannot exceed income_max")
+    if expenditure_min is not None and expenditure_max is not None and expenditure_min > expenditure_max:
+        raise HTTPException(status_code=400, detail="expenditure_min cannot exceed expenditure_max")
+    try:
+        return await repo.get_registry_page(
+            query=query,
+            charity_number=charity_number,
+            status=status,
+            income_min=income_min,
+            income_max=income_max,
+            expenditure_min=expenditure_min,
+            expenditure_max=expenditure_max,
+            country=country,
+            region=region,
+            beneficiary_geography=beneficiary_geography,
+            has_enriched_profile=has_enriched_profile,
+            has_grant_data=has_grant_data,
+            cursor=cursor,
+            limit=limit,
+            sort=sort,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/directory/organizations/{registry_id}", response_model=RegistryOrganizationDetail)
+async def get_registry_organization_detail(
+    registry_id: str,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Load one registry record lazily, plus only an accepted enriched link."""
+    organization = await repo.get_registry_detail(registry_id)
+    if not organization:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registry organization not found.")
+    return organization
 
 @router.get("/stats", response_model=CharityStats)
 async def get_charity_stats(repo: CharityRepository = Depends(get_charity_repository)):
@@ -110,6 +190,54 @@ async def get_grants_map(
         min_annual_giving=min_annual_giving,
         min_avg_grant_size=min_avg_grant_size,
     )
+
+
+@router.get("/grants/overview", response_model=Dict[str, Any])
+async def get_filtered_grant_overview(
+    currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
+    date_from: Optional[str] = Query(default=None, max_length=10),
+    date_to: Optional[str] = Query(default=None, max_length=10),
+    beneficiary_geographies: Optional[str] = Query(default=None, max_length=500),
+    programme_areas: Optional[str] = Query(default=None, max_length=1000),
+    donor: Optional[str] = Query(default=None, max_length=160),
+    recipient: Optional[str] = Query(default=None, max_length=160),
+    sources: Optional[str] = Query(default=None, max_length=500),
+    granularity: str = Query(default="auto", pattern="^(auto|monthly|yearly)$"),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return map, KPIs, trend and programme allocation from one grant scope.
+
+    This is deliberately separate from organization-directory filters. Every
+    field describes a stored 360Giving grant, and all aggregation happens in the
+    BFF rather than by sending transaction rows to the browser.
+    """
+    def parse_iso(value: Optional[str], field: str) -> Optional[str]:
+        if value is None or not value.strip():
+            return None
+        try:
+            return date.fromisoformat(value).isoformat()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"{field} must be an ISO date (YYYY-MM-DD)") from exc
+
+    parsed_from = parse_iso(date_from, "date_from")
+    parsed_to = parse_iso(date_to, "date_to")
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
+    split_values = lambda value: [item.strip() for item in (value or "").split(",") if item.strip()]
+    try:
+        return await repo.get_grant_overview(
+            currency=currency,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            beneficiary_geographies=split_values(beneficiary_geographies),
+            programme_areas=split_values(programme_areas),
+            donor=donor,
+            recipient=recipient,
+            sources=split_values(sources) if sources is not None else None,
+            granularity=granularity,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/grants/summary", response_model=GrantNetworkSummary)

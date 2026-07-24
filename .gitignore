@@ -172,5 +172,7 @@ detail_response.txt
 # Local data directory ignores
 src/data/*.db
 src/data/preprocessed/
+src/data/processed/
+src/data/raw/charity_commission_bulk/
 src/data/pipeline_status.json
 src/data/pipeline_run.log

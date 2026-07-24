@@ -9,7 +9,7 @@ The platform deliberately separates source facts, normalized source values, dete
 | Capability | Status | Current evidence / limitation |
 |---|---|---|
 | Cached UK organization ingestion | Complete | 65 normalized UK-side organizations in the current rebuilt database |
-| Cached 360Giving grant ingestion | Complete | 3,096 GBP transactions with source provenance |
+| Cached 360Giving grant ingestion | Complete | 34,478 observed transactions with source provenance; original currency is retained per grant |
 | Cached Philea organization ingestion | Complete | 299 records; organization-level only, with no grants assigned |
 | DACH foundation intelligence | Partial | Philea and deterministic geography normalization provide some European/DACH discoverability; this is not a complete DACH registry or grant dataset |
 | Organization directory and detail | Complete | SQLite-backed API and UI, with source/type/coverage labels |
@@ -21,7 +21,7 @@ The platform deliberately separates source facts, normalized source values, dete
 | Relevance score | Experimental | Explainable example configuration; not client-approved and not a prediction |
 | News summary | Partial | Live Google News/Claude path requires credentials and network access |
 | Offline dashboard fallback | Mocked | Clearly labelled local prototype values; grant/map/score data are not fabricated offline |
-| Monthly grant awards and programme allocation | Complete | Currency-isolated aggregations from cached 360Giving grants with exclusions and coverage metadata |
+| Monthly grant awards and programme allocation | Complete | Auto mode aggregates historical ECB-converted EUR values; a concrete currency selector remains source-currency-only |
 | Complete DACH grant transactions | Missing | No source currently supplies this coverage |
 | Enrichment predictive accuracy | Not verified | Coverage is reported; labelled validation data do not exist |
 | Client-approved score definition | Blocked | No approved target, weights, or decision policy was found in the repository |
@@ -54,7 +54,8 @@ The major components are:
 - `src/preprocessing/consolidate.py`: maps Charity Commission and 360Giving records into common organization and grant records.
 - `src/preprocessing/enrichment.py`: the one active, versioned source of programme and geography taxonomy/rules. It keeps source values and inferred values separate.
 - `src/preprocessing/philea_adapter.py`: normalizes all cached Philea records, assigns stable negative local IDs, maps organization types, records provenance, and performs conservative cross-source deduplication.
-- `src/data/db_loader.py`: owns schema version 4, validates tables/version, loads JSONL strictly into a staging database, and publishes it atomically only after validation.
+- `src/data/db_loader.py`: owns schema version 6, validates tables/version, loads JSONL strictly into a staging database, and publishes it atomically only after validation.
+- `src/pipelines/backfill_ecb_exchange_rates.py`: fetches/caches official ECB daily EXR rates and atomically backfills reproducible EUR values without altering source amounts.
 - `src/pipelines/run_pipeline.py`: orchestrates collection, consolidation, enrichment, reports, and database publication.
 - `src/bff/`: FastAPI entry point, demo cookie authentication, repositories, organization/grant endpoints, pipeline controls, proxy, and optional news summary.
 - `src/scoring/engine.py` plus `config/scoring.example.json`: deterministic, configurable, explainable target-profile relevance scoring.
@@ -63,13 +64,13 @@ The major components are:
 
 ## Data sources and provenance
 
-The checked-in source caches currently contain 62 Charity Commission records, 57 360Giving publisher/organization records containing 3,096 grants, and 299 Philea member records. Consolidation creates 65 UK-side organization rows alongside the Philea records.
+The checked-in source caches currently contain 62 Charity Commission records, a baseline 360Giving cache, an observed 360Giving publisher-pilot import, and 299 Philea member records. Consolidation creates 65 UK-side organization rows alongside the Philea records.
 
 The current regenerated database contains:
 
 - 364 organizations: 65 primarily from the Charity Commission/360Giving and 299 from Philea.
-- 3,096 grants, all explicitly stored as GBP and sourced from 360Giving.
-- GBP 961,181,726.30 in stored grant values. `amount_eur` is empty because there is no approved exchange-rate/date policy; currencies are not silently converted or combined.
+- 34,478 observed 360Giving grants in GBP, USD, EUR, ILS, and CHF. Original amount and currency remain source facts.
+- Auto EUR display uses the official daily ECB EXR reference rate for the award date; weekends and ECB holidays use the previous published business-day rate. Each converted grant stores the conversion status, rate, rate date, and source. 34 pre-1999 GBP grants remain explicitly unconverted because no ECB EUR reference rate exists for their award dates.
 - 299 Philea organizations marked `organization_level_only`; no grant is attached to a synthetic Philea ID.
 
 Raw source records remain traceable through source name, source record ID, source URL where supplied, ingestion timestamp, and retained raw payload fields. Organization records also retain source-record arrays and deduplication status/candidates. Derived data is stored separately:
@@ -82,6 +83,21 @@ Raw source records remain traceable through source name, source record ID, sourc
 - `beneficiary_geography_normalized`: grant-recipient/project geography used by the map.
 
 `src/data/charities.db`, generated JSONL, and generated coverage reports are ignored build artifacts. The checked-in raw caches are the reproducible presentation inputs.
+
+### Scalable two-layer organization directory
+
+The platform intentionally separates two kinds of organization data:
+
+1. **Registry layer** — all available Charity Commission registration records, stored in `charity_registry_organizations`. These are lightweight official register rows: registration identity and status, reported income/expenditure, registered-office fields, activity text, source date, and import freshness.
+2. **Enriched layer** — the existing `charities` table. These smaller profiles can contain Philea metadata, deterministic classifications, observed 360Giving relationships, scores, and platform-derived fields.
+
+`organization_registry_links` records the relationship between the layers. The current automated importer creates only `accepted` `exact_identifier` links where a Charity Commission number equals the enriched profile ID. It deliberately does not auto-accept name-only fuzzy matches. Registry rows with no accepted link remain registry-only and display “No observed grant data” rather than “No funding”.
+
+The registry table has a stable `cc:{organisation_number}` key, retains the original Charity Commission number as a searchable field, and has no grants, scores, or large raw JSON payload. SQLite indexes cover charity number, normalized name, status, income, expenditure, country/region, postcode, and link lookups. When FTS5 is available, `charity_registry_fts` provides Unicode-aware name search; the fallback is an indexed normalized-name prefix search, never an unbounded `%query%` scan.
+
+The register directory is intentionally paginated. `GET /api/charities/directory/organizations` returns at most 100 rows (50 by default), a deterministic cursor based on the active sort plus `registry_id`, and no grant history. The browser uses a 300 ms debounced server-side query and only requests details after a user opens a result.
+
+Registry addresses mean registered office only. They are never beneficiary geography, project geography, a grant recipient assertion, or a grant-funder assertion. The `Global Grant Distribution` map remains derived solely from stored 360Giving grants and explicit grant beneficiary geography. A future registered-office map, if needed, must be a separately labelled UK-focused aggregated visualization rather than a funding map.
 
 ### Organization types
 
@@ -108,9 +124,9 @@ Geographic concepts are intentionally distinct:
 - Geographic focus: where an organization says it works or funds; source and inferred values remain separate.
 - Beneficiary/project geography: a transaction's destination; used by recipient-region filters and the map.
 
-The `Global Grant Distribution` map resolves beneficiary-country geography for 1,946 of the 3,096 currently ingested grants (62.86%), above the default 30% display threshold. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 1,150 records are reported as unmapped rather than assigned a fabricated country.
+The `Global Grant Distribution` map resolves beneficiary-country geography for 13,123 of the 34,478 currently ingested grants (38.06%), above the default 30% display threshold. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 21,355 records are reported as unmapped rather than assigned a fabricated country.
 
-The map's three-dot control opens a non-layout-shifting, scrollable settings overlay. It mirrors the Organization Directory's organization search, thematic sector, foundation location, beneficiary geography, minimum annual giving, and minimum average grant filters. Filters scope the source grant rows before country aggregation, and the coverage counters explicitly change from ingested to filtered grants. The overlay can be closed with its close button, Apply, Escape, or an outside click.
+The Overview `Filters` button opens a non-layout-shifting, scrollable global grant-filter drawer for award date, currency, beneficiary geography, programme area, donor, recipient, and time aggregation. `Auto · EUR converted` includes every eligible source currency using stored historical ECB rates; selecting `GBP`, `USD`, `EUR`, `CHF`, or `ILS` instead shows only grants originally recorded in that currency. One applied grant scope drives the Overview KPIs, map, trends, and programme allocation; coverage counters explicitly change from ingested to filtered grants. The map header retains only display controls and the illustrative-connections toggle. Organization-directory search, income/expenditure, and headquarters filters remain independent because they describe organization records rather than the filtered grant population.
 
 Selecting a country exposes a direct handoff to the Organization Directory. The handoff preserves the active organization filters and applies the selected country as beneficiary geography. Directory geography matching uses the same canonical resolver as the map, including explicit raw ISO-code/name fallback and UK constituent-country roll-up. A country can still have no Directory result when every observed 360Giving funder for that country is source-only and lacks a matched organization profile; the UI explains that state rather than displaying a blank grid.
 
@@ -122,11 +138,13 @@ Grant-count mode counts a grant once in each explicitly associated country; the 
 
 ## Grant overview aggregations
 
-The Overview charts use cached 360Giving grant rows only. `Monthly Grant Awards` groups `grants.amount` by the calendar month of `grants.date`, explicitly interpreted as the award date. The default 24-month period is anchored to the latest available award month rather than the current month. Months without an observed source record are returned as unknown coverage with null values, not as confirmed zero activity.
+The responsive Overview uses one authenticated `GET /api/charities/grants/overview` aggregation for its grant KPIs, beneficiary map, time series, and programme allocation. It accepts `currency`, `date_from`, `date_to`, `beneficiary_geographies`, `programme_areas`, `donor`, `recipient`, and `granularity` (`auto`, `monthly`, or `yearly`). The UI keeps these filters in the URL so a filtered view survives refresh and can be shared. Organization-directory income and expenditure are intentionally excluded: grant filters do not silently change organization-level metrics.
+
+`Grant Awards Over Time` groups `grants.amount` by the calendar month or year of `grants.date`, explicitly interpreted as the award date. Auto uses monthly aggregation for a selected period of up to 24 months and yearly aggregation for longer periods. Empty periods are returned as unknown coverage with null values, not as confirmed zero activity. The date presets are calculated from the actual cached-source range, so the chart does not extend into arbitrary future months.
 
 `Grant Allocation by Programme Area` first normalizes `programme_area_source`; only a valid taxonomy match takes precedence. Otherwise it accepts `programme_area_inferred` categories whose stored score meets the existing 0.55 enrichment review threshold. Everything else remains visible as `Unclassified`. A multi-category grant is split in minor currency units across its categories, with deterministic remainder assignment, so allocated amounts reconcile exactly to qualifying source amounts. Negative source values are treated as possible corrections/reversals, excluded from these presentation sums, and reported in exclusion metadata. Numeric zero values remain included. No implicit currency conversion or upper-value rejection is applied.
 
-The current GBP cache yields 66.82% accepted programme classification coverage (2,068 of 3,095 qualifying non-negative grants); 1,027 remain Unclassified. Philea organization records are not included because the cache contains no Philea grant-level transactions.
+The programme chart defaults to the largest substantive categories, groups the remainder as `Other`, and keeps `Unclassified` visible in a neutral treatment unless the user explicitly selects classified-only mode. Philea organization records are not included because the cache contains no Philea grant-level transactions.
 
 ## Explainable relevance score
 
@@ -169,6 +187,102 @@ PYTHONPATH=src ./venv/bin/python src/pipelines/run_pipeline.py \
 
 This writes ignored JSONL/reports under `src/data/preprocessed/` and atomically replaces `src/data/charities.db` only after schema and minimum-data validation. A failed staging load leaves the active database untouched. `full_run`, `refresh_charities`, and `refresh_grants` invoke external sources and should be used only intentionally, with conservative limits.
 
+### Curate an EU/EEA/Switzerland tech-enablement grant profile
+
+The existing 360Giving cache can be screened without changing the active database.
+The curation step uses only an explicit `beneficiaryLocation` country, excludes the
+UK, accepts EU-27 plus Iceland, Liechtenstein, Norway, and Switzerland, and applies
+the existing deterministic `tech-enablement` rule at confidence 0.8 or greater. It
+prioritises DACH (Germany, Austria, Switzerland) up to a best-effort 60% share, but
+does not infer a country or pad the requested target when evidence is missing.
+
+```bash
+PYTHONPATH=src ./venv/bin/python -m pipelines.curate_europe_tech_grants \
+  --input src/data/raw/threesixtygiving_results.json \
+  --target 10000
+```
+
+The generated `src/data/processed/eu_tech_dach_grants.jsonl` retains each source
+grant together with the country and programme-selection evidence. Its matching
+`eu_tech_dach_report.json` records coverage, the achieved DACH share, and any target
+shortfall. These generated artifacts are ignored by Git and the command does not
+replace `src/data/charities.db`.
+
+### Append a bounded 360Giving publisher sample to the map
+
+The random-publisher pilot and its importer are separate from the normal source
+cache. The importer is append-only and runs against a cloned staging database:
+grants already present by `grant_id` are preserved, while new observed 360Giving
+grants are added atomically. A publisher-record limit freezes a reproducible
+prefix of the resumable pilot file.
+
+```bash
+PYTHONPATH=src ./venv/bin/python -m pipelines.import_observed_360giving_grants \
+  --input src/data/processed/360giving_registry_publisher_pilot.json \
+  --publisher-record-limit 60 \
+  --database src/data/charities.db \
+  --report src/data/processed/360giving_registry_publisher_pilot_import.json
+```
+
+When multiple source currencies are present, the default `Auto · EUR converted`
+mode displays all eligible grants with historical ECB-derived EUR totals. Selecting
+a concrete currency remains a strict original-currency filter, so no raw source
+amounts are mixed.
+
+### Backfill historic ECB EUR values
+
+After adding grants from a new source import, refresh the local ECB cache and run
+the atomic backfill before treating them as part of Auto EUR totals:
+
+```bash
+PYTHONPATH=src ./venv/bin/python -m pipelines.backfill_ecb_exchange_rates \
+  --database src/data/charities.db \
+  --report src/data/processed/ecb_exchange_rate_backfill_report.json
+```
+
+The pipeline downloads the daily official ECB EXR series once per source
+currency/date range, stores the used rate rows in `exchange_rates`, and only then
+publishes a cloned database. It preserves `amount` and `currency`; `amount_eur`
+is a derived field accompanied by rate date, series, and conversion status.
+
+### Import the full Charity Commission directory
+
+The local bulk extract can be imported without loading its full JSON array into memory. The command applies the additive registry migration, streams the official `publicextract.charity.json` source in batches, upserts by stable organisation number, refreshes only accepted exact-ID links, and records source freshness. Existing enriched profiles and grants are not replaced.
+
+To apply or reconcile just the additive schema on an already initialized application database:
+
+```bash
+PYTHONPATH=src ./venv/bin/python -m data.registry \
+  --db src/data/charities.db --migrate-only
+```
+
+```bash
+PYTHONPATH=src ./venv/bin/python -m data.registry \
+  --db src/data/charities.db \
+  --source src/data/raw/charity_commission_bulk/extracted/publicextract.charity.json \
+  --batch-size 1000
+```
+
+Re-running the command is idempotent: existing registry records are updated rather than duplicated. A record missing from a successfully completed later source import is retained for auditability and marked non-current rather than silently deleted. Recovery is safe: restore the prior SQLite file if needed, then rerun the importer. The normal enriched-data rebuild preserves the registry tables while replacing only the generated `charities` and `grants` layer.
+
+Useful directory requests:
+
+```text
+GET /api/charities/directory/organizations?query=alpha&limit=50
+GET /api/charities/directory/organizations?charity_number=200027
+GET /api/charities/directory/organizations?status=Registered&income_min=100000&sort=income_desc
+GET /api/charities/directory/organizations/{registry_id}
+```
+
+For a local performance and query-plan report after import:
+
+```bash
+PYTHONPATH=src ./venv/bin/python -m data.benchmark_registry \
+  --db src/data/charities.db --query foundation --charity-number 200027
+```
+
+SQLite is intentional for the current read-heavy internal/demo deployment. PostgreSQL becomes appropriate for sustained public multi-user use, frequent concurrent writes, more advanced spatial querying, or operational controls that exceed SQLite’s single-writer model; approximately 400,000 read-mostly directory rows alone do not require a database migration.
+
 ### Start each runtime component
 
 Terminal 1 — rebuild first if needed, then start the BFF:
@@ -205,6 +319,8 @@ All `/api/*` routes require the session cookie returned by `POST /api/auth/login
 | `POST /api/auth/login` | Validate demo credentials and issue an HTTP-only cookie |
 | `POST /api/auth/logout` | Clear the session |
 | `GET /api/charities` | Search/filter/paginate organizations |
+| `GET /api/charities/directory/organizations` | Cursor-paginated lightweight Charity Commission registry directory; `query`, `charity_number`, status, financial, registry geography, accepted-link beneficiary geography, enriched/grant flags, `cursor`, `limit`, and `sort` are supported |
+| `GET /api/charities/directory/organizations/{registry_id}` | Lazy official registry detail plus an accepted enriched-profile link, where present |
 | `GET /api/charities/stats` | Dataset KPIs, source counts, and organization-type counts |
 | `GET /api/charities/{id}` | Organization detail, provenance, and enrichment evidence |
 | `GET /api/charities/{id}/grants?role=all|funder|recipient` | Observed transactions and coverage status |
@@ -212,7 +328,7 @@ All `/api/*` routes require the session cookie returned by `POST /api/auth/login
 | `GET /api/charities/grants/map?currency=GBP` | Filterable beneficiary-country associations, currency-safe funding totals, disclosed HQ-to-beneficiary connection groups, country explorer rankings, and coverage/exclusion metadata |
 | `GET /api/charities/grants/trends?currency=GBP&months=24` | Award-date monthly grant totals with unknown-coverage months and exclusions |
 | `GET /api/charities/grants/themes?currency=GBP` | Minor-unit-preserving programme allocations and classification coverage |
-| `GET /api/charities/{id}/sankey` | Currency-safe observed donor-to-recipient flow |
+| `GET /api/charities/{id}/sankey` | Auto EUR-converted observed donor-to-recipient flow; a concrete currency parameter retains source-currency-only behaviour |
 | `POST /api/charities/{id}/score` | Experimental target-profile relevance score and explanation |
 | `GET /api/news/{name}/summary` | Optional sourced news summary |
 | `GET /api/admin/pipeline/status` | Pipeline state |
@@ -247,8 +363,8 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 
 ## Presentation flow
 
-1. Start on Overview and show the full-width Global Grant Distribution map. Switch between grant-country associations and GBP funding, select a country to open its slim explorer, then show Monthly Grant Awards and Grant Allocation by Programme Area in the balanced row below it.
-2. Open Directory and demonstrate search, programme, headquarters, funding-region, annual-giving, and average-grant filters.
+1. Start on Overview and show the full-width Global Grant Distribution map. Switch between grant-country associations and GBP funding, select a country to open its slim explorer, then show Grant Awards Over Time and Grant Allocation by Programme Area in the balanced row below it.
+2. Open Organization Directory and demonstrate server-side Charity Commission name/number search, registration and financial filters, the Enriched profile / Observed grant data flags, and cursor-based “Load more”.
 3. Open Charity Projects (`326568`, whose source grant records use the funder name Comic Relief) to show Charity Commission identity/provenance, source versus inferred classifications, evidence/review state, observed 360Giving grants, and the donor-to-recipient Sankey.
 4. Show the map's 62.86% known-country disclosure and 39 multi-country exclusions; explain why headquarters is not substituted for missing transaction geography and why multi-country amounts are not divided or duplicated.
 5. Open Women Win (`-24788`) to show Philea organization type/source and the explicit `organization_level_only` transaction status.

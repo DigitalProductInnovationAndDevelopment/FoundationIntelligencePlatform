@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("db_loader")
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "7"
 REQUIRED_SCHEMA = {
     "charities": {
         "charity_id", "name", "type", "website", "email", "address", "city",
@@ -29,7 +29,8 @@ REQUIRED_SCHEMA = {
     "grants": {
         "grant_id", "funding_charity_id", "funding_name", "funding_org_source_id",
         "recipient_name", "recipient_charity_id", "recipient_org_source_id", "amount",
-        "amount_eur", "currency", "description", "date", "recipient_latitude",
+        "amount_eur", "exchange_rate", "exchange_rate_date", "exchange_rate_source",
+        "conversion_status", "currency", "description", "date", "recipient_latitude",
         "recipient_longitude", "recipient_region", "beneficiary_geography",
         "project_geography", "programme_area_source", "tags", "geographic_focus",
         "source", "source_record_id", "source_url", "ingestion_timestamp", "raw_grant_data",
@@ -40,6 +41,14 @@ REQUIRED_SCHEMA = {
         "geography_review_required", "enrichment_rule_version", "enrichment_review_reasons",
         "insufficient_source_text"
     },
+    "exchange_rates": {
+        "currency", "rate_date", "eur_reference_rate", "source_series", "source_url",
+        "retrieved_at"
+    },
+    "grant_beneficiary_terms": {"grant_id", "term"},
+    "grant_beneficiary_countries": {"grant_id", "country_code", "country_name"},
+    "grant_programme_categories": {"grant_id", "programme_area"},
+    "grant_overview_cache": {"cache_key", "data_revision", "payload", "created_at"},
 }
 
 def create_connection(db_file):
@@ -53,6 +62,53 @@ def create_connection(db_file):
     except Exception as e:
         logger.error(f"Error connecting to database: {e}")
         raise e
+
+
+def migrate_grant_overview_schema(conn):
+    """Apply additive indexes and cache tables used by the grant Overview.
+
+    These tables are derived from immutable grant facts. They let filtered
+    requests resolve countries and programme areas with indexed SQL instead of
+    reparsing every transaction JSON payload on each page load.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_beneficiary_terms (
+            grant_id TEXT NOT NULL,
+            term TEXT NOT NULL,
+            PRIMARY KEY (grant_id, term),
+            FOREIGN KEY (grant_id) REFERENCES grants(grant_id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_beneficiary_countries (
+            grant_id TEXT NOT NULL,
+            country_code TEXT NOT NULL,
+            country_name TEXT NOT NULL,
+            PRIMARY KEY (grant_id, country_code),
+            FOREIGN KEY (grant_id) REFERENCES grants(grant_id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_programme_categories (
+            grant_id TEXT NOT NULL,
+            programme_area TEXT NOT NULL,
+            PRIMARY KEY (grant_id, programme_area),
+            FOREIGN KEY (grant_id) REFERENCES grants(grant_id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_overview_cache (
+            cache_key TEXT PRIMARY KEY,
+            data_revision TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_terms_term ON grant_beneficiary_terms(term, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_countries_name ON grant_beneficiary_countries(country_name, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area ON grant_programme_categories(programme_area, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_source_date ON grants(source, date)")
 
 def create_tables(conn, reset=False):
     """Create the full schema; optionally reset existing application tables."""
@@ -117,6 +173,10 @@ def create_tables(conn, reset=False):
         recipient_org_source_id TEXT,
         amount REAL,
         amount_eur REAL,
+        exchange_rate REAL,
+        exchange_rate_date TEXT,
+        exchange_rate_source TEXT,
+        conversion_status TEXT,
         currency TEXT,
         description TEXT,
         date TEXT,
@@ -158,12 +218,44 @@ def create_tables(conn, reset=False):
         if reset:
             logger.info("Dropping existing tables for a clean reload...")
             cursor.execute("DROP TABLE IF EXISTS grants;")
+            cursor.execute("DROP TABLE IF EXISTS exchange_rates;")
             cursor.execute("DROP TABLE IF EXISTS charities;")
+            # A full reset is intentionally different from the normal atomic
+            # enriched-layer rebuild: remove the independent registry tables as
+            # well so the result is genuinely clean.
+            cursor.execute("DROP TABLE IF EXISTS organization_registry_links;")
+            cursor.execute("DROP TABLE IF EXISTS charity_registry_fts;")
+            cursor.execute("DROP TABLE IF EXISTS charity_registry_organizations;")
             cursor.execute("DROP TABLE IF EXISTS metadata;")
         
         logger.info("Creating tables...")
         cursor.execute(charities_sql)
         cursor.execute(grants_sql)
+        # ``CREATE TABLE IF NOT EXISTS`` does not add fields to the active
+        # presentation database. Keep this migration local and additive so a
+        # conversion backfill can clone and publish atomically.
+        grant_columns = {
+            row[1] for row in cursor.execute("PRAGMA table_info(grants)")
+        }
+        for column, definition in {
+            "exchange_rate": "REAL",
+            "exchange_rate_date": "TEXT",
+            "exchange_rate_source": "TEXT",
+            "conversion_status": "TEXT",
+        }.items():
+            if column not in grant_columns:
+                cursor.execute(f"ALTER TABLE grants ADD COLUMN {column} {definition}")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exchange_rates (
+                currency TEXT NOT NULL,
+                rate_date TEXT NOT NULL,
+                eur_reference_rate REAL NOT NULL,
+                source_series TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                retrieved_at TEXT NOT NULL,
+                PRIMARY KEY (currency, rate_date)
+            );
+        """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS metadata (
                 key TEXT PRIMARY KEY,
@@ -174,12 +266,20 @@ def create_tables(conn, reset=False):
             "INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', ?)",
             (SCHEMA_VERSION,)
         )
+        migrate_grant_overview_schema(conn)
+
+        # The broad Charity Commission register is a separate lightweight layer.
+        # It intentionally does not reuse the enriched charities table or grants.
+        from data.registry import migrate_registry_schema
+        migrate_registry_schema(conn)
         
         # Create indexes to speed up name searches, filtering by tag/region, and joins
         logger.info("Creating database indexes...")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_charities_name ON charities (name);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_funding ON grants (funding_charity_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_recipient ON grants (recipient_charity_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_currency_date ON grants (currency, date);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_conversion_status ON grants (conversion_status);")
         
         conn.commit()
         logger.info("Tables and indexes successfully created.")
@@ -235,8 +335,26 @@ def create_staging_database(db_file, preserve_existing=False):
     os.close(fd)
 
     valid_existing, _ = validate_database(db_file)
+    # A database that predates an additive schema migration is still safe to
+    # clone if SQLite reports it healthy. ``create_tables`` applies the
+    # migration to the clone before it can ever be published.
+    migratable_existing = False
+    if preserve_existing and os.path.isfile(db_file) and not valid_existing:
+        source_conn = None
+        try:
+            source_uri = Path(db_file).resolve().as_uri() + "?mode=ro"
+            source_conn = sqlite3.connect(source_uri, uri=True)
+            quick_check = source_conn.execute("PRAGMA quick_check").fetchone()
+            tables = {
+                row[0]
+                for row in source_conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            migratable_existing = bool(quick_check and quick_check[0] == "ok" and {"charities", "grants"}.issubset(tables))
+        finally:
+            if source_conn is not None:
+                source_conn.close()
     try:
-        if preserve_existing and valid_existing:
+        if preserve_existing and (valid_existing or migratable_existing):
             source_uri = Path(db_file).resolve().as_uri() + "?mode=ro"
             source_conn = sqlite3.connect(source_uri, uri=True)
             staging_conn = sqlite3.connect(staging_path)
@@ -247,7 +365,7 @@ def create_staging_database(db_file, preserve_existing=False):
                 source_conn.close()
 
         conn = create_connection(staging_path)
-        create_tables(conn, reset=not (preserve_existing and valid_existing))
+        create_tables(conn, reset=not (preserve_existing and (valid_existing or migratable_existing)))
         return staging_path, conn
     except Exception:
         if os.path.exists(staging_path):
@@ -357,7 +475,8 @@ def insert_grants(conn, grants_list):
             INSERT OR REPLACE INTO grants (
                 grant_id, funding_charity_id, funding_name, funding_org_source_id,
                 recipient_name, recipient_charity_id, recipient_org_source_id,
-                amount, amount_eur, currency, description, date, recipient_latitude,
+                amount, amount_eur, exchange_rate, exchange_rate_date, exchange_rate_source,
+                conversion_status, currency, description, date, recipient_latitude,
                 recipient_longitude, recipient_region, beneficiary_geography,
                 project_geography, programme_area_source, tags, geographic_focus,
                 source, source_record_id, source_url, ingestion_timestamp, raw_grant_data,
@@ -367,7 +486,7 @@ def insert_grants(conn, grants_list):
                 geography_method, geography_confidence, geography_evidence,
                 geography_review_required, enrichment_rule_version, enrichment_review_reasons,
                 insufficient_source_text
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                 g["grant_id"],
@@ -379,6 +498,10 @@ def insert_grants(conn, grants_list):
                 g.get("recipient_org_source_id"),
                 g.get("amount"),
                 g.get("amount_eur"),
+                g.get("exchange_rate"),
+                g.get("exchange_rate_date"),
+                g.get("exchange_rate_source"),
+                g.get("conversion_status"),
                 g.get("currency"),
                 g.get("description"),
                 g.get("date"),
@@ -411,6 +534,10 @@ def insert_grants(conn, grants_list):
                 bool(g.get("insufficient_source_text")),
                 )
             )
+        # Derived country/programme indexes and cached Overview payloads are
+        # rebuilt from source facts after an import, never silently reused.
+        cursor.execute("DELETE FROM metadata WHERE key = 'grant_overview_index_revision'")
+        cursor.execute("DELETE FROM grant_overview_cache")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -597,12 +724,27 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
 
 
 def rebuild_database_atomically(db_file, preprocessed_dir, require_charities=True):
-    """Build and validate a replacement DB without risking the active database."""
+    """Build enriched data atomically while retaining the separate registry layer."""
     charities_jsonl = os.path.join(preprocessed_dir, "charities.jsonl")
     grants_jsonl = os.path.join(preprocessed_dir, "grants.jsonl")
-    staging_path, conn = create_staging_database(db_file, preserve_existing=False)
+    staging_path, conn = create_staging_database(db_file, preserve_existing=True)
     try:
+        # Registry rows are official source records with their own import cadence.
+        # Clear only the generated enriched layer before loading the new snapshot.
+        conn.execute("DELETE FROM grants")
+        conn.execute("DELETE FROM charities")
+        conn.commit()
         result = load_jsonl_to_db(conn, charities_jsonl, grants_jsonl, strict=True)
+        conn.execute(
+            """
+            DELETE FROM organization_registry_links
+            WHERE NOT EXISTS (
+                SELECT 1 FROM charities
+                WHERE charities.charity_id = organization_registry_links.enriched_organization_id
+            )
+            """
+        )
+        conn.commit()
         conn.close()
         conn = None
         if require_charities and result["charities_loaded"] == 0:
