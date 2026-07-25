@@ -9,7 +9,7 @@ The platform deliberately separates source facts, normalized source values, dete
 | Capability | Status | Current evidence / limitation |
 |---|---|---|
 | Cached UK organization ingestion | Complete | 65 normalized UK-side organizations in the current rebuilt database |
-| Cached 360Giving grant ingestion | Complete | 34,478 observed transactions with source provenance; original currency is retained per grant |
+| Cached 360Giving grant ingestion | Sampled | 200,000 observed 360Giving transactions with source provenance; the active database is a reproducible capped sample, not complete 360Giving coverage |
 | Cached Philea organization ingestion | Complete | 299 records; organization-level only, with no grants assigned |
 | DACH foundation intelligence | Partial | Philea and deterministic geography normalization provide some European/DACH discoverability; this is not a complete DACH registry or grant dataset |
 | Organization directory and detail | Complete | SQLite-backed API and UI, with source/type/coverage labels |
@@ -69,7 +69,7 @@ The checked-in source caches currently contain 62 Charity Commission records, a 
 The current regenerated database contains:
 
 - 364 organizations: 65 primarily from the Charity Commission/360Giving and 299 from Philea.
-- 34,478 observed 360Giving grants in GBP, USD, EUR, ILS, and CHF. Original amount and currency remain source facts.
+- 200,000 observed 360Giving grants in GBP, USD, EUR, ILS, and CHF. Original amount and currency remain source facts; this is the current reproducible ingestion cap, not the complete 360Giving dataset.
 - Auto EUR display uses the official daily ECB EXR reference rate for the award date; weekends and ECB holidays use the previous published business-day rate. Each converted grant stores the conversion status, rate, rate date, and source. 34 pre-1999 GBP grants remain explicitly unconverted because no ECB EUR reference rate exists for their award dates.
 - 299 Philea organizations marked `organization_level_only`; no grant is attached to a synthetic Philea ID.
 
@@ -124,17 +124,29 @@ Geographic concepts are intentionally distinct:
 - Geographic focus: where an organization says it works or funds; source and inferred values remain separate.
 - Beneficiary/project geography: a transaction's destination; used by recipient-region filters and the map.
 
-The `Global Grant Distribution` map resolves beneficiary-country geography for 13,123 of the 34,478 currently ingested grants (38.06%), above the default 30% display threshold. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 21,355 records are reported as unmapped rather than assigned a fabricated country.
+The `Global Grant Distribution` map currently resolves beneficiary-country geography for 71,286 of the 200,000 ingested grants (35.64%). These produce 71,403 country associations; 62 grants have multiple associated countries. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 128,714 records are reported as unmapped rather than assigned a fabricated country.
 
 The Overview `Filters` button opens a non-layout-shifting, scrollable global grant-filter drawer for award date, currency, beneficiary geography, programme area, donor, recipient, and time aggregation. `Auto · EUR converted` includes every eligible source currency using stored historical ECB rates; selecting `GBP`, `USD`, `EUR`, `CHF`, or `ILS` instead shows only grants originally recorded in that currency. One applied grant scope drives the Overview KPIs, map, trends, and programme allocation; coverage counters explicitly change from ingested to filtered grants. The map header retains only display controls and the illustrative-connections toggle. Organization-directory search, income/expenditure, and headquarters filters remain independent because they describe organization records rather than the filtered grant population.
 
-Selecting a country exposes a direct handoff to the Organization Directory. The handoff preserves the active organization filters and applies the selected country as beneficiary geography. Directory geography matching uses the same canonical resolver as the map, including explicit raw ISO-code/name fallback and UK constituent-country roll-up. A country can still have no Directory result when every observed 360Giving funder for that country is source-only and lacks a matched organization profile; the UI explains that state rather than displaying a blank grid.
+Selecting a country opens the primary **Donor Directory** rather than applying the country as an organization-profile location filter. It uses the map's canonical beneficiary-country association (including the UK roll-up) and preserves currency, date, beneficiary geography, programme area, donor, recipient, and selected sources through a shared typed URL contract. This means a country with observed funding leads to the source-funder evidence that produced the map instead of an often-empty registered-address lookup.
+
+### Observed Donor Directory
+
+`GET /api/charities/grants/funders` is a derived, paginated aggregation over the stored grant population; it does not create a new organization profile or use external data. A source funder has a deterministic identity made from its source namespace plus `funding_org_source_id`; only where that ID is unavailable does it fall back to the normalized `funding_name`. The identity deliberately does not change when an optional enriched-profile link is later added. A narrow reproducible `grant_source_funder_facts` table keeps list filtering, SQL aggregation, sorting, and pagination away from the wide raw-JSON grant column.
+
+The endpoint requires `beneficiary_country` as a canonical ISO alpha-2 code and accepts the same grant-scope fields as the Overview (`currency`, `date_from`, `date_to`, `beneficiary_geographies`, `programme_areas`, `donor`, `recipient`, and `sources`) plus backend `search`, `profile_status`, `sort`, `page`, and `page_size`. It returns typed source identity, observed activity, amount policy, evidence sources, and explicit zero/one/many profile-link status. `GET /api/charities/grants/funders/{source_funder_key}` supports `detail_level=summary|full`; the primary UI loads full grant/recipient/evidence sections only when opened.
+
+For a selected country, multi-country grants count once for activity and recency, but their full amount is excluded from the country-attributable funding total. In `currency=auto`, only stored EUR values with `native_eur`, `ecb_award_date`, or `ecb_previous_business_day` conversion status are monetary eligible. In an explicit currency mode, only original grants in that selected currency are considered. A verified Directory profile is linked only where it already exists; source-only funders remain source-only and must never be converted into invented profiles.
+
+The current active 200,000-grant database is a reproducible **sampled ingestion cap**, not a complete 360Giving dataset. The import record is `src/data/processed/360giving_registry_publisher_pilot_import_200000.json`. The optimized source-funder list uses normalized beneficiary/programme indexes and a versioned narrow fact table; supported loaders invalidate it after data changes. See `docs/donor_directory_performance_report.md` for measured GB/US repository timings and the explicit HTTP/browser validation limits.
+
+The map CTA writes `funder_country` plus canonical `grant_*` filters to the URL. Search, status, sorting, page, sources, and selected donor also survive refresh/back/forward and copied URLs. Desktop uses a compact list plus right-side detail panel; tablet/mobile use a full-width/full-screen sheet. Real-browser acceptance is still outstanding and the legacy donor view remains available; see `docs/donor_directory_responsive_validation.md`.
 
 Directory profiles without a cached raw Charity Commission detail object still expose a schema-valid partial detail view assembled from normalized organization fields. Their registration status is reported as `UNKNOWN`, unavailable contact/financial sections remain empty, and the API does not invent missing source values or fail the entire profile request.
 
 An optional connection layer draws up to the 36 strongest registered-funder-location-to-beneficiary-country associations. The origin uses an explicit 360Giving funding-organization address country where present and otherwise the matched organization directory's registered headquarters country. These arrows are labelled in both settings and the map as illustrative associations, not verified financial routes; headquarters never substitutes for beneficiary geography or proves where a payment originated.
 
-Grant-count mode counts a grant once in each explicitly associated country; the UI therefore labels the metric as grant-country associations when multi-country records are present. The current cache contains 39 such grants. Funding mode includes only non-negative, single-country amounts in one selected currency. It never repeats or invents allocations for multi-country awards: the current GBP map reports £59,831,607.31 as excluded multi-country amount. The map's country totals must not be added to that excluded amount or interpreted as complete 360Giving/global-market coverage.
+Grant-count mode counts a grant once in each explicitly associated country; the UI therefore labels the metric as grant-country associations when multi-country records are present. The current cache contains 58 such grants. Funding mode includes only non-negative, single-country amounts in one selected currency. It never repeats or invents allocations for multi-country awards. The map's country totals must not be added to excluded multi-country amounts or interpreted as complete 360Giving/global-market coverage.
 
 ## Grant overview aggregations
 
@@ -148,7 +160,7 @@ The programme chart defaults to the largest substantive categories, groups the r
 
 ## Explainable relevance score
 
-No client-approved score definition, notes, target variable, or weights were found. The included `example-relevance-v1` configuration is therefore explicitly `experimental` and measures only relevance to a selected target profile. It is not a probability, recommendation, financial forecast, or prediction of donation behavior.
+No client-approved score definition, notes, target variable, or weights were found. The included `example-relevance-v2` configuration is therefore explicitly `experimental` and measures only relevance to a selected target profile. It is not a probability, recommendation, financial forecast, or prediction of donation behavior.
 
 Default example weights are thematic fit 0.35, geographic fit 0.25, funding-capacity fit 0.15, historical grant-size fit 0.15, and organization-type fit 0.10. Component calculations expose their inputs, method, confidence, and missing reason. Overall confidence and data completeness are returned separately from the score. Missing components are excluded by renormalizing the available weights; they are never silently scored as zero. Financial/grant comparisons occur only when currencies match.
 
@@ -326,6 +338,8 @@ All `/api/*` routes require the session cookie returned by `POST /api/auth/login
 | `GET /api/charities/{id}/grants?role=all|funder|recipient` | Observed transactions and coverage status |
 | `GET /api/charities/grants/summary` | Currency-separated network totals and rankings |
 | `GET /api/charities/grants/map?currency=GBP` | Filterable beneficiary-country associations, currency-safe funding totals, disclosed HQ-to-beneficiary connection groups, country explorer rankings, and coverage/exclusion metadata |
+| `GET /api/charities/grants/funders?beneficiary_country=US` | SQL-filtered/paginated observed donor ranking with backend `search`, `profile_status`, sort, and canonical grant-scope filters |
+| `GET /api/charities/grants/funders/{source_funder_key}?beneficiary_country=US&detail_level=summary` | Selected source-funder detail; summary-first with lazy full recipients, grants, and typed evidence, never a synthetic organization profile |
 | `GET /api/charities/grants/trends?currency=GBP&months=24` | Award-date monthly grant totals with unknown-coverage months and exclusions |
 | `GET /api/charities/grants/themes?currency=GBP` | Minor-unit-preserving programme allocations and classification coverage |
 | `GET /api/charities/{id}/sankey` | Auto EUR-converted observed donor-to-recipient flow; a concrete currency parameter retains source-currency-only behaviour |
@@ -356,6 +370,8 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
 # Frontend reproducible install and production build
 cd frontend
 npm ci
+npm run test
+npm run lint
 npm run build
 ```
 
@@ -364,7 +380,7 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 ## Presentation flow
 
 1. Start on Overview and show the full-width Global Grant Distribution map. Switch between grant-country associations and GBP funding, select a country to open its slim explorer, then show Grant Awards Over Time and Grant Allocation by Programme Area in the balanced row below it.
-2. Open Organization Directory and demonstrate server-side Charity Commission name/number search, registration and financial filters, the Enriched profile / Observed grant data flags, and cursor-based “Load more”.
+2. Select a map country and open Donor Directory. Demonstrate observed/linked status, backend search/sort/page, the right-side donor detail, ranked recipients, and explicit source evidence. Open Organization Research or Advanced Charity Commission Search only as secondary research tools.
 3. Open Charity Projects (`326568`, whose source grant records use the funder name Comic Relief) to show Charity Commission identity/provenance, source versus inferred classifications, evidence/review state, observed 360Giving grants, and the donor-to-recipient Sankey.
 4. Show the map's 62.86% known-country disclosure and 39 multi-country exclusions; explain why headquarters is not substituted for missing transaction geography and why multi-country amounts are not divided or duplicated.
 5. Open Women Win (`-24788`) to show Philea organization type/source and the explicit `organization_level_only` transaction status.
@@ -380,6 +396,6 @@ GitHub Actions runs separate Python 3.12 backend and Node.js 22 frontend jobs. T
 - When the BFF is offline, KPI/cards/detail/news/admin simulation use clearly labelled local mock content; grant charts, flows, map values, and scores remain unavailable rather than fabricated.
 - The news route depends on current external pages, Google News decoding, and Claude-compatible credentials, so it is not deterministic.
 - Demo authentication defaults and frontend-visible credentials are suitable only for local presentation use.
-- The production frontend build currently emits a bundle-size warning above Vite's 500 kB advisory threshold; code splitting is future work.
+- The production frontend build still emits a bundle-size warning above Vite's 500 kB advisory threshold. Registry and legacy donor views are now split, while remaining legacy profile/chart code still requires further extraction.
 - Live pipeline modes depend on upstream availability and can take time. Use cached consolidation for reproducibility.
 - Hinchilla code and historical preprocessed artifacts remain in the repository for compatibility/reference, but Hinchilla is not part of the active presentation rebuild.

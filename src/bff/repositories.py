@@ -7,10 +7,11 @@ import base64
 import binascii
 from abc import ABC, abstractmethod
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Mapping, Tuple
+from urllib.parse import urlsplit
 
 import pycountry
 
@@ -59,6 +60,92 @@ def _json_dict(value):
         return parsed if isinstance(parsed, dict) else {}
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
+
+
+def _score_summary(score: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return the small, list-safe part of an explainable relevance score."""
+    return {
+        "relevance_score": score.get("score"),
+        "score_confidence": score.get("confidence"),
+        "score_completeness": score.get("data_completeness"),
+        "score_target": score.get("score_target"),
+        "score_version": score.get("score_version"),
+        "score_configuration_status": score.get("configuration_status"),
+    }
+
+
+def _safe_external_url(value: Any) -> Optional[str]:
+    """Return a user-clickable URL without ever resolving or fetching it."""
+    candidate = str(value or "").strip()
+    if (
+        not candidate
+        or len(candidate) > 2_048
+        or any(ord(character) < 32 or ord(character) == 127 for character in candidate)
+    ):
+        return None
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return candidate
+
+
+def _source_evidence_links(raw_grant_data: Any, source_url: Any) -> List[Dict[str, Any]]:
+    """Extract typed links already present in a stored source record.
+
+    External organization JSON endpoints are exposed as evidence links only.
+    The BFF deliberately does not fetch, proxy, preflight, or enrich them.
+    """
+    raw = _json_dict(raw_grant_data)
+    data = raw.get("data") if isinstance(raw.get("data"), Mapping) else {}
+    candidates: List[Tuple[str, str, Optional[str], Any]] = [
+        ("publisher_grant_data", "View publisher grant data", None, source_url),
+        ("publisher_grant_data", "View publisher’s grant data source", None, data.get("dataSource")),
+    ]
+    for role, collection in (("funder", raw.get("funders")), ("recipient", raw.get("recipients"))):
+        for item in collection if isinstance(collection, list) else []:
+            if isinstance(item, Mapping):
+                candidates.append((
+                    f"360giving_{role}_record",
+                    f"View 360Giving {role} record",
+                    role,
+                    item.get("self"),
+                ))
+    for role, collection in (
+        ("funder", data.get("fundingOrganization")),
+        ("recipient", data.get("recipientOrganization")),
+    ):
+        for item in collection if isinstance(collection, list) else []:
+            if isinstance(item, Mapping):
+                candidates.append((
+                    f"observed_{role}_website",
+                    f"Visit {role} website",
+                    role,
+                    item.get("url"),
+                ))
+    links: List[Dict[str, Any]] = []
+    seen: set[Tuple[str, str]] = set()
+    for kind, label, role, value in candidates:
+        url = _safe_external_url(value)
+        marker = (kind, url or "")
+        if not url or marker in seen:
+            continue
+        seen.add(marker)
+        links.append({
+            "kind": kind,
+            "label": label,
+            "role": role,
+            "url": url,
+            "origin": "stored_source_record",
+        })
+    return links
 
 
 REGISTRY_MAX_PAGE_SIZE = 100
@@ -332,7 +419,12 @@ def _accepted_programme_categories(
 
 
 OVERVIEW_INDEX_REVISION_KEY = "grant_overview_index_revision"
+OVERVIEW_SCHEMA_VERSION_KEY = "grant_overview_schema_version"
+OVERVIEW_SCHEMA_VERSION = "2026-07-source-funder-facts-v3"
 OVERVIEW_CACHE_MAX_ENTRIES = 64
+# Bump whenever a presentation aggregation changes without changing source
+# records, so persisted Overview payloads cannot retain stale semantics.
+OVERVIEW_AGGREGATION_VERSION = "2026-07-lazy-map-connections-v1"
 
 
 def _grant_overview_data_revision(connection: sqlite3.Connection) -> str:
@@ -375,10 +467,18 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
     cursor.execute("DELETE FROM grant_beneficiary_terms")
     cursor.execute("DELETE FROM grant_beneficiary_countries")
     cursor.execute("DELETE FROM grant_programme_categories")
+    cursor.execute("DELETE FROM grant_source_funder_facts")
+    revision = _grant_overview_data_revision(connection)
+    valid_profile_ids = {
+        int(row[0]) for row in connection.execute("SELECT charity_id FROM charities")
+    }
     rows = connection.execute(
         """
         SELECT grant_id, beneficiary_geography_normalized, beneficiary_geography,
-               programme_area_source, programme_area_inferred, programme_area_scores
+               programme_area_source, programme_area_inferred, programme_area_scores,
+               source, funding_org_source_id, funding_name, funding_charity_id,
+               recipient_org_source_id, recipient_name, date, currency, amount,
+               amount_eur, conversion_status, source_url, source_record_id
         FROM grants
         ORDER BY grant_id
         """
@@ -386,8 +486,15 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
     country_rows: list[tuple[str, str, str]] = []
     term_rows: list[tuple[str, str]] = []
     programme_rows: list[tuple[str, str]] = []
+    source_funder_rows: list[tuple[Any, ...]] = []
     grants_indexed = 0
-    for grant_id, normalized_raw, source_raw, programme_source, programme_inferred, programme_scores in rows:
+    source_funder_facts = 0
+    for (
+        grant_id, normalized_raw, source_raw, programme_source, programme_inferred,
+        programme_scores, source, funder_source_id, funder_name, funder_profile_id,
+        recipient_source_id, recipient_name, award_date_raw, currency, amount,
+        amount_eur, conversion_status, source_url, source_record_id,
+    ) in rows:
         identifier = str(grant_id)
         countries = _beneficiary_countries(normalized_raw, source_raw)
         country_rows.extend(
@@ -404,6 +511,72 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
                 programme_source, programme_inferred, programme_scores
             )
         )
+        has_funder_identity = bool(
+            str(funder_source_id or "").strip() or str(funder_name or "").strip()
+        )
+        if countries and has_funder_identity:
+            funder_key, identity_method = _source_entity_identity(
+                role="funder",
+                source=source,
+                source_id=funder_source_id,
+                name=funder_name,
+            )
+            recipient_key, _ = _source_entity_identity(
+                role="recipient",
+                source=source,
+                source_id=recipient_source_id,
+                name=recipient_name,
+            )
+            original_status, original_minor = _money_minor_units(amount)
+            eur_status, eur_minor = _money_minor_units(amount_eur)
+            raw_profile_id: Optional[int]
+            try:
+                raw_profile_id = int(funder_profile_id) if funder_profile_id is not None else None
+            except (TypeError, ValueError):
+                raw_profile_id = None
+            linked_profile_id = (
+                raw_profile_id if raw_profile_id in valid_profile_ids else None
+            )
+            normalized_fallback = (
+                normalize_organization_name(funder_name)
+                if identity_method == "normalized_name_fallback" else None
+            )
+            award_date = CharityRepository._overview_award_date(award_date_raw)
+            source_name = str(source or "source").strip() or "source"
+            display_name = _display_source_entity_name(
+                funder_name, "Unnamed source funder"
+            )
+            recipient_display = _display_source_entity_name(
+                recipient_name, "Unnamed recipient"
+            )
+            country_count = len(countries)
+            for country in countries:
+                source_funder_rows.append((
+                    identifier,
+                    str(country["country_code"]),
+                    str(country["country_name"]),
+                    source_name,
+                    funder_key,
+                    identity_method,
+                    str(funder_source_id).strip() if funder_source_id is not None else None,
+                    normalized_fallback,
+                    display_name,
+                    recipient_key,
+                    recipient_display,
+                    award_date,
+                    str(currency or "").strip().upper() or None,
+                    original_minor,
+                    original_status,
+                    eur_minor,
+                    eur_status,
+                    str(conversion_status or "").strip() or None,
+                    country_count,
+                    linked_profile_id,
+                    str(source_url or "").strip() or None,
+                    str(source_record_id or "").strip() or None,
+                    revision,
+                ))
+                source_funder_facts += 1
         grants_indexed += 1
         if grants_indexed % 2_000 == 0:
             cursor.executemany(
@@ -418,9 +591,24 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
                 "INSERT OR IGNORE INTO grant_programme_categories (grant_id, programme_area) VALUES (?, ?)",
                 programme_rows,
             )
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO grant_source_funder_facts (
+                    grant_id, country_code, country_name, source_namespace,
+                    source_funder_key, identity_method, source_organization_id,
+                    normalized_name_fallback, display_name, recipient_key,
+                    recipient_name, award_date, currency, original_amount_minor,
+                    original_amount_status, eur_amount_minor, eur_amount_status,
+                    conversion_status, country_count, linked_profile_id,
+                    publisher_source_url, source_record_id, data_revision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                source_funder_rows,
+            )
             country_rows.clear()
             term_rows.clear()
             programme_rows.clear()
+            source_funder_rows.clear()
     if country_rows:
         cursor.executemany(
             "INSERT OR IGNORE INTO grant_beneficiary_countries (grant_id, country_code, country_name) VALUES (?, ?, ?)",
@@ -435,14 +623,31 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
             "INSERT OR IGNORE INTO grant_programme_categories (grant_id, programme_area) VALUES (?, ?)",
             programme_rows,
         )
-    revision = _grant_overview_data_revision(connection)
+    if source_funder_rows:
+        cursor.executemany(
+            """
+            INSERT OR REPLACE INTO grant_source_funder_facts (
+                grant_id, country_code, country_name, source_namespace,
+                source_funder_key, identity_method, source_organization_id,
+                normalized_name_fallback, display_name, recipient_key,
+                recipient_name, award_date, currency, original_amount_minor,
+                original_amount_status, eur_amount_minor, eur_amount_status,
+                conversion_status, country_count, linked_profile_id,
+                publisher_source_url, source_record_id, data_revision
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            source_funder_rows,
+        )
     cursor.execute(
         "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
         (OVERVIEW_INDEX_REVISION_KEY, revision),
     )
     cursor.execute("DELETE FROM grant_overview_cache")
     connection.commit()
-    return {"grants_indexed": grants_indexed}
+    return {
+        "grants_indexed": grants_indexed,
+        "source_funder_facts": source_funder_facts,
+    }
 
 
 def _top_counter_items(counter: Counter, limit: int = 3) -> List[Dict[str, Any]]:
@@ -450,6 +655,17 @@ def _top_counter_items(counter: Counter, limit: int = 3) -> List[Dict[str, Any]]
         {"name": str(name), "count": count}
         for name, count in sorted(
             counter.items(), key=lambda item: (-item[1], str(item[0]).casefold())
+        )[:limit]
+    ]
+
+
+def _top_labeled_counter_items(
+    counter: Counter, labels: Mapping[str, str], limit: int = 3,
+) -> List[Dict[str, Any]]:
+    return [
+        {"name": labels.get(str(key), str(key)), "count": count}
+        for key, count in sorted(
+            counter.items(), key=lambda item: (-item[1], labels.get(str(item[0]), str(item[0])).casefold())
         )[:limit]
     ]
 
@@ -531,6 +747,34 @@ def _stable_party_id(role, charity_id, source_id, name, country="", source="360G
     digest = hashlib.sha256(digest_input).hexdigest()[:16]
     return f"{namespace}:{role}:fallback:{digest}"
 
+
+def _source_entity_identity(*, role: str, source: object, source_id: object, name: object) -> tuple[str, str]:
+    """Return a stable identity for an entity described only by a grant source.
+
+    The identity intentionally ignores a linked Charity Commission profile. A
+    source funder remains the same source funder when enrichment later adds (or
+    removes) a verified organisation link.
+    """
+
+    namespace = re.sub(r"[^a-z0-9]+", "", str(source or "source").lower()) or "source"
+    raw_source_id = str(source_id or "").strip()
+    if raw_source_id:
+        material = f"{namespace}\0{role}\0source-id\0{raw_source_id.casefold()}"
+        identity_method = "source_id"
+    else:
+        normalized_name = normalize_organization_name(str(name or ""))
+        normalized_name = normalized_name or str(name or "").strip().casefold()
+        material = f"{namespace}\0{role}\0normalized-name\0{normalized_name}"
+        identity_method = "normalized_name_fallback"
+
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+    return f"{namespace}:{role}:{identity_method}:{digest}", identity_method
+
+
+def _display_source_entity_name(value: object, fallback: str) -> str:
+    name = str(value or "").strip()
+    return name or fallback
+
 class CharityRepository(ABC):
     """
     Abstract Base Class for Charity data access.
@@ -549,7 +793,11 @@ class CharityRepository(ABC):
         funding_regions: Optional[List[str]] = None,
         sources: Optional[List[str]] = None,
         min_annual_giving: Optional[float] = None,
+        max_annual_giving: Optional[float] = None,
         min_avg_grant_size: Optional[float] = None,
+        max_avg_grant_size: Optional[float] = None,
+        include_score: bool = False,
+        sort: str = "name_asc",
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -637,6 +885,7 @@ class CharityRepository(ABC):
         recipient: Optional[str] = None,
         sources: Optional[List[str]] = None,
         granularity: str = "auto",
+        include_connections: bool = False,
     ) -> Dict[str, Any]:
         """Return a single, consistently filtered grant-analysis payload."""
         return {
@@ -648,6 +897,70 @@ class CharityRepository(ABC):
             "available_date_range": {"from": None, "to": None},
             "applied_filters": {},
         }
+
+    async def get_grant_overview_trends(
+        self,
+        *,
+        currency: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        beneficiary_geographies: Optional[List[str]] = None,
+        programme_areas: Optional[List[str]] = None,
+        donor: Optional[str] = None,
+        recipient: Optional[str] = None,
+        sources: Optional[List[str]] = None,
+        granularity: str = "auto",
+    ) -> Dict[str, Any]:
+        """Fallback for a trend-only request in non-transaction repositories."""
+        return await self.get_grant_trends(currency=currency)
+
+    async def get_source_funders(
+        self,
+        *,
+        beneficiary_country: str,
+        currency: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        beneficiary_geographies: Optional[List[str]] = None,
+        programme_areas: Optional[List[str]] = None,
+        donor: Optional[str] = None,
+        recipient: Optional[str] = None,
+        sources: Optional[List[str]] = None,
+        search: Optional[str] = None,
+        profile_status: str = "all",
+        sort: str = "largest_observed_funding",
+        page: int = 1,
+        page_size: int = 25,
+    ) -> Dict[str, Any]:
+        """Fallback for repositories without source-funder support."""
+        return {
+            "status": "data_unavailable",
+            "country": {"code": str(beneficiary_country or "").upper(), "name": "Unavailable"},
+            "summary": {
+                "matching_funder_count": 0,
+                "matching_grant_count": 0,
+                "source_only_funder_count": 0,
+                "linked_directory_funder_count": 0,
+            },
+            "items": [],
+            "pagination": {"page": page, "page_size": page_size, "total_items": 0, "total_pages": 0},
+            "available_date_range": {"from": None, "to": None},
+            "available_currencies": [],
+            "applied_filters": {
+                "beneficiary_country": beneficiary_country,
+                "search": str(search or "").strip() or None,
+                "profile_status": profile_status,
+            },
+            "metadata": {"data_mode": "transaction_data_unavailable"},
+        }
+
+    async def get_source_funder_detail(
+        self,
+        source_funder_key: str,
+        **_filters: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """Fallback for repositories without source-funder support."""
+        return None
 
     @staticmethod
     def _overview_award_date(value: Any) -> Optional[str]:
@@ -675,8 +988,10 @@ class CharityRepository(ABC):
         currency: Optional[str], date_from: Optional[str], date_to: Optional[str],
         beneficiary_geographies: Optional[List[str]], programme_areas: Optional[List[str]],
         donor: Optional[str], recipient: Optional[str], sources: Optional[List[str]], granularity: str,
+        include_connections: bool,
     ) -> str:
         payload = {
+            "aggregation_version": OVERVIEW_AGGREGATION_VERSION,
             "currency": str(currency or "auto").strip().upper(),
             "date_from": date_from or "",
             "date_to": date_to or "",
@@ -686,6 +1001,7 @@ class CharityRepository(ABC):
             "recipient": str(recipient or "").strip().casefold(),
             "sources": sorted({str(value).strip().casefold() for value in (sources if sources is not None else ["360Giving"]) if str(value).strip()}),
             "granularity": granularity,
+            "include_connections": bool(include_connections),
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
@@ -693,6 +1009,39 @@ class CharityRepository(ABC):
         cached_revision = getattr(self, "_overview_revision", None)
         if cached_revision:
             return cached_revision
+        # Apply additive lookup-index migrations once per database schema
+        # version. Re-running CREATE INDEX on each BFF process start is
+        # surprisingly expensive for a 200k-grant database.
+        schema_row = conn.execute(
+            "SELECT value FROM metadata WHERE key = ?", (OVERVIEW_SCHEMA_VERSION_KEY,)
+        ).fetchone()
+        schema_current = bool(
+            schema_row and schema_row[0] == OVERVIEW_SCHEMA_VERSION
+        )
+        if not schema_current:
+            migrate_grant_overview_schema(conn)
+            # A schema-version change can add a new derived structure while the
+            # immutable grant fingerprint remains identical. Force one
+            # reproducible rebuild so no newly added fact table stays empty.
+            conn.execute(
+                "DELETE FROM metadata WHERE key = ?", (OVERVIEW_INDEX_REVISION_KEY,)
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                (OVERVIEW_SCHEMA_VERSION_KEY, OVERVIEW_SCHEMA_VERSION),
+            )
+            conn.commit()
+        else:
+            # Supported data writers invalidate this key transactionally.
+            # Reusing it avoids a full SUM/COUNT scan of the 1.3 GB grants
+            # table on every fresh BFF process.
+            indexed_revision = conn.execute(
+                "SELECT value FROM metadata WHERE key = ?",
+                (OVERVIEW_INDEX_REVISION_KEY,),
+            ).fetchone()
+            if indexed_revision and indexed_revision[0]:
+                self._overview_revision = str(indexed_revision[0])
+                return self._overview_revision
         revision = _grant_overview_data_revision(conn)
         row = conn.execute(
             "SELECT value FROM metadata WHERE key = ?", (OVERVIEW_INDEX_REVISION_KEY,)
@@ -739,7 +1088,11 @@ class CharityRepository(ABC):
         conn.commit()
 
     def _overview_source_metadata(
-        self, conn: sqlite3.Connection, sources: Optional[List[str]] = None,
+        self,
+        conn: sqlite3.Connection,
+        sources: Optional[List[str]] = None,
+        *,
+        revision: Optional[str] = None,
     ) -> Dict[str, Any]:
         selected_sources = (
             [str(source).strip() for source in sources if str(source).strip()]
@@ -747,6 +1100,18 @@ class CharityRepository(ABC):
         )
         if not selected_sources:
             return {"date_from": None, "date_to": None, "currencies": []}
+        metadata_cache_key = (
+            str(revision or ""),
+            tuple(sorted({source.casefold() for source in selected_sources})),
+        )
+        metadata_cache = getattr(self, "_overview_source_metadata_cache", {})
+        cached_metadata = metadata_cache.get(metadata_cache_key)
+        if cached_metadata is not None:
+            return {
+                "date_from": cached_metadata["date_from"],
+                "date_to": cached_metadata["date_to"],
+                "currencies": list(cached_metadata["currencies"]),
+            }
         placeholders = ", ".join("?" for _ in selected_sources)
         dates = conn.execute(
             f"""
@@ -769,11 +1134,44 @@ class CharityRepository(ABC):
             """,
             selected_sources,
         ).fetchall()
-        return {
+        result = {
             "date_from": dates[0] if dates else None,
             "date_to": dates[1] if dates else None,
             "currencies": [row[0] for row in currencies],
         }
+        metadata_cache[metadata_cache_key] = result
+        self._overview_source_metadata_cache = metadata_cache
+        return {**result, "currencies": list(result["currencies"])}
+
+    def _remember_overview_source_metadata(
+        self,
+        sources: Optional[List[str]],
+        revision: str,
+        overview_payload: Mapping[str, Any],
+    ) -> None:
+        """Warm source metadata from a persisted Overview response cache."""
+        date_range = overview_payload.get("available_date_range")
+        map_payload = overview_payload.get("map")
+        if not isinstance(date_range, Mapping) or not isinstance(map_payload, Mapping):
+            return
+        currencies = map_payload.get("currencies")
+        if not isinstance(currencies, list):
+            return
+        selected_sources = (
+            [str(source).strip() for source in sources if str(source).strip()]
+            if sources is not None else ["360Giving"]
+        )
+        metadata_cache_key = (
+            revision,
+            tuple(sorted({source.casefold() for source in selected_sources})),
+        )
+        metadata_cache = getattr(self, "_overview_source_metadata_cache", {})
+        metadata_cache[metadata_cache_key] = {
+            "date_from": date_range.get("from"),
+            "date_to": date_range.get("to"),
+            "currencies": [str(value) for value in currencies],
+        }
+        self._overview_source_metadata_cache = metadata_cache
 
     def _overview_source_rows(
         self,
@@ -787,6 +1185,8 @@ class CharityRepository(ABC):
         programme_areas: Optional[List[str]] = None,
         donor: Optional[str] = None,
         recipient: Optional[str] = None,
+        beneficiary_country_code: Optional[str] = None,
+        include_connections: bool = False,
     ) -> List[Dict[str, Any]]:
         """Fetch only the transaction rows in the indexed Overview scope."""
         selected_sources = (
@@ -797,54 +1197,101 @@ class CharityRepository(ABC):
             return []
         conn.row_factory = sqlite3.Row
         placeholders = ", ".join("?" for _ in selected_sources)
+        connection_columns = (
+            "g.raw_grant_data, c.headquarters_country, c.name AS linked_funder_name"
+            if include_connections
+            else "NULL AS raw_grant_data, NULL AS headquarters_country, NULL AS linked_funder_name"
+        )
+        connection_join = (
+            "LEFT JOIN charities AS c ON c.charity_id = g.funding_charity_id"
+            if include_connections else ""
+        )
+        scope_params: list[Any] = []
+        scope_from = "FROM grants AS g"
+        scope_joins: list[str] = []
+        selected_regions = sorted({str(value).strip().casefold() for value in beneficiary_geographies or [] if str(value).strip()})
+        if selected_regions:
+            terms = ", ".join("?" for _ in selected_regions)
+            scope_from = f"""
+                FROM (
+                    SELECT DISTINCT grant_id
+                    FROM grant_beneficiary_terms
+                    WHERE term IN ({terms})
+                ) AS beneficiary_term
+                JOIN grants AS g ON g.grant_id = beneficiary_term.grant_id
+            """
+            scope_params.extend(selected_regions)
+        selected_country_code = str(beneficiary_country_code or "").strip().upper()
+        if selected_country_code:
+            country_scope = """
+                SELECT grant_id
+                FROM grant_beneficiary_countries INDEXED BY idx_grant_beneficiary_countries_code
+                WHERE country_code = ?
+            """
+            if scope_from == "FROM grants AS g":
+                scope_from = f"""
+                    FROM ({country_scope}) AS beneficiary_country
+                    JOIN grants AS g ON g.grant_id = beneficiary_country.grant_id
+                """
+            else:
+                scope_joins.append(
+                    f"JOIN ({country_scope}) AS beneficiary_country ON beneficiary_country.grant_id = g.grant_id"
+                )
+            scope_params.append(selected_country_code)
+        selected_programmes = sorted({str(value).strip().casefold() for value in programme_areas or [] if str(value).strip()})
+        if selected_programmes:
+            values = ", ".join("?" for _ in selected_programmes)
+            programme_scope = f"""
+                SELECT DISTINCT grant_id
+                FROM grant_programme_categories
+                WHERE programme_area COLLATE NOCASE IN ({values})
+            """
+            if scope_from == "FROM grants AS g":
+                scope_from = f"""
+                    FROM ({programme_scope}) AS programme_category
+                    JOIN grants AS g ON g.grant_id = programme_category.grant_id
+                """
+            else:
+                scope_joins.append(
+                    f"JOIN ({programme_scope}) AS programme_category ON programme_category.grant_id = g.grant_id"
+                )
+            scope_params.extend(selected_programmes)
         query = f"""
             SELECT g.grant_id, g.amount, g.amount_eur, g.exchange_rate,
                    g.exchange_rate_date, g.exchange_rate_source, g.conversion_status,
                    g.currency, g.date,
                    g.beneficiary_geography_normalized, g.beneficiary_geography,
                    g.programme_area_source, g.programme_area_inferred,
-                   g.programme_area_scores, g.funding_name, g.recipient_name,
-                   g.raw_grant_data, c.headquarters_country
-            FROM grants AS g
-            LEFT JOIN charities AS c ON c.charity_id = g.funding_charity_id
+                   g.programme_area_scores, g.funding_name, g.funding_org_source_id,
+                   g.funding_charity_id, g.recipient_name, g.recipient_org_source_id,
+                   g.recipient_charity_id, g.source, g.source_url, g.source_record_id,
+                   g.description, {connection_columns}
+            {scope_from}
+            {' '.join(scope_joins)}
+            {connection_join}
             WHERE g.source IN ({placeholders})
         """
-        params: list[Any] = list(selected_sources)
+        params: list[Any] = [*scope_params, *selected_sources]
         requested_currency = str(currency or "").strip().upper()
         if requested_currency and requested_currency != "AUTO":
             query += " AND UPPER(TRIM(g.currency)) = ?"
             params.append(requested_currency)
         if date_from:
-            query += " AND SUBSTR(TRIM(CAST(g.date AS TEXT)), 1, 10) >= ?"
+            query += " AND g.date >= ?"
             params.append(date_from)
         if date_to:
-            query += " AND SUBSTR(TRIM(CAST(g.date AS TEXT)), 1, 10) <= ?"
-            params.append(date_to)
-        selected_regions = sorted({str(value).strip().casefold() for value in beneficiary_geographies or [] if str(value).strip()})
-        if selected_regions:
-            terms = ", ".join("?" for _ in selected_regions)
-            query += f""" AND EXISTS (
-                SELECT 1 FROM grant_beneficiary_terms AS beneficiary_term
-                WHERE beneficiary_term.grant_id = g.grant_id
-                  AND beneficiary_term.term IN ({terms})
-            )"""
-            params.extend(selected_regions)
-        selected_programmes = sorted({str(value).strip().casefold() for value in programme_areas or [] if str(value).strip()})
-        if selected_programmes:
-            values = ", ".join("?" for _ in selected_programmes)
-            query += f""" AND EXISTS (
-                SELECT 1 FROM grant_programme_categories AS programme_category
-                WHERE programme_category.grant_id = g.grant_id
-                  AND programme_category.programme_area COLLATE NOCASE IN ({values})
-            )"""
-            params.extend(selected_programmes)
+            # The source stores ISO dates and occasional ISO timestamps. An
+            # exclusive next-day boundary retains all times on the chosen end
+            # date while allowing SQLite to use (source, date).
+            exclusive_end = (datetime.strptime(date_to, "%Y-%m-%d").date() + timedelta(days=1)).isoformat()
+            query += " AND g.date < ?"
+            params.append(exclusive_end)
         if donor and str(donor).strip():
             query += " AND LOWER(COALESCE(g.funding_name, '')) LIKE ?"
             params.append(f"%{str(donor).strip().casefold()}%")
         if recipient and str(recipient).strip():
             query += " AND LOWER(COALESCE(g.recipient_name, '')) LIKE ?"
             params.append(f"%{str(recipient).strip().casefold()}%")
-        query += " ORDER BY g.grant_id"
         rows = conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
@@ -859,6 +1306,7 @@ class CharityRepository(ABC):
         recipient: Optional[str] = None,
         sources: Optional[List[str]] = None,
         granularity: str = "auto",
+        include_connections: bool = False,
     ) -> Dict[str, Any]:
         """Aggregate every Overview card from one server-side grant population.
 
@@ -872,6 +1320,7 @@ class CharityRepository(ABC):
             currency=currency, date_from=date_from, date_to=date_to,
             beneficiary_geographies=beneficiary_geographies, programme_areas=programme_areas,
             donor=donor, recipient=recipient, sources=sources, granularity=granularity,
+            include_connections=include_connections,
         )
         conn = self._get_conn()
         conn.row_factory = sqlite3.Row
@@ -879,12 +1328,18 @@ class CharityRepository(ABC):
             revision = self._ensure_overview_indexes(conn)
             cached = self._load_overview_cache(conn, cache_key, revision)
             if cached is not None:
-                return cached
-            source_metadata = self._overview_source_metadata(conn, sources)
+                # Older cached payloads deliberately withheld country values
+                # below 30% coverage. Recalculate just those scopes now that
+                # the map always shows the observed mapped countries.
+                cached_map = cached.get("map") if isinstance(cached, Mapping) else None
+                if not isinstance(cached_map, Mapping) or cached_map.get("status") != "low_coverage":
+                    self._remember_overview_source_metadata(sources, revision, cached)
+                    return cached
+            source_metadata = self._overview_source_metadata(conn, sources, revision=revision)
             source_rows = self._overview_source_rows(
                 conn, sources, currency=currency, date_from=date_from, date_to=date_to,
                 beneficiary_geographies=beneficiary_geographies, programme_areas=programme_areas,
-                donor=donor, recipient=recipient,
+                donor=donor, recipient=recipient, include_connections=include_connections,
             )
         finally:
             conn.close()
@@ -962,6 +1417,7 @@ class CharityRepository(ABC):
             "recipient": str(recipient or "").strip() or None,
             "sources": sources if sources is not None else ["360Giving"],
             "granularity": granularity,
+            "include_connections": include_connections,
         }
 
         # Shared map aggregation: beneficiary geography remains grant-side only.
@@ -1007,19 +1463,35 @@ class CharityRepository(ABC):
                         excluded_multi_minor_units += minor_units or 0
                 elif not multi_country and amount_status not in {"valid", "zero"}:
                     excluded_invalid_amount_ids.add(str(row["grant_id"]))
-            origin, origin_source = _funder_headquarters_country(row["raw_grant_data"], row["headquarters_country"])
-            if not origin:
-                connection_no_headquarters.add(str(row["grant_id"]))
+            origin = None
+            origin_source = None
+            if include_connections:
+                origin, origin_source = _funder_headquarters_country(
+                    row["raw_grant_data"], row["headquarters_country"]
+                )
+                if not origin:
+                    connection_no_headquarters.add(str(row["grant_id"]))
             for country in countries:
                 code = country["country_code"]
                 current = map_aggregates.setdefault(code, {
                     "country_name": country["country_name"], "grant_ids": set(), "funders": Counter(),
+                    "funder_labels": {},
                     "recipients": Counter(), "programme_areas": Counter(), "original_geographies": Counter(),
                     "total_minor_units": 0, "funding_grant_ids": set(), "excluded_multi": set(), "excluded_invalid": set(),
                 })
                 current["grant_ids"].add(row["grant_id"])
-                if str(row["funding_name"] or "").strip():
-                    current["funders"][str(row["funding_name"]).strip()] += 1
+                if str(row["funding_name"] or "").strip() or str(row.get("funding_org_source_id") or "").strip():
+                    funder_key, _ = _source_entity_identity(
+                        role="funder",
+                        source=row.get("source"),
+                        source_id=row.get("funding_org_source_id"),
+                        name=row.get("funding_name"),
+                    )
+                    current["funders"][funder_key] += 1
+                    current["funder_labels"].setdefault(
+                        funder_key,
+                        _display_source_entity_name(row.get("funding_name"), "Unnamed source funder"),
+                    )
                 if str(row["recipient_name"] or "").strip():
                     current["recipients"][str(row["recipient_name"]).strip()] += 1
                 for category in row["programme_categories"]:
@@ -1062,7 +1534,7 @@ class CharityRepository(ABC):
                 "currency": selected_currency,
                 "distinct_funders": len(values["funders"]), "distinct_recipients": len(values["recipients"]),
                 "top_programme_areas": _top_counter_items(values["programme_areas"]),
-                "top_funders": _top_counter_items(values["funders"]),
+                "top_funders": _top_labeled_counter_items(values["funders"], values["funder_labels"]),
                 "top_recipients": _top_counter_items(values["recipients"]),
                 "original_geographies": [item["name"] for item in _top_counter_items(values["original_geographies"], 8)],
                 "funding_grant_count": len(values["funding_grant_ids"]),
@@ -1085,10 +1557,6 @@ class CharityRepository(ABC):
         map_status = "available" if total_scoped else "no_data"
         if total_scoped and not known_count:
             map_status = "no_geography"
-        elif total_scoped and country_coverage < 30:
-            map_status = "low_coverage"
-            map_items = []
-            connections = []
         map_limitations = [GRANT_SCOPE_NOTE]
         if auto_converted_eur:
             map_limitations.append(
@@ -1114,7 +1582,7 @@ class CharityRepository(ABC):
             "funding_excluded_invalid_amount_count": len(excluded_invalid_amount_ids),
             "connections": connections, "connection_grant_count": len(connection_grant_ids),
             "connection_excluded_no_headquarters_count": len(connection_no_headquarters),
-            "connection_same_country_count": len(connection_same_country), "minimum_coverage_threshold": 0.30,
+            "connection_same_country_count": len(connection_same_country), "minimum_coverage_threshold": 0.0,
             "metadata": {
                 "data_mode": "derived_from_cached_source", "source": ["360Giving"], "generated_at": _utc_now(),
                 "record_count": total_scoped, "coverage": country_coverage / 100 if total_scoped else None,
@@ -1280,6 +1748,1739 @@ class CharityRepository(ABC):
             logger.warning("Overview result was returned without caching: %s", exc)
         return result
 
+    async def get_grant_overview_trends(
+        self,
+        *,
+        currency: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        beneficiary_geographies: Optional[List[str]] = None,
+        programme_areas: Optional[List[str]] = None,
+        donor: Optional[str] = None,
+        recipient: Optional[str] = None,
+        sources: Optional[List[str]] = None,
+        granularity: str = "auto",
+    ) -> Dict[str, Any]:
+        """Return only the filtered time series, without rebuilding map/themes.
+
+        Granularity is a chart-level presentation choice. Keeping this request
+        separate avoids re-aggregating geography and programme allocations when
+        a user switches between monthly and yearly award periods.
+        """
+        if granularity not in {"auto", "monthly", "yearly"}:
+            raise ValueError("granularity must be auto, monthly, or yearly")
+        cache_key = f"trend:{self._overview_cache_key(
+            currency=currency, date_from=date_from, date_to=date_to,
+            beneficiary_geographies=beneficiary_geographies, programme_areas=programme_areas,
+            donor=donor, recipient=recipient, sources=sources, granularity=granularity,
+            include_connections=False,
+        )}"
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            revision = self._ensure_overview_indexes(conn)
+            cached = self._load_overview_cache(conn, cache_key, revision)
+            if cached is not None:
+                return cached
+            source_metadata = self._overview_source_metadata(conn, sources, revision=revision)
+            source_rows = self._overview_source_rows(
+                conn,
+                sources,
+                currency=currency,
+                date_from=date_from,
+                date_to=date_to,
+                beneficiary_geographies=beneficiary_geographies,
+                programme_areas=programme_areas,
+                donor=donor,
+                recipient=recipient,
+            )
+        finally:
+            conn.close()
+
+        available_currencies = source_metadata["currencies"]
+        requested_currency = str(currency or "").strip().upper() or None
+        auto_converted_eur = requested_currency in {None, "AUTO"}
+        source_currency_filter = None if auto_converted_eur else requested_currency
+        selected_currency = "EUR" if auto_converted_eur else source_currency_filter
+        status = "available"
+        if source_currency_filter and source_currency_filter not in available_currencies:
+            status = "unsupported_currency"
+        elif not available_currencies:
+            status = "no_qualifying_records"
+            selected_currency = None
+
+        selected_regions = {
+            str(value).strip().casefold()
+            for value in (beneficiary_geographies or []) if str(value).strip()
+        }
+        selected_programmes = {
+            str(value).strip().casefold()
+            for value in (programme_areas or []) if str(value).strip()
+        }
+        donor_query = str(donor or "").strip().casefold()
+        recipient_query = str(recipient or "").strip().casefold()
+        scoped_rows: List[Dict[str, Any]] = []
+        date_excluded = 0
+        for row in source_rows:
+            award_date = self._overview_award_date(row["date"])
+            countries = _beneficiary_countries(
+                row["beneficiary_geography_normalized"], row["beneficiary_geography"]
+            )
+            if donor_query and donor_query not in str(row["funding_name"] or "").casefold():
+                continue
+            if recipient_query and recipient_query not in str(row["recipient_name"] or "").casefold():
+                continue
+            if selected_regions and not _matches_funding_regions(
+                row["beneficiary_geography_normalized"], row["beneficiary_geography"], countries, selected_regions
+            ):
+                continue
+            if selected_programmes:
+                categories = _accepted_programme_categories(
+                    row["programme_area_source"], row["programme_area_inferred"], row["programme_area_scores"]
+                )
+                if not selected_programmes.intersection(str(category).casefold() for category in categories):
+                    continue
+            if date_from or date_to:
+                if not award_date or (date_from and award_date < date_from) or (date_to and award_date > date_to):
+                    date_excluded += 1
+                    continue
+            if source_currency_filter and str(row["currency"] or "").strip().upper() != source_currency_filter:
+                continue
+            row["award_date"] = award_date
+            row["has_mapped_country"] = bool(countries)
+            scoped_rows.append(row)
+
+        if status != "available":
+            scoped_rows = []
+        for row in scoped_rows:
+            row["monetary_amount"] = row["amount_eur"] if auto_converted_eur else row["amount"]
+            row["monetary_eligible"] = bool(
+                row["amount_eur"] is not None
+                and str(row.get("conversion_status") or "")
+                in {"native_eur", "ecb_award_date", "ecb_previous_business_day"}
+            ) if auto_converted_eur else True
+        monetary_rows = [row for row in scoped_rows if row["monetary_eligible"]]
+        valid_dated_rows = [row for row in monetary_rows if row["award_date"]]
+        amount_exclusions = {"missing_amount": 0, "invalid_amount": 0, "negative_amount": 0}
+        zero_amount_count = 0
+        maximum_minor_units: Optional[int] = None
+
+        if valid_dated_rows:
+            trend_start = date_from or min(row["award_date"] for row in valid_dated_rows)
+            trend_end = date_to or max(row["award_date"] for row in valid_dated_rows)
+            months_in_range = (
+                (int(trend_end[:4]) - int(trend_start[:4])) * 12
+                + int(trend_end[5:7]) - int(trend_start[5:7]) + 1
+            )
+            resolved_granularity = (
+                "monthly" if granularity == "auto" and months_in_range <= 24
+                else "yearly" if granularity == "auto" else granularity
+            )
+            period_rows: Dict[str, Dict[str, int]] = {}
+            for row in valid_dated_rows:
+                period_key = row["award_date"][:4] if resolved_granularity == "yearly" else row["award_date"][:7]
+                values = period_rows.setdefault(period_key, {
+                    "source": 0, "grant_count": 0, "minor_units": 0, "mapped": 0, "unmapped": 0,
+                })
+                values["source"] += 1
+                amount_status, minor_units = _money_minor_units(row["monetary_amount"])
+                if amount_status in amount_exclusions:
+                    amount_exclusions[f"{amount_status}_amount"] += 1
+                    continue
+                if amount_status == "zero":
+                    zero_amount_count += 1
+                values["grant_count"] += 1
+                values["minor_units"] += minor_units or 0
+                maximum_minor_units = max(maximum_minor_units or minor_units or 0, minor_units or 0)
+                if row["has_mapped_country"]:
+                    values["mapped"] += 1
+                else:
+                    values["unmapped"] += 1
+            labels = self._overview_period_labels(trend_start, trend_end, resolved_granularity)
+            items = []
+            for label in labels:
+                values = period_rows.get(label)
+                if not values:
+                    items.append({"month": label, "grant_count": None, "source_record_count": 0, "total_amount": None, "coverage_status": "unknown", "mapped_grant_count": 0, "unmapped_grant_count": 0})
+                elif values["grant_count"]:
+                    items.append({"month": label, "grant_count": values["grant_count"], "source_record_count": values["source"], "total_amount": _minor_units_to_amount(values["minor_units"]), "coverage_status": "observed", "mapped_grant_count": values["mapped"], "unmapped_grant_count": values["unmapped"]})
+                else:
+                    items.append({"month": label, "grant_count": None, "source_record_count": values["source"], "total_amount": None, "coverage_status": "partial", "mapped_grant_count": 0, "unmapped_grant_count": 0})
+            response = {
+                "status": "available" if any(item["grant_count"] is not None for item in items) else "no_qualifying_records",
+                "currency": selected_currency, "available_currencies": available_currencies,
+                "date_basis": "award_date", "granularity": resolved_granularity,
+                "period": {"from": trend_start[:7], "to": trend_end[:7], "months": months_in_range, "anchor": "selected_filter_range"},
+                "items": items,
+                "excluded": {
+                    "missing_date": sum(1 for row in monetary_rows if row["date"] is None or str(row["date"]).strip() == ""),
+                    "invalid_date": sum(1 for row in monetary_rows if row["date"] is not None and str(row["date"]).strip() and not row["award_date"]),
+                    "outside_period": date_excluded, "unsupported_currency": 0, "currency_filtered": 0, "unsupported_source": 0,
+                    **amount_exclusions,
+                },
+                "zero_amount_count": zero_amount_count, "latest_award_date": max(row["award_date"] for row in valid_dated_rows),
+                "last_refreshed_at": None, "source": ["360Giving"], "data_mode": "derived_from_cached_source",
+                "amount_policy": _amount_policy(maximum_minor_units), "scope": {"coverage_note": GRANT_SCOPE_NOTE},
+            }
+        else:
+            response = {
+                "status": status if status != "available" else "no_qualifying_records",
+                "currency": selected_currency, "available_currencies": available_currencies,
+                "date_basis": "award_date", "granularity": "monthly" if granularity == "auto" else granularity,
+                "period": None, "items": [],
+                "excluded": {"missing_date": 0, "invalid_date": 0, "missing_amount": 0, "invalid_amount": 0, "negative_amount": 0, "unsupported_currency": 0, "currency_filtered": 0, "unsupported_source": 0, "outside_period": date_excluded},
+                "zero_amount_count": 0, "latest_award_date": None, "last_refreshed_at": None,
+                "source": ["360Giving"], "data_mode": "derived_from_cached_source",
+                "amount_policy": _amount_policy(), "scope": {"coverage_note": GRANT_SCOPE_NOTE},
+            }
+        try:
+            cache_conn = self._get_conn()
+            try:
+                self._store_overview_cache(cache_conn, cache_key, revision, response)
+            finally:
+                cache_conn.close()
+        except sqlite3.Error as exc:
+            logger.warning("Trend-only result was returned without caching: %s", exc)
+        return response
+
+    def _source_funder_scope(
+        self,
+        *,
+        beneficiary_country: str,
+        currency: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        beneficiary_geographies: Optional[List[str]] = None,
+        programme_areas: Optional[List[str]] = None,
+        donor: Optional[str] = None,
+        recipient: Optional[str] = None,
+        sources: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Build one canonical, country-scoped population of source funders.
+
+        Grant activity follows the same beneficiary-country association as the
+        Overview map. Monetary country totals deliberately exclude a whole
+        multi-country award, so a single award is never attributed in full to
+        several countries.
+        """
+
+        country_code = str(beneficiary_country or "").strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", country_code):
+            raise ValueError("beneficiary_country must be an ISO 3166-1 alpha-2 code.")
+
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            revision = self._ensure_overview_indexes(conn)
+            country_rows = conn.execute(
+                """
+                SELECT DISTINCT country_name
+                FROM grant_beneficiary_countries
+                WHERE country_code = ?
+                ORDER BY country_name
+                """,
+                (country_code,),
+            ).fetchall()
+            if not country_rows:
+                raise ValueError(
+                    f"No mapped beneficiary country is available for ISO code '{country_code}'."
+                )
+            source_metadata = self._overview_source_metadata(conn, sources, revision=revision)
+            source_rows = self._overview_source_rows(
+                conn,
+                sources,
+                currency=currency,
+                date_from=date_from,
+                date_to=date_to,
+                beneficiary_geographies=beneficiary_geographies,
+                programme_areas=programme_areas,
+                donor=donor,
+                recipient=recipient,
+                beneficiary_country_code=country_code,
+                include_connections=True,
+            )
+        finally:
+            conn.close()
+
+        requested_currency = str(currency or "").strip().upper() or None
+        auto_converted_eur = requested_currency in {None, "AUTO"}
+        source_currency_filter = None if auto_converted_eur else requested_currency
+        available_currencies = source_metadata["currencies"]
+        availability_status = "available"
+        if source_currency_filter and source_currency_filter not in available_currencies:
+            availability_status = "unsupported_currency"
+        elif not available_currencies:
+            availability_status = "no_qualifying_records"
+
+        selected_regions = {
+            str(value).strip().casefold()
+            for value in (beneficiary_geographies or [])
+            if str(value).strip()
+        }
+        selected_programmes = {
+            str(value).strip().casefold()
+            for value in (programme_areas or [])
+            if str(value).strip()
+        }
+        donor_query = str(donor or "").strip().casefold()
+        recipient_query = str(recipient or "").strip().casefold()
+        scoped_rows: List[Dict[str, Any]] = []
+        for row in source_rows:
+            award_date = self._overview_award_date(row["date"])
+            countries = _beneficiary_countries(
+                row["beneficiary_geography_normalized"], row["beneficiary_geography"]
+            )
+            programme_categories = _accepted_programme_categories(
+                row["programme_area_source"],
+                row["programme_area_inferred"],
+                row["programme_area_scores"],
+            )
+            if not any(country["country_code"] == country_code for country in countries):
+                continue
+            if donor_query and donor_query not in str(row["funding_name"] or "").casefold():
+                continue
+            if recipient_query and recipient_query not in str(row["recipient_name"] or "").casefold():
+                continue
+            if selected_regions and not _matches_funding_regions(
+                row["beneficiary_geography_normalized"],
+                row["beneficiary_geography"],
+                countries,
+                selected_regions,
+            ):
+                continue
+            if selected_programmes and not selected_programmes.intersection(
+                str(category).casefold() for category in programme_categories
+            ):
+                continue
+            if date_from or date_to:
+                if not award_date or (date_from and award_date < date_from) or (date_to and award_date > date_to):
+                    continue
+            if source_currency_filter and str(row["currency"] or "").strip().upper() != source_currency_filter:
+                continue
+            row["award_date"] = award_date
+            row["beneficiary_countries"] = countries
+            row["programme_categories"] = programme_categories
+            scoped_rows.append(row)
+
+        groups: Dict[str, Dict[str, Any]] = {}
+        valid_auto_statuses = {"native_eur", "ecb_award_date", "ecb_previous_business_day"}
+        for row in scoped_rows if availability_status == "available" else []:
+            if not str(row.get("funding_name") or "").strip() and not str(row.get("funding_org_source_id") or "").strip():
+                # There is no transparent source-funder identity for this row;
+                # the map applies the same exclusion to its funder count.
+                continue
+            funder_name = _display_source_entity_name(row.get("funding_name"), "Unnamed source funder")
+            funder_key, identity_method = _source_entity_identity(
+                role="funder",
+                source=row.get("source"),
+                source_id=row.get("funding_org_source_id"),
+                name=row.get("funding_name"),
+            )
+            group = groups.setdefault(
+                funder_key,
+                {
+                    "key": funder_key,
+                    "identity_method": identity_method,
+                    "names": Counter(),
+                    "source_ids": set(),
+                    "sources": set(),
+                    "linked_directory_ids": set(),
+                    "linked_names": Counter(),
+                    "grant_ids": set(),
+                    "recipient_ids": set(),
+                    "recipients": Counter(),
+                    "recipient_labels": {},
+                    "recipient_names": Counter(),
+                    "programme_areas": Counter(),
+                    "programme_area_provenance": {},
+                    "first_award_date": None,
+                    "latest_award_date": None,
+                    "included_minor_units": 0,
+                    "included_grant_ids": set(),
+                    "multi_country_grant_ids": set(),
+                    "multi_country_minor_units": 0,
+                    "conversion_excluded_ids": set(),
+                    "missing_amount_ids": set(),
+                    "invalid_amount_ids": set(),
+                    "negative_amount_ids": set(),
+                    "source_urls": set(),
+                    "records": [],
+                },
+            )
+            group["names"][funder_name] += 1
+            raw_source_id = str(row.get("funding_org_source_id") or "").strip()
+            if raw_source_id:
+                group["source_ids"].add(raw_source_id)
+            source_name = str(row.get("source") or "source").strip() or "source"
+            group["sources"].add(source_name)
+            linked_id = row.get("funding_charity_id") if row.get("linked_funder_name") else None
+            if linked_id is not None:
+                group["linked_directory_ids"].add(int(linked_id))
+                group["linked_names"][_display_source_entity_name(row.get("linked_funder_name"), funder_name)] += 1
+            grant_id = str(row["grant_id"])
+            group["grant_ids"].add(grant_id)
+            recipient_name = _display_source_entity_name(row.get("recipient_name"), "Unnamed recipient")
+            recipient_key, _ = _source_entity_identity(
+                role="recipient",
+                source=row.get("source"),
+                source_id=row.get("recipient_org_source_id"),
+                name=row.get("recipient_name"),
+            )
+            group["recipient_ids"].add(recipient_key)
+            group["recipients"][recipient_key] += 1
+            group["recipient_labels"].setdefault(recipient_key, recipient_name)
+            group["recipient_names"][recipient_name] += 1
+            source_categories, _ = normalize_programme_sources(_json_list(row["programme_area_source"]))
+            category_provenance = "source" if source_categories else (
+                "inferred" if row["programme_categories"] != ["Unclassified"] else "unclassified"
+            )
+            for category in row["programme_categories"]:
+                group["programme_areas"][category] += 1
+                group["programme_area_provenance"].setdefault(category, Counter())[category_provenance] += 1
+            award_date = row["award_date"]
+            if award_date:
+                group["first_award_date"] = min(group["first_award_date"] or award_date, award_date)
+                group["latest_award_date"] = max(group["latest_award_date"] or award_date, award_date)
+            source_url = str(row.get("source_url") or "").strip()
+            if source_url:
+                group["source_urls"].add(source_url)
+
+            monetary_eligible = (
+                row.get("amount_eur") is not None
+                and str(row.get("conversion_status") or "") in valid_auto_statuses
+            ) if auto_converted_eur else True
+            monetary_amount = row.get("amount_eur") if auto_converted_eur else row.get("amount")
+            if not monetary_eligible:
+                original_amount_status, _ = _money_minor_units(row.get("amount"))
+                if original_amount_status == "missing":
+                    group["missing_amount_ids"].add(grant_id)
+                elif original_amount_status == "negative":
+                    group["negative_amount_ids"].add(grant_id)
+                elif original_amount_status == "invalid":
+                    group["invalid_amount_ids"].add(grant_id)
+                else:
+                    group["conversion_excluded_ids"].add(grant_id)
+            else:
+                amount_status, minor_units = _money_minor_units(monetary_amount)
+                if amount_status in {"valid", "zero"}:
+                    if len(row["beneficiary_countries"]) > 1:
+                        if grant_id not in group["multi_country_grant_ids"]:
+                            group["multi_country_grant_ids"].add(grant_id)
+                            group["multi_country_minor_units"] += minor_units or 0
+                    elif grant_id not in group["included_grant_ids"]:
+                        group["included_grant_ids"].add(grant_id)
+                        group["included_minor_units"] += minor_units or 0
+                else:
+                    if amount_status == "missing":
+                        group["missing_amount_ids"].add(grant_id)
+                    elif amount_status == "negative":
+                        group["negative_amount_ids"].add(grant_id)
+                    else:
+                        group["invalid_amount_ids"].add(grant_id)
+            group["records"].append(row)
+
+        all_recipient_ids = set().union(*(group["recipient_ids"] for group in groups.values())) if groups else set()
+        all_funder_grant_ids = set().union(*(group["grant_ids"] for group in groups.values())) if groups else set()
+        all_included_grant_ids = set().union(*(group["included_grant_ids"] for group in groups.values())) if groups else set()
+        all_multi_country_ids = set().union(*(group["multi_country_grant_ids"] for group in groups.values())) if groups else set()
+        all_conversion_excluded_ids = set().union(*(group["conversion_excluded_ids"] for group in groups.values())) if groups else set()
+        all_missing_amount_ids = set().union(*(group["missing_amount_ids"] for group in groups.values())) if groups else set()
+        all_invalid_amount_ids = set().union(*(group["invalid_amount_ids"] for group in groups.values())) if groups else set()
+        all_negative_amount_ids = set().union(*(group["negative_amount_ids"] for group in groups.values())) if groups else set()
+        return {
+            "country": {"code": country_code, "name": country_rows[0][0]},
+            "source_metadata": source_metadata,
+            "availability_status": availability_status,
+            "auto_converted_eur": auto_converted_eur,
+            "source_currency_filter": source_currency_filter,
+            "display_currency": "EUR" if auto_converted_eur else source_currency_filter,
+            "groups": groups,
+            "scoped_grant_count": len(scoped_rows) if availability_status == "available" else 0,
+            "source_funder_grant_count": len(all_funder_grant_ids),
+            "distinct_recipient_count": len(all_recipient_ids),
+            "included_grant_ids": all_included_grant_ids,
+            "included_minor_units": sum(group["included_minor_units"] for group in groups.values()),
+            "multi_country_grant_ids": all_multi_country_ids,
+            "multi_country_minor_units": sum(group["multi_country_minor_units"] for group in groups.values()),
+            "conversion_excluded_ids": all_conversion_excluded_ids,
+            "missing_amount_ids": all_missing_amount_ids,
+            "invalid_amount_ids": all_invalid_amount_ids,
+            "negative_amount_ids": all_negative_amount_ids,
+        }
+
+    @staticmethod
+    def _source_funder_item(group: Mapping[str, Any], display_currency: Optional[str]) -> Dict[str, Any]:
+        linked_ids = sorted(group["linked_directory_ids"])
+        name = _top_counter_items(group["names"], 1)[0]["name"] if group["names"] else "Unnamed source funder"
+        linked_name = _top_counter_items(group["linked_names"], 1)[0]["name"] if group["linked_names"] else None
+        leading_programme_areas = _top_counter_items(group["programme_areas"], 3)
+        for item in leading_programme_areas:
+            provenance = group["programme_area_provenance"].get(item["name"], Counter())
+            item["provenance"] = _top_counter_items(provenance, 1)[0]["name"] if provenance else "unclassified"
+        return {
+            "source_funder_key": group["key"],
+            "display_name": name,
+            "identity_method": group["identity_method"],
+            "source_ids": sorted(group["source_ids"]),
+            "sources": sorted(group["sources"]),
+            "source_only": not linked_ids,
+            "linked_directory_profile": {
+                "charity_id": linked_ids[0], "name": linked_name,
+            } if len(linked_ids) == 1 else None,
+            "activity": {
+                "grant_count": len(group["grant_ids"]),
+                "distinct_recipient_count": len(group["recipient_ids"]),
+                "first_award_date": group["first_award_date"],
+                "latest_award_date": group["latest_award_date"],
+            },
+            "observed_funding": {
+                "amount": _minor_units_to_amount(group["included_minor_units"])
+                if group["included_grant_ids"] else None,
+                "currency": display_currency,
+                "included_grant_count": len(group["included_grant_ids"]),
+                "excluded_multi_country_grant_count": len(group["multi_country_grant_ids"]),
+                "excluded_multi_country_amount": _minor_units_to_amount(group["multi_country_minor_units"]),
+                "excluded_conversion_grant_count": len(group["conversion_excluded_ids"]),
+                "excluded_missing_amount_grant_count": len(group["missing_amount_ids"]),
+                "excluded_invalid_amount_grant_count": len(group["invalid_amount_ids"]),
+                "excluded_negative_amount_grant_count": len(group["negative_amount_ids"]),
+            },
+            "leading_programme_areas": leading_programme_areas,
+            "representative_source_url": sorted(group["source_urls"])[0] if group["source_urls"] else None,
+        }
+
+    @staticmethod
+    def _source_funder_relationship_flow(
+        group: Mapping[str, Any],
+        *,
+        display_currency: Optional[str],
+        auto_converted_eur: bool,
+        limit: int = 15,
+    ) -> Dict[str, Any]:
+        """Build a donor-to-recipient flow from one canonical source identity.
+
+        A country selection identifies a beneficiary geography, not necessarily
+        the recipient's registered location. Therefore a full multi-country
+        award is deliberately excluded from the monetary flow, matching the
+        map's country-attributable amount policy. Activity still remains
+        available elsewhere in the source-funder detail.
+        """
+
+        valid_auto_statuses = {
+            "native_eur", "ecb_award_date", "ecb_previous_business_day",
+        }
+        flow_currency = display_currency or ("EUR" if auto_converted_eur else None)
+        donor_label = (
+            _top_counter_items(group["names"], 1)[0]["name"]
+            if group["names"] else "Unnamed source funder"
+        )
+        donor_id = str(group["key"])
+        recipient_labels: Dict[str, str] = {}
+        aggregates: Dict[Tuple[str, str], Dict[str, int]] = {}
+        excluded_reasons: Counter[str] = Counter()
+        included_grant_ids: set[str] = set()
+
+        for row in group["records"]:
+            grant_id = str(row["grant_id"])
+            if len(row.get("beneficiary_countries") or []) > 1:
+                excluded_reasons["multi_country_award"] += 1
+                continue
+
+            amount_value = row.get("amount_eur") if auto_converted_eur else row.get("amount")
+            if auto_converted_eur and str(row.get("conversion_status") or "") not in valid_auto_statuses:
+                excluded_reasons["conversion_unavailable"] += 1
+                continue
+            amount_status, minor_units = _money_minor_units(amount_value)
+            if amount_status == "missing":
+                excluded_reasons["missing_amount"] += 1
+                continue
+            if amount_status == "invalid":
+                excluded_reasons["invalid_amount"] += 1
+                continue
+            if amount_status == "negative":
+                excluded_reasons["negative_amount"] += 1
+                continue
+            if amount_status == "zero":
+                excluded_reasons["non_positive_amount"] += 1
+                continue
+
+            recipient_id, _ = _source_entity_identity(
+                role="recipient",
+                source=row.get("source"),
+                source_id=row.get("recipient_org_source_id"),
+                name=row.get("recipient_name"),
+            )
+            recipient_labels.setdefault(
+                recipient_id,
+                _display_source_entity_name(row.get("recipient_name"), "Unnamed recipient"),
+            )
+            aggregate = aggregates.setdefault(
+                (donor_id, recipient_id), {"minor_units": 0, "grant_count": 0},
+            )
+            aggregate["minor_units"] += minor_units or 0
+            aggregate["grant_count"] += 1
+            included_grant_ids.add(grant_id)
+
+        links = [
+            {
+                "source": source,
+                "target": target,
+                "value": _minor_units_to_amount(values["minor_units"]),
+                "currency": flow_currency,
+                "grant_count": values["grant_count"],
+            }
+            for (source, target), values in aggregates.items()
+        ]
+        links.sort(key=lambda item: (item["value"], item["grant_count"], item["target"]), reverse=True)
+        if len(links) > limit:
+            excluded_reasons["truncated"] += sum(item["grant_count"] for item in links[limit:])
+            links = links[:limit]
+
+        retained_grant_count = sum(item["grant_count"] for item in links)
+        retained_node_ids = {donor_id}
+        retained_node_ids.update(item["target"] for item in links)
+        nodes = []
+        if links:
+            nodes.append({"id": donor_id, "label": donor_label, "role": "donor"})
+            nodes.extend(
+                {
+                    "id": recipient_id,
+                    "label": recipient_labels[recipient_id],
+                    "role": "recipient",
+                }
+                for recipient_id in sorted(retained_node_ids - {donor_id})
+            )
+
+        total_records = len(group["records"])
+        if links:
+            status = "available"
+        elif excluded_reasons.get("multi_country_award"):
+            status = "no_country_attributable_transactions"
+        elif total_records:
+            status = "no_monetary_transactions"
+        else:
+            status = "no_transactions_found"
+        return {
+            "status": status,
+            "nodes": nodes,
+            "links": links,
+            "metadata": {
+                "identity_basis": "canonical source funder identity",
+                "country_amount_policy": (
+                    "Only single-country observed awards are included so a full award "
+                    "is not attributed to more than one beneficiary country."
+                ),
+                "currency": flow_currency,
+                "grant_count": total_records,
+                "included_grant_count": retained_grant_count,
+                "included_value": round(sum(item["value"] for item in links), 2),
+                "excluded_grant_count": total_records - retained_grant_count,
+                "excluded_reasons": dict(excluded_reasons),
+                "limit": limit,
+                "truncation_applied": "truncated" in excluded_reasons,
+            },
+        }
+
+    @staticmethod
+    def _source_funder_profile_link(
+        profile_ids: List[int],
+        profile_name: Optional[str],
+        registry_links: Mapping[int, List[Mapping[str, Any]]],
+    ) -> Dict[str, Any]:
+        if not profile_ids:
+            return {"status": "none"}
+        if len(profile_ids) > 1:
+            return {
+                "status": "multiple",
+                "candidate_count": len(profile_ids),
+                "candidate_profile_ids": profile_ids,
+            }
+        profile_id = profile_ids[0]
+        accepted = list(registry_links.get(profile_id, []))
+        if not accepted:
+            registry_link: Dict[str, Any] = {"status": "none"}
+        elif len(accepted) == 1:
+            link = accepted[0]
+            registry_link = {
+                "status": "accepted",
+                "registry_id": link["registry_id"],
+                "charity_number": link.get("charity_number"),
+                "method": link["match_method"],
+                "confidence": link.get("match_confidence"),
+            }
+        else:
+            registry_link = {
+                "status": "multiple",
+                "candidate_count": len(accepted),
+            }
+        return {
+            "status": "single",
+            "profile_id": profile_id,
+            "profile_name": profile_name or f"Profile {profile_id}",
+            "method": "direct_grant_profile_id",
+            "confidence": None,
+            "registry_link": registry_link,
+        }
+
+    @staticmethod
+    def _accepted_registry_links(
+        conn: sqlite3.Connection, profile_ids: List[int],
+    ) -> Dict[int, List[Dict[str, Any]]]:
+        if not profile_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in profile_ids)
+        rows = conn.execute(
+            f"""
+            SELECT link.enriched_organization_id, link.registry_id,
+                   registry.charity_number, link.match_method,
+                   link.match_confidence
+            FROM {REGISTRY_LINK_TABLE} AS link
+            JOIN {REGISTRY_TABLE} AS registry
+              ON registry.registry_id = link.registry_id
+            WHERE link.enriched_organization_id IN ({placeholders})
+              AND link.match_status = 'accepted'
+              AND registry.is_current_source_record = 1
+            ORDER BY link.enriched_organization_id, link.registry_id
+            """,
+            profile_ids,
+        ).fetchall()
+        result: Dict[int, List[Dict[str, Any]]] = {}
+        for row in rows:
+            result.setdefault(int(row[0]), []).append({
+                "registry_id": row[1],
+                "charity_number": row[2],
+                "match_method": row[3],
+                "match_confidence": row[4],
+            })
+        return result
+
+    @staticmethod
+    def _source_funder_fact_filters(
+        *,
+        beneficiary_country: str,
+        currency: Optional[str],
+        date_from: Optional[str],
+        date_to: Optional[str],
+        beneficiary_geographies: Optional[List[str]],
+        programme_areas: Optional[List[str]],
+        donor: Optional[str],
+        recipient: Optional[str],
+        sources: Optional[List[str]],
+    ) -> Tuple[List[str], List[Any], List[str]]:
+        selected_sources = (
+            [str(value).strip() for value in sources if str(value).strip()]
+            if sources is not None else ["360Giving"]
+        )
+        where = ["fact.country_code = ?"]
+        params: List[Any] = [beneficiary_country]
+        if selected_sources:
+            placeholders = ", ".join("?" for _ in selected_sources)
+            where.append(f"fact.source_namespace IN ({placeholders})")
+            params.extend(selected_sources)
+        else:
+            where.append("1 = 0")
+        requested_currency = str(currency or "").strip().upper()
+        if requested_currency and requested_currency != "AUTO":
+            where.append("fact.currency = ?")
+            params.append(requested_currency)
+        if date_from:
+            where.append("fact.award_date >= ?")
+            params.append(date_from)
+        if date_to:
+            where.append("fact.award_date <= ?")
+            params.append(date_to)
+        regions = sorted({
+            str(value).strip().casefold()
+            for value in beneficiary_geographies or [] if str(value).strip()
+        })
+        if regions:
+            placeholders = ", ".join("?" for _ in regions)
+            where.append(
+                "EXISTS ("
+                "SELECT 1 FROM grant_beneficiary_terms AS geography "
+                "WHERE geography.grant_id = fact.grant_id "
+                f"AND geography.term IN ({placeholders})"
+                ")"
+            )
+            params.extend(regions)
+        programmes = sorted({
+            str(value).strip()
+            for value in programme_areas or [] if str(value).strip()
+        })
+        if programmes:
+            placeholders = ", ".join("?" for _ in programmes)
+            where.append(
+                "EXISTS ("
+                "SELECT 1 FROM grant_programme_categories AS programme "
+                "WHERE programme.grant_id = fact.grant_id "
+                f"AND programme.programme_area COLLATE NOCASE IN ({placeholders})"
+                ")"
+            )
+            params.extend(programmes)
+        donor_value = str(donor or "").strip().casefold()
+        if donor_value:
+            where.append("LOWER(fact.display_name) LIKE ?")
+            params.append(f"%{donor_value}%")
+        recipient_value = str(recipient or "").strip().casefold()
+        if recipient_value:
+            where.append("LOWER(fact.recipient_name) LIKE ?")
+            params.append(f"%{recipient_value}%")
+        return where, params, selected_sources
+
+    def _source_funder_list_from_facts(
+        self,
+        *,
+        beneficiary_country: str,
+        currency: Optional[str],
+        date_from: Optional[str],
+        date_to: Optional[str],
+        beneficiary_geographies: Optional[List[str]],
+        programme_areas: Optional[List[str]],
+        donor: Optional[str],
+        recipient: Optional[str],
+        sources: Optional[List[str]],
+        search: Optional[str],
+        profile_status: str,
+        sort: str,
+        page: int,
+        page_size: int,
+    ) -> Dict[str, Any]:
+        country_code = str(beneficiary_country or "").strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", country_code):
+            raise ValueError("beneficiary_country must be an ISO 3166-1 alpha-2 code.")
+        if profile_status not in {"all", "linked", "observed_only"}:
+            raise ValueError("profile_status must be all, linked, or observed_only.")
+        where, params, selected_sources = self._source_funder_fact_filters(
+            beneficiary_country=country_code,
+            currency=currency,
+            date_from=date_from,
+            date_to=date_to,
+            beneficiary_geographies=beneficiary_geographies,
+            programme_areas=programme_areas,
+            donor=donor,
+            recipient=recipient,
+            sources=sources,
+        )
+        requested_currency = str(currency or "").strip().upper() or None
+        auto_converted_eur = requested_currency in {None, "AUTO"}
+        display_currency = "EUR" if auto_converted_eur else requested_currency
+        eligible = (
+            "fact.eur_amount_status IN ('valid', 'zero') "
+            "AND fact.conversion_status IN "
+            "('native_eur', 'ecb_award_date', 'ecb_previous_business_day')"
+            if auto_converted_eur
+            else "fact.original_amount_status IN ('valid', 'zero')"
+        )
+        amount_column = (
+            "fact.eur_amount_minor" if auto_converted_eur
+            else "fact.original_amount_minor"
+        )
+        if sort == "largest_observed_funding":
+            order = (
+                "included_minor IS NULL, included_minor DESC, grant_count DESC, "
+                "latest_award_date DESC, LOWER(display_name), source_funder_key"
+            )
+        elif sort == "most_grants":
+            order = (
+                "grant_count DESC, included_minor DESC, latest_award_date DESC, "
+                "LOWER(display_name), source_funder_key"
+            )
+        else:
+            order = (
+                "latest_award_date DESC, grant_count DESC, included_minor DESC, "
+                "LOWER(display_name), source_funder_key"
+            )
+        search_value = str(search or "").strip().casefold()
+        search_clause = ""
+        search_params: List[Any] = []
+        if search_value:
+            search_clause = """
+                WHERE LOWER(preferred.display_name) LIKE ?
+                   OR LOWER(COALESCE(preferred.all_display_names, '')) LIKE ?
+                   OR LOWER(COALESCE(preferred.source_ids, '')) LIKE ?
+                   OR (
+                       preferred.profile_count = 1
+                       AND LOWER(COALESCE(preferred.profile_names, '')) LIKE ?
+                   )
+            """
+            search_params = [f"%{search_value}%"] * 4
+        status_clause = {
+            "all": "",
+            "linked": "WHERE profile_count = 1",
+            "observed_only": "WHERE profile_count <> 1",
+        }[profile_status]
+        offset = (page - 1) * page_size
+        sql = f"""
+            WITH scoped AS (
+                SELECT fact.*, profile.name AS linked_profile_name
+                FROM grant_source_funder_facts AS fact
+                LEFT JOIN charities AS profile
+                  ON profile.charity_id = fact.linked_profile_id
+                WHERE {' AND '.join(where)}
+            ),
+            name_counts AS (
+                SELECT source_funder_key, display_name, COUNT(*) AS occurrences
+                FROM scoped
+                GROUP BY source_funder_key, display_name
+            ),
+            preferred_names AS (
+                SELECT source_funder_key, display_name
+                FROM (
+                    SELECT source_funder_key, display_name,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY source_funder_key
+                               ORDER BY occurrences DESC, LOWER(display_name)
+                           ) AS name_rank
+                    FROM name_counts
+                )
+                WHERE name_rank = 1
+            ),
+            grouped AS (
+                SELECT
+                    fact.source_funder_key,
+                    MIN(fact.identity_method) AS identity_method,
+                    MIN(fact.source_namespace) AS source_namespace,
+                    GROUP_CONCAT(DISTINCT fact.source_organization_id) AS source_ids,
+                    MIN(fact.normalized_name_fallback) AS normalized_name_fallback,
+                    GROUP_CONCAT(DISTINCT fact.display_name) AS all_display_names,
+                    COUNT(DISTINCT fact.grant_id) AS grant_count,
+                    COUNT(DISTINCT fact.recipient_key) AS recipient_count,
+                    MIN(fact.award_date) AS first_award_date,
+                    MAX(fact.award_date) AS latest_award_date,
+                    SUM(CASE
+                        WHEN fact.country_count = 1 AND {eligible}
+                        THEN {amount_column}
+                    END) AS included_minor,
+                    COUNT(DISTINCT CASE
+                        WHEN fact.country_count = 1 AND {eligible}
+                        THEN fact.grant_id
+                    END) AS included_grant_count,
+                    COUNT(DISTINCT CASE
+                        WHEN fact.country_count > 1 THEN fact.grant_id
+                    END) AS multi_country_grant_count,
+                    COALESCE(SUM(CASE
+                        WHEN fact.country_count > 1 AND {eligible}
+                        THEN {amount_column}
+                    END), 0) AS multi_country_minor,
+                    COUNT(DISTINCT CASE
+                        WHEN fact.country_count = 1
+                         AND fact.original_amount_status IN ('valid', 'zero')
+                         AND NOT ({eligible})
+                        THEN fact.grant_id
+                    END) AS conversion_excluded_count,
+                    COUNT(DISTINCT CASE
+                        WHEN fact.original_amount_status = 'missing'
+                        THEN fact.grant_id
+                    END) AS missing_amount_count,
+                    COUNT(DISTINCT CASE
+                        WHEN fact.original_amount_status = 'invalid'
+                        THEN fact.grant_id
+                    END) AS invalid_amount_count,
+                    COUNT(DISTINCT CASE
+                        WHEN fact.original_amount_status = 'negative'
+                        THEN fact.grant_id
+                    END) AS negative_amount_count,
+                    COUNT(DISTINCT fact.linked_profile_id) AS profile_count,
+                    GROUP_CONCAT(DISTINCT fact.linked_profile_id) AS profile_ids,
+                    GROUP_CONCAT(DISTINCT fact.linked_profile_name) AS profile_names,
+                    MIN(fact.publisher_source_url) AS representative_source_url
+                FROM scoped AS fact
+                GROUP BY fact.source_funder_key
+            ),
+            identified AS (
+                SELECT grouped.*, preferred.display_name
+                FROM grouped
+                JOIN preferred_names AS preferred
+                  ON preferred.source_funder_key = grouped.source_funder_key
+            ),
+            searched AS (
+                SELECT * FROM identified AS preferred
+                {search_clause}
+            ),
+            status_counts AS (
+                SELECT
+                    COUNT(*) AS all_count,
+                    SUM(CASE WHEN profile_count = 1 THEN 1 ELSE 0 END) AS linked_count,
+                    SUM(CASE WHEN profile_count <> 1 THEN 1 ELSE 0 END) AS observed_only_count
+                FROM searched
+            ),
+            filtered AS (
+                SELECT * FROM searched
+                {status_clause}
+            ),
+            filtered_summary AS (
+                SELECT
+                    COUNT(*) AS filtered_count,
+                    COALESCE(SUM(grant_count), 0) AS matching_grant_count,
+                    COALESCE(SUM(included_minor), 0) AS included_minor_total,
+                    COALESCE(SUM(included_grant_count), 0) AS included_grant_total,
+                    COALESCE(SUM(multi_country_grant_count), 0) AS multi_country_grant_total,
+                    COALESCE(SUM(multi_country_minor), 0) AS multi_country_minor_total,
+                    COALESCE(SUM(conversion_excluded_count), 0) AS conversion_excluded_total,
+                    COALESCE(SUM(missing_amount_count), 0) AS missing_amount_total,
+                    COALESCE(SUM(invalid_amount_count), 0) AS invalid_amount_total,
+                    COALESCE(SUM(negative_amount_count), 0) AS negative_amount_total
+                FROM filtered
+            ),
+            selected_recipients AS (
+                SELECT COUNT(DISTINCT scoped.recipient_key) AS distinct_recipient_count
+                FROM scoped
+                JOIN filtered
+                  ON filtered.source_funder_key = scoped.source_funder_key
+            ),
+            ranked AS (
+                SELECT filtered.*,
+                       ROW_NUMBER() OVER (ORDER BY {order}) AS result_rank
+                FROM filtered
+            ),
+            paged AS (
+                SELECT *
+                FROM ranked
+                WHERE result_rank > ? AND result_rank <= ?
+            )
+            SELECT paged.*,
+                   status_counts.all_count, status_counts.linked_count,
+                   status_counts.observed_only_count,
+                   filtered_summary.filtered_count,
+                   filtered_summary.matching_grant_count,
+                   filtered_summary.included_minor_total,
+                   filtered_summary.included_grant_total,
+                   filtered_summary.multi_country_grant_total,
+                   filtered_summary.multi_country_minor_total,
+                   filtered_summary.conversion_excluded_total,
+                   filtered_summary.missing_amount_total,
+                   filtered_summary.invalid_amount_total,
+                   filtered_summary.negative_amount_total,
+                   selected_recipients.distinct_recipient_count
+            FROM status_counts
+            CROSS JOIN filtered_summary
+            CROSS JOIN selected_recipients
+            LEFT JOIN paged ON 1 = 1
+            ORDER BY paged.result_rank
+        """
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            revision = self._ensure_overview_indexes(conn)
+            country = conn.execute(
+                """
+                SELECT country_name
+                FROM grant_beneficiary_countries
+                WHERE country_code = ?
+                ORDER BY country_name
+                LIMIT 1
+                """,
+                (country_code,),
+            ).fetchone()
+            if not country:
+                raise ValueError(
+                    f"No mapped beneficiary country is available for ISO code '{country_code}'."
+                )
+            source_placeholders = ", ".join("?" for _ in selected_sources)
+            if selected_sources:
+                metadata = conn.execute(
+                    f"""
+                    SELECT MIN(award_date), MAX(award_date),
+                           GROUP_CONCAT(DISTINCT currency)
+                    FROM grant_source_funder_facts
+                    WHERE source_namespace IN ({source_placeholders})
+                    """,
+                    selected_sources,
+                ).fetchone()
+            else:
+                metadata = (None, None, None)
+            query_params = [
+                *params, *search_params, offset, offset + page_size,
+            ]
+            rows = conn.execute(sql, query_params).fetchall()
+            item_rows = [row for row in rows if row["source_funder_key"] is not None]
+            single_profile_ids = sorted({
+                int(row["profile_ids"])
+                for row in item_rows
+                if int(row["profile_count"] or 0) == 1 and row["profile_ids"]
+            })
+            registry_links = self._accepted_registry_links(conn, single_profile_ids)
+            profile_name_map = {
+                int(row[0]): str(row[1])
+                for row in conn.execute(
+                    f"SELECT charity_id, name FROM charities WHERE charity_id IN ({', '.join('?' for _ in single_profile_ids)})",
+                    single_profile_ids,
+                ).fetchall()
+            } if single_profile_ids else {}
+            page_keys = [str(row["source_funder_key"]) for row in item_rows]
+            programme_map: Dict[str, List[Dict[str, Any]]] = {}
+            if page_keys:
+                key_placeholders = ", ".join("?" for _ in page_keys)
+                programme_rows = conn.execute(
+                    f"""
+                    SELECT fact.source_funder_key, programme.programme_area,
+                           COUNT(DISTINCT fact.grant_id) AS grant_count
+                    FROM grant_source_funder_facts AS fact
+                    JOIN grant_programme_categories AS programme
+                      ON programme.grant_id = fact.grant_id
+                    WHERE {' AND '.join(where)}
+                      AND fact.source_funder_key IN ({key_placeholders})
+                    GROUP BY fact.source_funder_key, programme.programme_area
+                    ORDER BY fact.source_funder_key, grant_count DESC,
+                             LOWER(programme.programme_area)
+                    """,
+                    [*params, *page_keys],
+                ).fetchall()
+                for row in programme_rows:
+                    values = programme_map.setdefault(str(row[0]), [])
+                    if len(values) < 3:
+                        values.append({
+                            "name": row[1],
+                            "count": int(row[2]),
+                            "provenance": "source_or_inferred",
+                        })
+        finally:
+            conn.close()
+        summary_row = rows[0]
+        available_currencies = sorted({
+            value.strip().upper()
+            for value in str(metadata[2] or "").split(",") if value.strip()
+        })
+        availability_status = "available"
+        if requested_currency not in {None, "AUTO"} and requested_currency not in available_currencies:
+            availability_status = "unsupported_currency"
+        items: List[Dict[str, Any]] = []
+        for row in item_rows:
+            profile_ids = sorted({
+                int(value) for value in str(row["profile_ids"] or "").split(",")
+                if value.strip()
+            })
+            profile_link = self._source_funder_profile_link(
+                profile_ids,
+                profile_name_map.get(profile_ids[0]) if len(profile_ids) == 1 else None,
+                registry_links,
+            )
+            linked_profile = (
+                {
+                    "charity_id": profile_link["profile_id"],
+                    "name": profile_link["profile_name"],
+                }
+                if profile_link["status"] == "single" else None
+            )
+            included_minor = row["included_minor"]
+            identity = {
+                "key": row["source_funder_key"],
+                "namespace": row["source_namespace"],
+                "method": row["identity_method"],
+                "source_organization_id": (
+                    str(row["source_ids"]).split(",")[0]
+                    if row["source_ids"] else None
+                ),
+                "normalized_name_fallback": row["normalized_name_fallback"],
+            }
+            items.append({
+                "rank": int(row["result_rank"]),
+                "kind": "source_funder",
+                "identity": identity,
+                "source_funder_key": row["source_funder_key"],
+                "display_name": row["display_name"],
+                "identity_method": row["identity_method"],
+                "source_ids": sorted({
+                    value for value in str(row["source_ids"] or "").split(",")
+                    if value
+                }),
+                "sources": [row["source_namespace"]],
+                "evidence_sources": [row["source_namespace"]],
+                "source_only": profile_link["status"] != "single",
+                "linked_directory_profile": linked_profile,
+                "profile_link": profile_link,
+                "activity": {
+                    "grant_count": int(row["grant_count"]),
+                    "distinct_recipient_count": int(row["recipient_count"]),
+                    "first_award_date": row["first_award_date"],
+                    "latest_award_date": row["latest_award_date"],
+                },
+                "observed_activity": {
+                    "grant_count": int(row["grant_count"]),
+                    "recipient_count": int(row["recipient_count"]),
+                    "latest_grant_date": row["latest_award_date"],
+                    "observed_funding": (
+                        _minor_units_to_amount(int(included_minor))
+                        if included_minor is not None else None
+                    ),
+                    "displayed_currency": display_currency,
+                    "programme_areas": programme_map.get(str(row["source_funder_key"]), []),
+                },
+                "observed_funding": {
+                    "amount": (
+                        _minor_units_to_amount(int(included_minor))
+                        if included_minor is not None else None
+                    ),
+                    "currency": display_currency,
+                    "included_grant_count": int(row["included_grant_count"]),
+                    "excluded_multi_country_grant_count": int(row["multi_country_grant_count"]),
+                    "excluded_multi_country_amount": _minor_units_to_amount(
+                        int(row["multi_country_minor"])
+                    ),
+                    "excluded_conversion_grant_count": int(row["conversion_excluded_count"]),
+                    "excluded_missing_amount_grant_count": int(row["missing_amount_count"]),
+                    "excluded_invalid_amount_grant_count": int(row["invalid_amount_count"]),
+                    "excluded_negative_amount_grant_count": int(row["negative_amount_count"]),
+                },
+                "amount_policy": {
+                    "mode": (
+                        "automatic_eur" if auto_converted_eur
+                        else "original_currency"
+                    ),
+                    "converted_grant_count": int(row["included_grant_count"]),
+                    "unconverted_grant_count": int(row["conversion_excluded_count"]),
+                    "multi_country_amount_excluded": _minor_units_to_amount(
+                        int(row["multi_country_minor"])
+                    ),
+                },
+                "leading_programme_areas": programme_map.get(
+                    str(row["source_funder_key"]), []
+                ),
+                "representative_source_url": _safe_external_url(
+                    row["representative_source_url"]
+                ),
+            })
+        total_items = int(summary_row["filtered_count"] or 0)
+        total_pages = (total_items + page_size - 1) // page_size
+        return {
+            "status": (
+                "available" if items or total_items
+                else availability_status
+                if availability_status != "available"
+                else "no_matching_funders"
+            ),
+            "country": {"code": country_code, "name": country[0]},
+            "summary": {
+                "matching_funder_count": total_items,
+                "matching_grant_count": int(summary_row["matching_grant_count"] or 0),
+                "unattributed_funder_grant_count": 0,
+                "distinct_recipient_count": int(summary_row["distinct_recipient_count"] or 0),
+                "source_only_funder_count": int(summary_row["observed_only_count"] or 0),
+                "linked_directory_funder_count": int(summary_row["linked_count"] or 0),
+                "status_counts": {
+                    "all": int(summary_row["all_count"] or 0),
+                    "linked": int(summary_row["linked_count"] or 0),
+                    "observed_only": int(summary_row["observed_only_count"] or 0),
+                },
+                "monetary": {
+                    "currency_mode": (
+                        "auto_converted_eur" if auto_converted_eur
+                        else "source_currency"
+                    ),
+                    "display_currency": display_currency,
+                    "included_funding_total": (
+                        _minor_units_to_amount(int(summary_row["included_minor_total"]))
+                        if int(summary_row["included_grant_total"] or 0) else None
+                    ),
+                    "included_grant_count": int(summary_row["included_grant_total"] or 0),
+                    "excluded_multi_country_grant_count": int(summary_row["multi_country_grant_total"] or 0),
+                    "excluded_multi_country_amount": _minor_units_to_amount(
+                        int(summary_row["multi_country_minor_total"] or 0)
+                    ),
+                    "excluded_conversion_grant_count": int(summary_row["conversion_excluded_total"] or 0),
+                    "excluded_missing_amount_grant_count": int(summary_row["missing_amount_total"] or 0),
+                    "excluded_invalid_amount_grant_count": int(summary_row["invalid_amount_total"] or 0),
+                    "excluded_negative_amount_grant_count": int(summary_row["negative_amount_total"] or 0),
+                },
+            },
+            "items": items,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+            },
+            "available_date_range": {
+                "from": metadata[0],
+                "to": metadata[1],
+            },
+            "available_currencies": available_currencies,
+            "available_sort_modes": [
+                "largest_observed_funding", "most_grants", "most_recently_active",
+            ],
+            "applied_filters": {
+                "beneficiary_country": {"code": country_code, "name": country[0]},
+                "currency": "auto" if auto_converted_eur else requested_currency,
+                "currency_mode": (
+                    "auto_converted_eur" if auto_converted_eur
+                    else "source_currency"
+                ),
+                "display_currency": display_currency,
+                "date_from": date_from,
+                "date_to": date_to,
+                "beneficiary_geographies": beneficiary_geographies or [],
+                "programme_areas": programme_areas or [],
+                "donor": str(donor or "").strip() or None,
+                "recipient": str(recipient or "").strip() or None,
+                "sources": selected_sources,
+                "search": search_value or None,
+                "profile_status": profile_status,
+                "sort": sort,
+            },
+            "metadata": {
+                "data_mode": "derived_source_funder_facts",
+                "data_revision": revision,
+                "identity_policy": (
+                    "source namespace plus source funder id; normalized name fallback"
+                ),
+                "country_amount_policy": (
+                    "Multi-country awards count once for activity but are excluded "
+                    "from country-attributable funding totals."
+                ),
+                "scope_note": GRANT_SCOPE_NOTE,
+                "generated_at": _utc_now(),
+            },
+        }
+
+    async def get_source_funders(
+        self,
+        *,
+        beneficiary_country: str,
+        currency: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        beneficiary_geographies: Optional[List[str]] = None,
+        programme_areas: Optional[List[str]] = None,
+        donor: Optional[str] = None,
+        recipient: Optional[str] = None,
+        sources: Optional[List[str]] = None,
+        search: Optional[str] = None,
+        profile_status: str = "all",
+        sort: str = "largest_observed_funding",
+        page: int = 1,
+        page_size: int = 25,
+    ) -> Dict[str, Any]:
+        sort = {
+            "most_active": "most_grants",
+            "most_recent": "most_recently_active",
+        }.get(sort, sort)
+        if sort not in {"largest_observed_funding", "most_grants", "most_recently_active"}:
+            raise ValueError("sort must be largest_observed_funding, most_grants, or most_recently_active.")
+        page = max(1, int(page))
+        page_size = min(100, max(1, int(page_size)))
+        return self._source_funder_list_from_facts(
+            beneficiary_country=beneficiary_country,
+            currency=currency,
+            date_from=date_from,
+            date_to=date_to,
+            beneficiary_geographies=beneficiary_geographies,
+            programme_areas=programme_areas,
+            donor=donor,
+            recipient=recipient,
+            sources=sources,
+            search=search,
+            profile_status=profile_status,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+
+    async def get_source_funder_detail(
+        self,
+        source_funder_key: str,
+        **filters: Any,
+    ) -> Optional[Dict[str, Any]]:
+        detail_level = str(filters.get("detail_level") or "full").strip().lower()
+        if detail_level not in {"summary", "full"}:
+            raise ValueError("detail_level must be summary or full.")
+        country_code = str(filters.get("beneficiary_country") or "").strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", country_code):
+            raise ValueError("beneficiary_country must be an ISO 3166-1 alpha-2 code.")
+        where, params, _ = self._source_funder_fact_filters(
+            beneficiary_country=country_code,
+            currency=filters.get("currency"),
+            date_from=filters.get("date_from"),
+            date_to=filters.get("date_to"),
+            beneficiary_geographies=filters.get("beneficiary_geographies"),
+            programme_areas=filters.get("programme_areas"),
+            donor=filters.get("donor"),
+            recipient=filters.get("recipient"),
+            sources=filters.get("sources"),
+        )
+        where.append("fact.source_funder_key = ?")
+        params.append(source_funder_key)
+        requested_currency = str(filters.get("currency") or "").strip().upper() or None
+        auto_converted_eur = requested_currency in {None, "AUTO"}
+        display_currency = "EUR" if auto_converted_eur else requested_currency
+        valid_conversion_statuses = {
+            "native_eur", "ecb_award_date", "ecb_previous_business_day",
+        }
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            revision = self._ensure_overview_indexes(conn)
+            country = conn.execute(
+                """
+                SELECT country_name
+                FROM grant_beneficiary_countries
+                WHERE country_code = ?
+                ORDER BY country_name
+                LIMIT 1
+                """,
+                (country_code,),
+            ).fetchone()
+            if not country:
+                raise ValueError(
+                    f"No mapped beneficiary country is available for ISO code '{country_code}'."
+                )
+            rows = conn.execute(
+                f"""
+                SELECT fact.*
+                FROM grant_source_funder_facts AS fact
+                WHERE {' AND '.join(where)}
+                ORDER BY fact.award_date DESC, fact.grant_id
+                """,
+                params,
+            ).fetchall()
+            if not rows:
+                return None
+            programme_rows = conn.execute(
+                f"""
+                SELECT programme.programme_area, COUNT(DISTINCT fact.grant_id)
+                FROM grant_source_funder_facts AS fact
+                JOIN grant_programme_categories AS programme
+                  ON programme.grant_id = fact.grant_id
+                WHERE {' AND '.join(where)}
+                GROUP BY programme.programme_area
+                ORDER BY COUNT(DISTINCT fact.grant_id) DESC,
+                         LOWER(programme.programme_area)
+                """,
+                params,
+            ).fetchall()
+            sample_rows = [] if detail_level == "summary" else conn.execute(
+                f"""
+                SELECT fact.grant_id, fact.recipient_name, fact.award_date,
+                       fact.currency, fact.original_amount_minor,
+                       fact.eur_amount_minor, fact.original_amount_status,
+                       fact.eur_amount_status, fact.conversion_status,
+                       grant.amount, grant.description, grant.source_url,
+                       grant.raw_grant_data
+                FROM grant_source_funder_facts AS fact
+                JOIN grants AS grant ON grant.grant_id = fact.grant_id
+                WHERE {' AND '.join(where)}
+                ORDER BY fact.award_date DESC, fact.grant_id
+                LIMIT 50
+                """,
+                params,
+            ).fetchall()
+            profile_ids = sorted({
+                int(row["linked_profile_id"])
+                for row in rows if row["linked_profile_id"] is not None
+            })
+            profile_rows: Dict[int, sqlite3.Row] = {}
+            if profile_ids:
+                placeholders = ", ".join("?" for _ in profile_ids)
+                profile_rows = {
+                    int(row["charity_id"]): row
+                    for row in conn.execute(
+                        f"""
+                        SELECT charity_id, name, website, source_url
+                        FROM charities
+                        WHERE charity_id IN ({placeholders})
+                        """,
+                        profile_ids,
+                    ).fetchall()
+                }
+            registry_links = self._accepted_registry_links(conn, profile_ids)
+        finally:
+            conn.close()
+
+        names = Counter(str(row["display_name"]) for row in rows)
+        display_name = _top_counter_items(names, 1)[0]["name"]
+        recipient_aggregates: Dict[str, Dict[str, Any]] = {}
+        included_minor = 0
+        included_grants = 0
+        multi_country_minor = 0
+        exclusions: Counter[str] = Counter()
+        first_award_date: Optional[str] = None
+        latest_award_date: Optional[str] = None
+        for row in rows:
+            award_date = row["award_date"]
+            if award_date:
+                first_award_date = min(first_award_date or award_date, award_date)
+                latest_award_date = max(latest_award_date or award_date, award_date)
+            amount_status = (
+                row["eur_amount_status"] if auto_converted_eur
+                else row["original_amount_status"]
+            )
+            amount_minor = (
+                row["eur_amount_minor"] if auto_converted_eur
+                else row["original_amount_minor"]
+            )
+            conversion_available = (
+                str(row["conversion_status"] or "") in valid_conversion_statuses
+                if auto_converted_eur else True
+            )
+            recipient = recipient_aggregates.setdefault(str(row["recipient_key"]), {
+                "name_counts": Counter(),
+                "grant_count": 0,
+                "included_grant_count": 0,
+                "minor_units": 0,
+                "latest_award_date": None,
+            })
+            recipient["name_counts"][str(row["recipient_name"])] += 1
+            recipient["grant_count"] += 1
+            recipient["latest_award_date"] = max(
+                recipient["latest_award_date"] or award_date or "",
+                award_date or "",
+            ) or None
+            if int(row["country_count"] or 0) > 1:
+                exclusions["multi_country_award"] += 1
+                if conversion_available and amount_status in {"valid", "zero"}:
+                    multi_country_minor += int(amount_minor or 0)
+                continue
+            if not conversion_available:
+                exclusions["conversion_unavailable"] += 1
+                continue
+            if amount_status not in {"valid", "zero"}:
+                exclusions[f"{amount_status}_amount"] += 1
+                continue
+            included_grants += 1
+            included_minor += int(amount_minor or 0)
+            recipient["included_grant_count"] += 1
+            recipient["minor_units"] += int(amount_minor or 0)
+            if int(amount_minor or 0) <= 0:
+                exclusions["non_positive_amount"] += 1
+
+        programme_areas = [
+            {"name": row[0], "count": int(row[1]), "provenance": "source_or_inferred"}
+            for row in programme_rows
+        ]
+        recipient_items = []
+        for recipient_key, aggregate in recipient_aggregates.items():
+            recipient_name = _top_counter_items(aggregate["name_counts"], 1)[0]["name"]
+            recipient_items.append({
+                "recipient_key": recipient_key,
+                "name": recipient_name,
+                "grant_count": int(aggregate["grant_count"]),
+                "included_grant_count": int(aggregate["included_grant_count"]),
+                "observed_funding": _minor_units_to_amount(aggregate["minor_units"]),
+                "currency": display_currency,
+                "latest_award_date": aggregate["latest_award_date"],
+            })
+        recipient_items.sort(key=lambda item: item["name"].casefold())
+        recipient_items.sort(key=lambda item: item["latest_award_date"] or "", reverse=True)
+        recipient_items.sort(key=lambda item: item["grant_count"], reverse=True)
+        recipient_items.sort(key=lambda item: item["observed_funding"], reverse=True)
+        top_recipients = recipient_items[:50]
+
+        retained_recipients = [
+            item for item in recipient_items if item["observed_funding"] > 0
+        ][:15]
+        relationships = {
+            "status": "available" if retained_recipients else "no_monetary_transactions",
+            "nodes": ([{
+                "id": source_funder_key,
+                "label": display_name,
+                "role": "donor",
+            }] + [{
+                "id": item["recipient_key"],
+                "label": item["name"],
+                "role": "recipient",
+            } for item in retained_recipients]) if retained_recipients else [],
+            "links": [{
+                "source": source_funder_key,
+                "target": item["recipient_key"],
+                "value": item["observed_funding"],
+                "currency": display_currency,
+                "grant_count": item["included_grant_count"],
+            } for item in retained_recipients],
+            "metadata": {
+                "identity_basis": "canonical source funder identity",
+                "country_amount_policy": (
+                    "Only single-country observed awards are included; full "
+                    "multi-country awards are not duplicated across countries."
+                ),
+                "currency": display_currency,
+                "grant_count": len(rows),
+                "included_grant_count": sum(
+                    item["included_grant_count"] for item in retained_recipients
+                ),
+                "included_value": round(sum(
+                    item["observed_funding"] for item in retained_recipients
+                ), 2),
+                "excluded_grant_count": len(rows) - sum(
+                    item["included_grant_count"] for item in retained_recipients
+                ),
+                "excluded_reasons": dict(exclusions),
+                "limit": 15,
+                "truncation_applied": len(recipient_items) > 15,
+            },
+        }
+
+        profile_name = None
+        if len(profile_ids) == 1 and profile_ids[0] in profile_rows:
+            profile_name = profile_rows[profile_ids[0]]["name"]
+        profile_link = self._source_funder_profile_link(
+            profile_ids, profile_name, registry_links,
+        )
+        if profile_link["status"] == "single":
+            profile = profile_rows.get(profile_link["profile_id"])
+            if profile and detail_level == "full":
+                profile_link["website"] = _safe_external_url(profile["website"])
+                profile_link["source_url"] = _safe_external_url(profile["source_url"])
+        linked_profile = (
+            {
+                "charity_id": profile_link["profile_id"],
+                "name": profile_link["profile_name"],
+            }
+            if profile_link["status"] == "single" else None
+        )
+        identity = {
+            "key": source_funder_key,
+            "namespace": rows[0]["source_namespace"],
+            "method": rows[0]["identity_method"],
+            "source_organization_id": rows[0]["source_organization_id"],
+            "normalized_name_fallback": rows[0]["normalized_name_fallback"],
+        }
+        item = {
+            "kind": "source_funder",
+            "identity": identity,
+            "source_funder_key": source_funder_key,
+            "display_name": display_name,
+            "identity_method": rows[0]["identity_method"],
+            "source_ids": sorted({
+                str(row["source_organization_id"])
+                for row in rows if row["source_organization_id"]
+            }),
+            "sources": sorted({str(row["source_namespace"]) for row in rows}),
+            "evidence_sources": sorted({str(row["source_namespace"]) for row in rows}),
+            "source_only": profile_link["status"] != "single",
+            "linked_directory_profile": linked_profile,
+            "profile_link": profile_link,
+            "activity": {
+                "grant_count": len(rows),
+                "distinct_recipient_count": len(recipient_aggregates),
+                "first_award_date": first_award_date,
+                "latest_award_date": latest_award_date,
+            },
+            "observed_activity": {
+                "grant_count": len(rows),
+                "recipient_count": len(recipient_aggregates),
+                "latest_grant_date": latest_award_date,
+                "observed_funding": (
+                    _minor_units_to_amount(included_minor) if included_grants else None
+                ),
+                "displayed_currency": display_currency,
+                "programme_areas": programme_areas[:3],
+            },
+            "observed_funding": {
+                "amount": _minor_units_to_amount(included_minor) if included_grants else None,
+                "currency": display_currency,
+                "included_grant_count": included_grants,
+                "excluded_multi_country_grant_count": exclusions["multi_country_award"],
+                "excluded_multi_country_amount": _minor_units_to_amount(multi_country_minor),
+                "excluded_conversion_grant_count": exclusions["conversion_unavailable"],
+                "excluded_missing_amount_grant_count": exclusions["missing_amount"],
+                "excluded_invalid_amount_grant_count": exclusions["invalid_amount"],
+                "excluded_negative_amount_grant_count": exclusions["negative_amount"],
+            },
+            "amount_policy": {
+                "mode": "automatic_eur" if auto_converted_eur else "original_currency",
+                "converted_grant_count": included_grants,
+                "unconverted_grant_count": exclusions["conversion_unavailable"],
+                "multi_country_amount_excluded": _minor_units_to_amount(multi_country_minor),
+            },
+            "leading_programme_areas": programme_areas[:3],
+            "representative_source_url": next((
+                row["publisher_source_url"] for row in rows
+                if row["publisher_source_url"]
+            ), None),
+        }
+
+        source_evidence: List[Dict[str, Any]] = []
+        evidence_seen: set[Tuple[str, str]] = set()
+        grant_sample = []
+        for row in sample_rows:
+            evidence_links = _source_evidence_links(
+                row["raw_grant_data"], row["source_url"],
+            )
+            for evidence in evidence_links:
+                marker = (evidence["kind"], evidence["url"])
+                if marker not in evidence_seen:
+                    evidence_seen.add(marker)
+                    source_evidence.append(evidence)
+            amount_minor = (
+                row["eur_amount_minor"] if auto_converted_eur
+                else row["original_amount_minor"]
+            )
+            amount_status = (
+                row["eur_amount_status"] if auto_converted_eur
+                else row["original_amount_status"]
+            )
+            conversion_available = (
+                str(row["conversion_status"] or "") in valid_conversion_statuses
+                if auto_converted_eur else True
+            )
+            grant_sample.append({
+                "grant_id": str(row["grant_id"]),
+                "recipient_name": str(row["recipient_name"]),
+                "award_date": row["award_date"],
+                "amount": (
+                    _minor_units_to_amount(int(amount_minor or 0))
+                    if conversion_available and amount_status in {"valid", "zero"}
+                    else None
+                ),
+                "currency": display_currency,
+                "original_amount": row["amount"],
+                "original_currency": row["currency"],
+                "source_url": _safe_external_url(row["source_url"]),
+                "description": row["description"],
+                "evidence_links": evidence_links,
+            })
+        if profile_link.get("website"):
+            source_evidence.append({
+                "kind": "profile_website",
+                "label": "Visit organization website",
+                "role": "funder",
+                "url": profile_link["website"],
+                "origin": "enriched_profile",
+            })
+        if profile_link.get("source_url"):
+            source_evidence.append({
+                "kind": "profile_source",
+                "label": "View profile data source",
+                "role": "funder",
+                "url": profile_link["source_url"],
+                "origin": "enriched_profile",
+            })
+        return {
+            "status": "available",
+            "country": {"code": country_code, "name": country[0]},
+            "funder": item,
+            "top_recipients": top_recipients if detail_level == "full" else [],
+            "relationships": relationships if detail_level == "full" else {
+                "status": "lazy",
+                "nodes": [],
+                "links": [],
+                "metadata": {
+                    "grant_count": len(rows),
+                    "recipient_count": len(recipient_aggregates),
+                    "currency": display_currency,
+                },
+            },
+            "grant_sample": grant_sample,
+            "source_evidence": source_evidence[:40],
+            "relationship_summary": {
+                "recipient_count": len(recipient_aggregates),
+                "country_attributable_recipient_count": len([
+                    item for item in recipient_items if item["observed_funding"] > 0
+                ]),
+                "detail_available": True,
+            },
+            "metadata": {
+                "detail_type": "source_funder",
+                "detail_level": detail_level,
+                "data_mode": "derived_source_funder_facts",
+                "data_revision": revision,
+                "grant_sample_limit": 50,
+                "external_link_policy": (
+                    "Stored HTTP(S) links only; no server-side fetch, proxy, or preflight."
+                ),
+                "scope_note": GRANT_SCOPE_NOTE,
+            },
+        }
+
     async def get_beneficiary_geography_options(
         self, sources: Optional[List[str]] = None,
     ) -> List[str]:
@@ -1369,7 +3570,11 @@ class JSONCharityRepository(CharityRepository):
         funding_regions: Optional[List[str]] = None,
         sources: Optional[List[str]] = None,
         min_annual_giving: Optional[float] = None,
+        max_annual_giving: Optional[float] = None,
         min_avg_grant_size: Optional[float] = None,
+        max_avg_grant_size: Optional[float] = None,
+        include_score: bool = False,
+        sort: str = "name_asc",
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -1466,7 +3671,12 @@ class JSONCharityRepository(CharityRepository):
                 c for c in filtered
                 if (self._get_financials(c)[1] or 0.0) >= min_annual_giving
             ]
-        elif size:
+        if max_annual_giving is not None:
+            filtered = [
+                c for c in filtered
+                if (self._get_financials(c)[1] or 0.0) <= max_annual_giving
+            ]
+        if min_annual_giving is None and max_annual_giving is None and size:
             size_lower = size.lower()
             temp = []
             for c in filtered:
@@ -1487,14 +3697,22 @@ class JSONCharityRepository(CharityRepository):
                 c for c in filtered
                 if (self._get_financials(c)[1] or 0.0) >= min_avg_grant_size
             ]
+        if max_avg_grant_size is not None:
+            filtered = [
+                c for c in filtered
+                if (self._get_financials(c)[1] or 0.0) <= max_avg_grant_size
+            ]
 
-        # Map to baseline models
+        # Global score ordering has to happen before pagination. The JSON
+        # repository is only a fallback data source, so mapping the filtered
+        # set here is acceptable and keeps every page globally consistent.
+        score_config = load_score_configuration() if include_score or sort == "score_desc" else None
         results = []
-        for c in filtered[skip : skip + limit]:
+        for c in filtered:
             income, expenditure = self._get_financials(c)
             all_details = c.get("all_details", {})
             enriched = enrichment(c)
-            results.append({
+            result = {
                 "registered_charity_number": c.get("registered_charity_number"),
                 "suffix": c.get("suffix", 0),
                 "link": c.get("link"),
@@ -1519,8 +3737,30 @@ class JSONCharityRepository(CharityRepository):
                 "source_record_id": str(c.get("registered_charity_number")),
                 "source_url": c.get("link"),
                 "transaction_coverage": "source_without_transactions",
-            })
-        return results
+            }
+            if score_config:
+                result.update(_score_summary(score_relevance(
+                    {**result, "annual_expenditure": expenditure},
+                    score_config.example_target_profile,
+                    grant_statistics={},
+                    configuration=score_config,
+                )))
+            results.append(result)
+        if sort == "score_desc":
+            results.sort(key=lambda item: (
+                item.get("relevance_score") is None,
+                -(float(item["relevance_score"]) if item.get("relevance_score") is not None else 0.0),
+                str(item.get("charity_name") or "").casefold(),
+            ))
+        elif sort == "income_desc":
+            results.sort(key=lambda item: (
+                item.get("latest_income") is None,
+                -(float(item["latest_income"]) if item.get("latest_income") is not None else 0.0),
+                str(item.get("charity_name") or "").casefold(),
+            ))
+        else:
+            results.sort(key=lambda item: str(item.get("charity_name") or "").casefold())
+        return results[skip : skip + limit]
 
     async def get_by_id(self, reg_charity_number: int) -> Optional[Dict[str, Any]]:
         for c in self._data:
@@ -1691,6 +3931,7 @@ class JSONCharityRepository(CharityRepository):
         recipient: Optional[str] = None,
         sources: Optional[List[str]] = None,
         granularity: str = "auto",
+        include_connections: bool = False,
     ) -> Dict[str, Any]:
         """Keep the offline JSON fallback explicit and safely non-transactional.
 
@@ -1796,6 +4037,7 @@ class SQLiteCharityRepository(CharityRepository):
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._overview_revision: Optional[str] = None
+        self._overview_source_metadata_cache: Dict[Tuple[str, Tuple[str, ...]], Dict[str, Any]] = {}
         # Additive migration: existing enriched profiles and grants are left intact.
         if os.path.exists(self.db_path):
             conn = sqlite3.connect(self.db_path)
@@ -1807,7 +4049,8 @@ class SQLiteCharityRepository(CharityRepository):
                 }
                 overview_tables = {
                     "grant_beneficiary_terms", "grant_beneficiary_countries",
-                    "grant_programme_categories", "grant_overview_cache",
+                    "grant_programme_categories", "grant_source_funder_facts",
+                    "grant_overview_cache",
                 }
                 if not overview_tables.issubset(tables):
                     migrate_grant_overview_schema(conn)
@@ -2199,7 +4442,11 @@ class SQLiteCharityRepository(CharityRepository):
         funding_regions: Optional[List[str]] = None,
         sources: Optional[List[str]] = None,
         min_annual_giving: Optional[float] = None,
+        max_annual_giving: Optional[float] = None,
         min_avg_grant_size: Optional[float] = None,
+        max_avg_grant_size: Optional[float] = None,
+        include_score: bool = False,
+        sort: str = "name_asc",
         skip: int = 0, 
         limit: int = 20
     ) -> List[Dict[str, Any]]:
@@ -2332,11 +4579,14 @@ class SQLiteCharityRepository(CharityRepository):
         if min_annual_giving is not None:
             query += " AND annual_expenditure >= ?"
             params.append(min_annual_giving)
-        elif size == "small":
+        if max_annual_giving is not None:
+            query += " AND annual_expenditure <= ?"
+            params.append(max_annual_giving)
+        if min_annual_giving is None and max_annual_giving is None and size == "small":
             query += " AND annual_expenditure < 1000000"
-        elif size == "medium":
+        elif min_annual_giving is None and max_annual_giving is None and size == "medium":
             query += " AND annual_expenditure >= 1000000 AND annual_expenditure <= 10000000"
-        elif size == "large":
+        elif min_annual_giving is None and max_annual_giving is None and size == "large":
             query += " AND annual_expenditure > 10000000"
 
         if min_avg_grant_size is not None and min_avg_grant_size > 0:
@@ -2347,12 +4597,63 @@ class SQLiteCharityRepository(CharityRepository):
                 HAVING COUNT(DISTINCT currency) = 1 AND AVG(amount) >= ?
             )"""
             params.append(min_avg_grant_size)
-            
-        query += " LIMIT ? OFFSET ?"
-        params.extend([limit, skip])
+        if max_avg_grant_size is not None:
+            query += """ AND charity_id IN (
+                SELECT funding_charity_id
+                FROM grants
+                GROUP BY funding_charity_id
+                HAVING COUNT(DISTINCT currency) = 1 AND AVG(amount) <= ?
+            )"""
+            params.append(max_avg_grant_size)
+
+        # Score ordering is computed from every matching profile before the
+        # page is sliced. That prevents a "top 50 of the first 50" result.
+        # The other orderings stay inside SQLite and remain inexpensive.
+        if sort == "score_desc":
+            pass
+        elif sort == "income_desc":
+            query += " ORDER BY annual_income IS NULL, annual_income DESC, name COLLATE NOCASE ASC LIMIT ? OFFSET ?"
+            params.extend([limit, skip])
+        else:
+            query += " ORDER BY name COLLATE NOCASE ASC LIMIT ? OFFSET ?"
+            params.extend([limit, skip])
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
+        score_config = load_score_configuration() if (include_score or sort == "score_desc") and rows else None
+        score_statistics: Dict[int, Dict[str, Any]] = {}
+        if score_config:
+            profile = score_config.example_target_profile
+            charity_ids = [int(row[0]) for row in rows]
+            requested_currency = str(profile.get("currency") or "").upper()
+            grouped_statistics: Dict[int, List[Tuple[str, float, int]]] = {}
+            # SQLite has a bounded number of SQL parameters. Batching keeps
+            # full-population score sorting valid as the directory grows.
+            for start in range(0, len(charity_ids), 900):
+                id_batch = charity_ids[start : start + 900]
+                placeholders = ",".join("?" for _ in id_batch)
+                statistics_query = f"""
+                    SELECT funding_charity_id, UPPER(currency), AVG(amount), COUNT(*)
+                    FROM grants
+                    WHERE funding_charity_id IN ({placeholders})
+                      AND amount > 0 AND currency IS NOT NULL
+                """
+                statistics_params: List[Any] = list(id_batch)
+                if requested_currency:
+                    statistics_query += " AND UPPER(currency) = ?"
+                    statistics_params.append(requested_currency)
+                statistics_query += " GROUP BY funding_charity_id, UPPER(currency)"
+                cursor.execute(statistics_query, statistics_params)
+                for charity_id, currency, average_amount, grant_count in cursor.fetchall():
+                    grouped_statistics.setdefault(int(charity_id), []).append((currency, average_amount, grant_count))
+            for charity_id, values in grouped_statistics.items():
+                if requested_currency or len(values) == 1:
+                    currency, average_amount, grant_count = values[0]
+                    score_statistics[charity_id] = {
+                        "currency": currency,
+                        "average_amount": average_amount,
+                        "grant_count": grant_count,
+                    }
         conn.close()
         
         results = []
@@ -2360,7 +4661,7 @@ class SQLiteCharityRepository(CharityRepository):
             raw_cc = json.loads(r[15]) if r[15] else {}
             all_details = raw_cc.get("all_details") or {}
             
-            results.append({
+            result = {
                 "registered_charity_number": r[0],
                 "suffix": all_details.get("group_subsid_suffix", 0),
                 "link": raw_cc.get("link", f"https://register-of-charities.charitycommission.gov.uk/charity-details/?regid={r[0]}&subid=0"),
@@ -2385,7 +4686,22 @@ class SQLiteCharityRepository(CharityRepository):
                 "source_record_id": r[28],
                 "source_url": r[29],
                 "transaction_coverage": r[30] or "unknown",
-            })
+            }
+            if score_config:
+                result.update(_score_summary(score_relevance(
+                    {**result, "annual_expenditure": r[12]},
+                    score_config.example_target_profile,
+                    grant_statistics=score_statistics.get(int(r[0]), {}),
+                    configuration=score_config,
+                )))
+            results.append(result)
+        if sort == "score_desc":
+            results.sort(key=lambda item: (
+                item.get("relevance_score") is None,
+                -(float(item["relevance_score"]) if item.get("relevance_score") is not None else 0.0),
+                str(item.get("charity_name") or "").casefold(),
+            ))
+            return results[skip : skip + limit]
         return results
 
     async def get_by_id(self, reg_charity_number: int) -> Optional[Dict[str, Any]]:
@@ -3649,6 +5965,7 @@ def _has_compatible_repository_schema(path: str) -> tuple[bool, str]:
         "grant_beneficiary_terms",
         "grant_beneficiary_countries",
         "grant_programme_categories",
+        "grant_source_funder_facts",
         "grant_overview_cache",
     }
     try:

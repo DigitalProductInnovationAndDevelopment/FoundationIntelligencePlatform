@@ -386,6 +386,9 @@ def backfill_database(
         # Currency conversions change every Auto/EUR aggregate; source facts
         # and country/programme indexes remain valid, but cached payloads do not.
         connection.execute("DELETE FROM grant_overview_cache")
+        connection.execute(
+            "DELETE FROM metadata WHERE key = 'grant_overview_index_revision'"
+        )
         connection.commit()
         total_grants = connection.execute("SELECT COUNT(*) FROM grants").fetchone()[0]
         converted_grants = connection.execute(

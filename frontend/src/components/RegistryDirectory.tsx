@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Building2, LoaderCircle, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, Building2, LoaderCircle, Search, X } from "lucide-react";
 
 interface RegistrySummary {
   registry_id: string;
@@ -99,9 +99,21 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
   const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RegistryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
   const detailRequestRef = useRef<AbortController | null>(null);
   const requestVersion = useRef(0);
+  const activeFilterCount = Number(Boolean(query.trim()))
+    + Number(Boolean(charityNumber.trim()))
+    + Number(Boolean(status))
+    + Number(Boolean(incomeMin || incomeMax))
+    + Number(Boolean(expenditureMin || expenditureMax))
+    + Number(Boolean(country))
+    + Number(Boolean(region.trim()))
+    + Number(Boolean(beneficiaryGeography.trim()))
+    + Number(hasEnrichedProfile !== null)
+    + Number(hasGrantData !== null)
+    + Number(sort !== "name");
 
   const buildSearchParams = useCallback((cursor?: string | null) => {
     const params = new URLSearchParams({ limit: "50", sort });
@@ -210,13 +222,44 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
     setHasEnrichedProfile(null);
     setHasGrantData(null);
     setSort("name");
+    setSelectedRegistryId(null);
   };
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("registry-header-state", {
+      detail: {
+        filterCount: activeFilterCount,
+        resetDisabled: activeFilterCount === 0,
+        filtersExpanded: filtersOpen,
+      },
+    }));
+  }, [activeFilterCount, filtersOpen]);
+
+  useEffect(() => {
+    const openFilters = () => {
+      setFiltersOpen(true);
+    };
+    window.addEventListener("registry-open-filters", openFilters);
+    window.addEventListener("registry-reset-filters", resetFilters);
+    return () => {
+      window.removeEventListener("registry-open-filters", openFilters);
+      window.removeEventListener("registry-reset-filters", resetFilters);
+      window.dispatchEvent(new CustomEvent("registry-header-state", {
+        detail: { filterCount: 0, resetDisabled: true, filtersExpanded: false },
+      }));
+    };
+  }, []);
 
   return (
     <section className="registry-directory">
-      <aside className="glass-card registry-filters">
-        <h3><SlidersHorizontal size={16} /> Registry filters</h3>
-        <p>Official Charity Commission records. Registry presence does not imply funding activity.</p>
+      {filtersOpen && <div className="filter-drawer-backdrop" onMouseDown={() => setFiltersOpen(false)}>
+        <aside className="filter-drawer registry-filters registry-filter-drawer" role="dialog" aria-modal="true" aria-label="Advanced Charity Commission Search filters" onMouseDown={event => event.stopPropagation()}>
+          <div className="filter-drawer-header">
+            <div><span>Advanced Charity Search</span><h3>Filters</h3></div>
+            <button type="button" onClick={() => setFiltersOpen(false)} aria-label="Close filters"><X size={18} /></button>
+          </div>
+          <div id="advanced-registry-filters" className="filter-drawer-body">
+        <p className="registry-filter-intro">Official Charity Commission records. Registry presence does not imply funding activity.</p>
         <label>
           <span>Organization name</span>
           <div className="registry-search-input"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by name…" /></div>
@@ -242,8 +285,8 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
           <label><span>Expenditure to</span><input className="form-input" type="number" min="0" value={expenditureMax} onChange={event => setExpenditureMax(event.target.value)} placeholder="£" /></label>
         </div>
         <div className="registry-filter-pair">
-          <label><span>Country</span><select className="form-input" value={country} onChange={event => setCountry(event.target.value)}><option value="">All</option><option value="GB">United Kingdom</option></select></label>
-          <label><span>Region</span><input className="form-input" value={region} onChange={event => setRegion(event.target.value)} placeholder="e.g. Somerset" /></label>
+          <label><span>Registered country</span><select className="form-input" value={country} onChange={event => setCountry(event.target.value)}><option value="">All</option><option value="GB">United Kingdom</option></select></label>
+          <label><span>Registered region</span><input className="form-input" value={region} onChange={event => setRegion(event.target.value)} placeholder="e.g. Somerset" /></label>
         </div>
         <label>
           <span>Observed beneficiary geography</span>
@@ -268,11 +311,13 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
           </select>
         </label>
         <button type="button" className="btn btn-secondary" onClick={resetFilters}>Reset filters</button>
-      </aside>
+          </div>
+        </aside>
+      </div>}
 
       <div className="registry-results">
         <div className="registry-results-header">
-          <div><h2>Organization Directory</h2><p>Search is server-side; 50 lightweight registry results are requested at a time.</p></div>
+          <div><h3>Registry results</h3><p>Search is server-side; 50 lightweight registry results are requested at a time.</p></div>
           {page && <span className="status-badge">{page.search_strategy === "fts5" ? "Indexed name search" : "Indexed directory"}</span>}
         </div>
         {error && <div className="data-notice data-notice-warning">{error}</div>}

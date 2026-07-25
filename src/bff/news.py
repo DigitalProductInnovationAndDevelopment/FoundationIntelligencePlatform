@@ -15,6 +15,7 @@ rather than via os.environ.get() here.
 from __future__ import annotations
 
 import calendar
+import json
 import os
 import re
 import sys
@@ -22,12 +23,13 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 import feedparser
 import requests
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from bff import config
 from bff.auth import get_current_user_token
@@ -349,4 +351,85 @@ def get_foundation_news_summary(
         NewsSource(title=a.title, link=a.link, source=a.source, published=a.published, note=a.note)
         for a in articles
     ]
-    return NewsSummary(foundation=foundation_name, summary=summary, sources=sources)
+    return NewsSummary(
+        foundation=foundation_name,
+        summary=summary,
+        sources=sources,
+        searched_weeks=weeks,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _news_sse_event(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
+@router.get("/{foundation_name}/summary/stream")
+def stream_foundation_news_summary(
+    foundation_name: str,
+    lang: str = "en",
+    max_articles: int = DEFAULT_MAX_ARTICLES,
+    weeks: int = DEFAULT_WEEKS,
+    model: str = DEFAULT_MODEL,
+):
+    """Stream the real research stages before returning the completed briefing.
+
+    The existing JSON endpoint remains available for integrations. The UI uses
+    this SSE route so it can show an honest, server-driven research timeline
+    rather than a generic spinner while the external RSS, article and model
+    calls are running.
+    """
+    if lang not in LOCALE_PRESETS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported lang '{lang}'. Choose one of: {sorted(LOCALE_PRESETS)}",
+        )
+
+    def generate() -> Iterator[str]:
+        try:
+            locale = LOCALE_PRESETS[lang]
+            yield _news_sse_event("progress", {
+                "step": "discovering",
+                "label": "Searching recent Google News coverage",
+            })
+            articles = fetch_news_entries(foundation_name, weeks, max_articles, locale)
+            if not articles:
+                yield _news_sse_event("error", {
+                    "detail": f'No news found for "{foundation_name}" in the last {weeks} week(s).',
+                })
+                return
+
+            yield _news_sse_event("progress", {
+                "step": "reading",
+                "label": f"Reading and resolving {len(articles)} candidate article(s)",
+                "article_count": len(articles),
+            })
+            articles = enrich_articles(articles)
+
+            yield _news_sse_event("progress", {
+                "step": "summarizing",
+                "label": "Synthesizing a sourced AI briefing",
+            })
+            summary = summarize_with_claude(foundation_name, weeks, articles, model)
+            result = NewsSummary(
+                foundation=foundation_name,
+                summary=summary,
+                sources=[
+                    NewsSource(title=a.title, link=a.link, source=a.source, published=a.published, note=a.note)
+                    for a in articles
+                ],
+                searched_weeks=weeks,
+                generated_at=datetime.now(timezone.utc).isoformat(),
+            )
+            yield _news_sse_event("complete", result.model_dump())
+        except Exception as exc:
+            logger.exception("Foundation news research failed for %s", foundation_name)
+            yield _news_sse_event("error", {
+                "detail": f"News research could not be completed: {exc}",
+            })
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

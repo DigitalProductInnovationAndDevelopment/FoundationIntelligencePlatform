@@ -136,6 +136,25 @@ class TestGrantOverview(GrantOverviewFixture):
 
         self.assertEqual(cached, first)
 
+    async def test_connections_are_deferred_until_explicitly_requested(self):
+        self.grant("FLOW", date="2025-01-15", amount=100, geography="Ghana")
+        self.conn.execute(
+            "UPDATE grants SET raw_grant_data = ? WHERE grant_id = ?",
+            (json.dumps({"fundingOrganization": [{"addressCountry": "United Kingdom"}]}), "FLOW"),
+        )
+        self.conn.commit()
+
+        default_view = await self.repo.get_grant_overview(currency="GBP")
+        with_connections = await self.repo.get_grant_overview(
+            currency="GBP", include_connections=True
+        )
+
+        self.assertEqual(default_view["map"]["connections"], [])
+        self.assertEqual(default_view["map"]["connection_grant_count"], 0)
+        self.assertEqual(with_connections["map"]["connection_grant_count"], 1)
+        self.assertEqual(with_connections["map"]["connections"][0]["origin_country_code"], "GB")
+        self.assertEqual(with_connections["map"]["connections"][0]["destination_country_code"], "GH")
+
     async def test_country_options_use_the_derived_country_index(self):
         self.grant("GH", date="2025-01-15", amount=100, geography="Ghana")
         self.grant("KE", date="2025-02-15", amount=100, geography="Kenya")
@@ -143,6 +162,22 @@ class TestGrantOverview(GrantOverviewFixture):
         options = await self.repo.get_beneficiary_geography_options(sources=["360Giving"])
 
         self.assertEqual(options, ["Ghana", "Kenya"])
+
+    async def test_overview_keeps_mapped_countries_visible_at_low_coverage(self):
+        self.grant("MAPPED", date="2025-01-15", amount=100, geography="Ghana")
+        for grant_id in ("UNMAPPED-1", "UNMAPPED-2", "UNMAPPED-3"):
+            self.grant(grant_id, date="2025-01-15", amount=100, geography="Ghana")
+            self.conn.execute(
+                "UPDATE grants SET beneficiary_geography = '[]', beneficiary_geography_normalized = '[]' WHERE grant_id = ?",
+                (grant_id,),
+            )
+        self.conn.commit()
+
+        result = await self.repo.get_grant_overview(currency="GBP")
+
+        self.assertEqual(result["map"]["status"], "available")
+        self.assertEqual(result["map"]["coverage_percentage"], 25.0)
+        self.assertEqual([item["region_or_country_code"] for item in result["map"]["items"]], ["GH"])
 
     async def test_overview_endpoint_validates_dates_and_exposes_one_payload(self):
         self.grant("GH", date="2025-01-15", amount=100)
@@ -158,6 +193,14 @@ class TestGrantOverview(GrantOverviewFixture):
                 self.assertEqual(payload["kpis"]["grants_monitored"], 1)
                 self.assertEqual(payload["map"]["known_geography_count"], 1)
                 self.assertEqual(payload["themes"]["classification_coverage"]["qualifying_grant_count"], 1)
+                trend = client.get(
+                    "/api/charities/grants/overview/trends?currency=GBP&beneficiary_geographies=Ghana&granularity=monthly",
+                    cookies=login.cookies,
+                )
+                self.assertEqual(trend.status_code, 200)
+                self.assertEqual(trend.json()["items"][0]["month"], "2025-01")
+                self.assertEqual(trend.json()["items"][0]["mapped_grant_count"], 1)
+                self.assertEqual(trend.json()["granularity"], "monthly")
                 geographies = client.get("/api/charities/grants/beneficiary-geographies", cookies=login.cookies)
                 self.assertEqual(geographies.status_code, 200)
                 self.assertEqual(geographies.json(), ["Ghana"])

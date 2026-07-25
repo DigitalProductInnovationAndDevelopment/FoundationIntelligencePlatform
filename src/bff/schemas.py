@@ -113,6 +113,12 @@ class CharityBase(BaseModel):
     source_record_id: Optional[str] = None
     source_url: Optional[str] = None
     transaction_coverage: str = "unknown"
+    relevance_score: Optional[float] = None
+    score_confidence: Optional[float] = None
+    score_completeness: Optional[float] = None
+    score_target: Optional[str] = None
+    score_version: Optional[str] = None
+    score_configuration_status: Optional[str] = None
 
 class CharityDetail(BaseModel):
     registered_charity_number: int
@@ -345,6 +351,127 @@ class GrantNetworkSummary(BaseModel):
     metadata: DataMetadata
 
 
+class SourceFunderProfileLink(BaseModel):
+    charity_id: int
+    name: Optional[str] = None
+
+
+class SourceEvidenceLink(BaseModel):
+    kind: str
+    label: str
+    role: Optional[str] = None
+    url: str
+    origin: str
+
+
+class SourceFunderActivity(BaseModel):
+    grant_count: int = 0
+    distinct_recipient_count: int = 0
+    first_award_date: Optional[str] = None
+    latest_award_date: Optional[str] = None
+
+
+class SourceFunderObservedFunding(BaseModel):
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    included_grant_count: int = 0
+    excluded_multi_country_grant_count: int = 0
+    excluded_multi_country_amount: float = 0.0
+    excluded_conversion_grant_count: int = 0
+    excluded_missing_amount_grant_count: int = 0
+    excluded_invalid_amount_grant_count: int = 0
+    excluded_negative_amount_grant_count: int = 0
+
+
+class SourceFunderItem(BaseModel):
+    rank: Optional[int] = None
+    kind: str = "source_funder"
+    identity: Dict[str, Any] = {}
+    source_funder_key: str
+    display_name: str
+    identity_method: str
+    source_ids: List[str] = []
+    sources: List[str] = []
+    source_only: bool = True
+    linked_directory_profile: Optional[SourceFunderProfileLink] = None
+    profile_link: Dict[str, Any] = {"status": "none"}
+    evidence_sources: List[str] = []
+    activity: SourceFunderActivity
+    observed_activity: Dict[str, Any] = {}
+    observed_funding: SourceFunderObservedFunding
+    amount_policy: Dict[str, Any] = {}
+    leading_programme_areas: List[Dict[str, Any]] = []
+    representative_source_url: Optional[str] = None
+
+
+class SourceFunderPagination(BaseModel):
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+
+class SourceFunderListResponse(BaseModel):
+    status: str
+    country: Dict[str, str]
+    summary: Dict[str, Any] = {}
+    items: List[SourceFunderItem] = []
+    pagination: SourceFunderPagination
+    available_date_range: Dict[str, Optional[str]] = {}
+    available_currencies: List[str] = []
+    available_sort_modes: List[str] = []
+    applied_filters: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
+
+
+class SourceFunderGrantSample(BaseModel):
+    grant_id: str
+    recipient_name: str
+    award_date: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    original_amount: Optional[float] = None
+    original_currency: Optional[str] = None
+    source_url: Optional[str] = None
+    description: Optional[str] = None
+    evidence_links: List[SourceEvidenceLink] = []
+
+
+class SourceFunderRelationshipNode(BaseModel):
+    id: str
+    label: str
+    role: str
+
+
+class SourceFunderRelationshipLink(BaseModel):
+    source: str
+    target: str
+    value: float
+    currency: Optional[str] = None
+    grant_count: int
+
+
+class SourceFunderRelationshipFlow(BaseModel):
+    """A source-identity donor-to-recipient flow, never a synthetic profile."""
+
+    status: str
+    nodes: List[SourceFunderRelationshipNode] = []
+    links: List[SourceFunderRelationshipLink] = []
+    metadata: Dict[str, Any] = {}
+
+
+class SourceFunderDetailResponse(BaseModel):
+    status: str
+    country: Dict[str, str]
+    funder: SourceFunderItem
+    top_recipients: List[Dict[str, Any]] = []
+    relationships: SourceFunderRelationshipFlow
+    grant_sample: List[SourceFunderGrantSample] = []
+    source_evidence: List[SourceEvidenceLink] = []
+    relationship_summary: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
+
+
 class GrantAggregationExclusions(BaseModel):
     missing_date: int = 0
     invalid_date: int = 0
@@ -386,6 +513,8 @@ class GrantTrendItem(BaseModel):
     source_record_count: int = 0
     total_amount: Optional[float] = None
     coverage_status: str
+    mapped_grant_count: int = 0
+    unmapped_grant_count: int = 0
 
 
 class GrantTrendsResponse(BaseModel):
@@ -393,6 +522,7 @@ class GrantTrendsResponse(BaseModel):
     currency: Optional[str] = None
     available_currencies: List[str] = []
     date_basis: str = "award_date"
+    granularity: str = "monthly"
     period: Optional[GrantTrendPeriod] = None
     items: List[GrantTrendItem] = []
     excluded: GrantAggregationExclusions
@@ -546,3 +676,5 @@ class NewsSummary(BaseModel):
     foundation: str
     summary: str
     sources: List[NewsSource] = []
+    searched_weeks: int = 4
+    generated_at: str

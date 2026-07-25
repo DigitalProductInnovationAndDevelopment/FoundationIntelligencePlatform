@@ -1,8 +1,8 @@
 {
-  "score_version": "example-relevance-v1",
+  "score_version": "example-relevance-v2",
   "configuration_status": "experimental",
   "score_target": "relevance of an organization to a user-selected target profile",
-  "missing_data_behavior": "renormalize_available_components",
+  "missing_data_behavior": "zero_for_missing_components",
   "review_confidence_threshold": 0.6,
   "weights": {
     "thematic_fit": 0.35,
@@ -22,7 +22,7 @@
   "assumptions": [
     "This is an example configuration and is not client-approved.",
     "The score supports exploration of target-profile relevance; it is not a donation probability or prediction.",
-    "Missing components are disclosed and excluded from relevance arithmetic rather than treated as zero relevance.",
+    "The final score is the weighted sum of all criteria; missing criteria contribute zero rather than inflating a partial match.",
     "Financial and grant-size comparisons are made only within the requested source currency."
   ]
 }

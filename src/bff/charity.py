@@ -9,6 +9,8 @@ from bff.schemas import (
     GrantMapResponse,
     GrantListResponse,
     GrantNetworkSummary,
+    SourceFunderDetailResponse,
+    SourceFunderListResponse,
     GrantThemesResponse,
     GrantTrendsResponse,
     RegistryDirectoryPage,
@@ -37,7 +39,11 @@ async def list_charities(
     funding_regions: Optional[str] = None,
     sources: Optional[str] = Query(default=None, max_length=500),
     min_annual_giving: Optional[float] = None,
+    max_annual_giving: Optional[float] = Query(default=None, ge=0),
     min_avg_grant_size: Optional[float] = None,
+    max_avg_grant_size: Optional[float] = Query(default=None, ge=0),
+    include_score: bool = Query(default=False),
+    sort: str = Query(default="name_asc", pattern="^(score_desc|income_desc|name_asc)$"),
     skip: int = 0,
     limit: int = 20,
     repo: CharityRepository = Depends(get_charity_repository)
@@ -64,7 +70,11 @@ async def list_charities(
         funding_regions=funding_regions_list,
         sources=sources_list,
         min_annual_giving=min_annual_giving,
+        max_annual_giving=max_annual_giving,
         min_avg_grant_size=min_avg_grant_size,
+        max_avg_grant_size=max_avg_grant_size,
+        include_score=include_score,
+        sort=sort,
         skip=skip, 
         limit=limit
     )
@@ -203,6 +213,7 @@ async def get_filtered_grant_overview(
     recipient: Optional[str] = Query(default=None, max_length=160),
     sources: Optional[str] = Query(default=None, max_length=500),
     granularity: str = Query(default="auto", pattern="^(auto|monthly|yearly)$"),
+    include_connections: bool = Query(default=False),
     repo: CharityRepository = Depends(get_charity_repository),
 ):
     """Return map, KPIs, trend and programme allocation from one grant scope.
@@ -235,9 +246,158 @@ async def get_filtered_grant_overview(
             recipient=recipient,
             sources=split_values(sources) if sources is not None else None,
             granularity=granularity,
+            include_connections=include_connections,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/grants/overview/trends", response_model=GrantTrendsResponse)
+async def get_filtered_grant_overview_trends(
+    currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
+    date_from: Optional[str] = Query(default=None, max_length=10),
+    date_to: Optional[str] = Query(default=None, max_length=10),
+    beneficiary_geographies: Optional[str] = Query(default=None, max_length=500),
+    programme_areas: Optional[str] = Query(default=None, max_length=1000),
+    donor: Optional[str] = Query(default=None, max_length=160),
+    recipient: Optional[str] = Query(default=None, max_length=160),
+    sources: Optional[str] = Query(default=None, max_length=500),
+    granularity: str = Query(default="auto", pattern="^(auto|monthly|yearly)$"),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return a filtered trend without recalculating the map and theme cards."""
+    def parse_iso(value: Optional[str], field: str) -> Optional[str]:
+        if value is None or not value.strip():
+            return None
+        try:
+            return date.fromisoformat(value).isoformat()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"{field} must be an ISO date (YYYY-MM-DD)") from exc
+
+    parsed_from = parse_iso(date_from, "date_from")
+    parsed_to = parse_iso(date_to, "date_to")
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
+    split_values = lambda value: [item.strip() for item in (value or "").split(",") if item.strip()]
+    try:
+        return await repo.get_grant_overview_trends(
+            currency=currency,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            beneficiary_geographies=split_values(beneficiary_geographies),
+            programme_areas=split_values(programme_areas),
+            donor=donor,
+            recipient=recipient,
+            sources=split_values(sources) if sources is not None else None,
+            granularity=granularity,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _parse_grant_date(value: Optional[str], field: str) -> Optional[str]:
+    if value is None or not value.strip():
+        return None
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{field} must be an ISO date (YYYY-MM-DD)") from exc
+
+
+def _split_grant_filter(value: Optional[str]) -> List[str]:
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+@router.get("/grants/funders", response_model=SourceFunderListResponse)
+async def list_source_funders(
+    beneficiary_country: str = Query(..., min_length=2, max_length=2, pattern="^[A-Za-z]{2}$"),
+    currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
+    date_from: Optional[str] = Query(default=None, max_length=10),
+    date_to: Optional[str] = Query(default=None, max_length=10),
+    beneficiary_geographies: Optional[str] = Query(default=None, max_length=500),
+    programme_areas: Optional[str] = Query(default=None, max_length=1000),
+    donor: Optional[str] = Query(default=None, max_length=160),
+    recipient: Optional[str] = Query(default=None, max_length=160),
+    sources: Optional[str] = Query(default=None, max_length=500),
+    search: Optional[str] = Query(default=None, max_length=160),
+    profile_status: str = Query(
+        default="all", pattern="^(all|linked|observed_only)$",
+    ),
+    sort: str = Query(default="largest_observed_funding", pattern="^(largest_observed_funding|most_grants|most_recently_active|most_active|most_recent)$"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Rank source-reported funders active in one map beneficiary country.
+
+    This is intentionally not the verified Organisation Directory. Results may
+    be source-only entities; a directory link appears only when one already
+    exists and has not been inferred by this endpoint.
+    """
+    parsed_from = _parse_grant_date(date_from, "date_from")
+    parsed_to = _parse_grant_date(date_to, "date_to")
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
+    try:
+        return await repo.get_source_funders(
+            beneficiary_country=beneficiary_country.upper(),
+            currency=currency,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            beneficiary_geographies=_split_grant_filter(beneficiary_geographies),
+            programme_areas=_split_grant_filter(programme_areas),
+            donor=donor,
+            recipient=recipient,
+            sources=_split_grant_filter(sources) if sources is not None else None,
+            search=search,
+            profile_status=profile_status,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/grants/funders/{source_funder_key}", response_model=SourceFunderDetailResponse)
+async def get_source_funder_detail(
+    source_funder_key: str,
+    beneficiary_country: str = Query(..., min_length=2, max_length=2, pattern="^[A-Za-z]{2}$"),
+    currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
+    date_from: Optional[str] = Query(default=None, max_length=10),
+    date_to: Optional[str] = Query(default=None, max_length=10),
+    beneficiary_geographies: Optional[str] = Query(default=None, max_length=500),
+    programme_areas: Optional[str] = Query(default=None, max_length=1000),
+    donor: Optional[str] = Query(default=None, max_length=160),
+    recipient: Optional[str] = Query(default=None, max_length=160),
+    sources: Optional[str] = Query(default=None, max_length=500),
+    detail_level: str = Query(default="full", pattern="^(summary|full)$"),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return source-funder activity detail without treating it as a profile."""
+    parsed_from = _parse_grant_date(date_from, "date_from")
+    parsed_to = _parse_grant_date(date_to, "date_to")
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
+    try:
+        detail = await repo.get_source_funder_detail(
+            source_funder_key,
+            beneficiary_country=beneficiary_country.upper(),
+            currency=currency,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            beneficiary_geographies=_split_grant_filter(beneficiary_geographies),
+            programme_areas=_split_grant_filter(programme_areas),
+            donor=donor,
+            recipient=recipient,
+            sources=_split_grant_filter(sources) if sources is not None else None,
+            detail_level=detail_level,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not detail:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source funder not found in this grant scope.")
+    return detail
 
 
 @router.get("/grants/summary", response_model=GrantNetworkSummary)
