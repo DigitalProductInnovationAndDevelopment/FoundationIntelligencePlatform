@@ -127,6 +127,20 @@ class TestGrantOverview(GrantOverviewFixture):
         self.assertEqual(other["kpis"]["grants_monitored"], 1)
         self.assertEqual(other["kpis"]["awarded_funding"], 250.0)
 
+    async def test_entity_suggestions_use_derived_source_facts(self):
+        self.grant("ALPHA-1", date="2025-01-15", amount=100, donor="Alpha Fund", recipient="School One")
+        self.grant("ALPHA-2", date="2025-01-16", amount=100, donor="Alpha Fund", recipient="School Two")
+        self.grant("BETA", date="2025-01-17", amount=100, donor="Beta Fund", recipient="Other recipient", source="Other source")
+
+        suggestions = await self.repo.get_grant_entity_suggestions(sources=["360Giving"])
+
+        self.assertEqual(suggestions["status"], "available")
+        self.assertEqual(suggestions["donors"], [{"name": "Alpha Fund", "grant_count": 2}])
+        self.assertEqual(
+            {item["name"] for item in suggestions["recipients"]},
+            {"School One", "School Two"},
+        )
+
     async def test_reuses_persistent_overview_cache_for_the_same_scope(self):
         self.grant("CACHED", date="2025-01-15", amount=100)
         first = await self.repo.get_grant_overview(currency="GBP")

@@ -29,9 +29,13 @@ import {
   Area,
 } from "recharts";
 import GrantWorldMap from "./components/GrantWorldMap";
-import OverviewDashboard, { type OverviewFilters } from "./components/OverviewDashboard";
+import OverviewDashboard, { type FavoriteGrantExplorerPayload, type OverviewFilters } from "./components/OverviewDashboard";
 import AppHeader from "./components/AppHeader";
-import DonorDirectoryPage, { type FavoriteDonorPayload, type HeaderContextState } from "./components/DonorDirectoryPage";
+import DonorDirectoryPage, {
+  type FavoriteDonorPayload,
+  type FavoriteDonorRequestPayload,
+  type HeaderContextState,
+} from "./components/DonorDirectoryPage";
 import {
   applyGrantScopeToParams,
   grantScopeFromUrl,
@@ -110,19 +114,17 @@ type FavoriteResearchView = {
   savedAt: number;
 };
 
-type FavoriteLandscapeView = {
-  key: string;
-  label: string;
-  route: string;
-  savedAt: number;
-};
-
 type FavoritesState = {
   profiles: FavoriteProfile[];
   donors: FavoriteDonorPayload[];
+  donorRequests: FavoriteDonorRequestPayload[];
   researchViews: FavoriteResearchView[];
-  landscapeViews: FavoriteLandscapeView[];
+  grantExplorers: FavoriteGrantExplorerPayload[];
 };
+
+type FavoriteDonorWorkspace =
+  | { kind: "donor"; item: FavoriteDonorPayload }
+  | { kind: "request"; item: FavoriteDonorRequestPayload };
 
 type NewsSourceItem = {
   title: string;
@@ -150,7 +152,7 @@ type SavedNewsRun = NewsSummaryPayload & {
 
 const FAVORITES_STORAGE_KEY = "foundation-intelligence-favorites-v1";
 const NEWS_RUN_STORAGE_KEY = "foundation-intelligence-news-runs-v1";
-const EMPTY_FAVORITES: FavoritesState = { profiles: [], donors: [], researchViews: [], landscapeViews: [] };
+const EMPTY_FAVORITES: FavoritesState = { profiles: [], donors: [], donorRequests: [], researchViews: [], grantExplorers: [] };
 const NEWS_PROGRESS_STEPS: Array<{ key: NewsProgressStep; label: string; detail: string }> = [
   { key: "discovering", label: "Find recent coverage", detail: "Search current Google News coverage for this organization." },
   { key: "reading", label: "Read source articles", detail: "Resolve publisher links and extract article evidence." },
@@ -165,8 +167,9 @@ function loadFavorites(): FavoritesState {
     return {
       profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
       donors: Array.isArray(parsed.donors) ? parsed.donors : [],
+      donorRequests: Array.isArray(parsed.donorRequests) ? parsed.donorRequests : [],
       researchViews: Array.isArray(parsed.researchViews) ? parsed.researchViews : [],
-      landscapeViews: Array.isArray(parsed.landscapeViews) ? parsed.landscapeViews : [],
+      grantExplorers: Array.isArray(parsed.grantExplorers) ? parsed.grantExplorers : [],
     };
   } catch {
     return EMPTY_FAVORITES;
@@ -556,7 +559,10 @@ export default function App() {
   });
   const [profileFiltersOpen, setProfileFiltersOpen] = useState(false);
   const [favorites, setFavorites] = useState<FavoritesState>(loadFavorites);
-  const [donorReturnToFavorites, setDonorReturnToFavorites] = useState(false);
+  const [favoriteDonorWorkspace, setFavoriteDonorWorkspace] = useState<FavoriteDonorWorkspace | null>(null);
+  const [favoriteGrantExplorer, setFavoriteGrantExplorer] = useState<FavoriteGrantExplorerPayload | null>(null);
+  const favoriteReturnUrlRef = useRef<string | null>(null);
+  const favoriteReturnScrollRef = useRef(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = window.localStorage.getItem("sidebar-collapsed");
     return saved === null ? window.innerWidth < 1280 : saved === "true";
@@ -1360,7 +1366,6 @@ export default function App() {
     view: "overview" | "donors" | "research" | "registry" | "favorites" | "pipeline",
     mode: "push" | "replace" = "push",
   ) => {
-    setDonorReturnToFavorites(false);
     const query = new URLSearchParams(window.location.search);
     if (view === "overview") {
       query.delete("view");
@@ -1529,44 +1534,20 @@ export default function App() {
     setFavorites(current => ({ ...current, researchViews: current.researchViews.filter(item => item.key !== key) }));
   };
 
-  const landscapeFavorite = (filters: OverviewFilters): FavoriteLandscapeView => {
-    const query = applyGrantScopeToParams(
-      new URLSearchParams(),
-      {
-        currency: filters.currency || undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        beneficiaryGeographies: filters.beneficiaryGeographies,
-        programmeAreas: filters.programmeAreas,
-        donor: filters.donor || undefined,
-        recipient: filters.recipient || undefined,
-        sources: selectedDataSources,
-      },
-      { persistEmptySources: true },
-    );
-    if (filters.granularity !== "auto") query.set("grant_granularity", filters.granularity);
-    const route = query.toString() ? `?${query.toString()}` : "";
-    const activeTerms = [filters.donor, filters.recipient, filters.beneficiaryGeographies[0], filters.programmeAreas[0]].filter(Boolean);
-    return {
-      key: `landscape:${route}`,
-      label: activeTerms.length ? `Funding Landscape · ${activeTerms.join(" · ")}` : "Funding Landscape",
-      route,
-      savedAt: Date.now(),
-    };
-  };
-
-  const isFavoriteLandscape = (filters: OverviewFilters) =>
-    favorites.landscapeViews.some(view => view.key === landscapeFavorite(filters).key);
-
-  const toggleFavoriteLandscape = (filters: OverviewFilters) => {
-    const view = landscapeFavorite(filters);
-    setFavorites(current => current.landscapeViews.some(item => item.key === view.key)
-      ? { ...current, landscapeViews: current.landscapeViews.filter(item => item.key !== view.key) }
-      : { ...current, landscapeViews: [{ ...view, savedAt: Date.now() }, ...current.landscapeViews] });
-  };
-
   const openFavoriteProfile = (favorite: FavoriteProfile) => {
     setSelectedCharity(favorite.profile);
+  };
+
+  const toggleFavoriteDonorRequest = (request: FavoriteDonorRequestPayload) => {
+    setFavorites(current => current.donorRequests.some(item => item.key === request.key)
+      ? { ...current, donorRequests: current.donorRequests.filter(item => item.key !== request.key) }
+      : { ...current, donorRequests: [{ ...request, savedAt: Date.now() }, ...current.donorRequests] });
+  };
+
+  const toggleFavoriteGrantExplorer = (favorite: FavoriteGrantExplorerPayload) => {
+    setFavorites(current => current.grantExplorers.some(item => item.key === favorite.key)
+      ? { ...current, grantExplorers: current.grantExplorers.filter(item => item.key !== favorite.key) }
+      : { ...current, grantExplorers: [{ ...favorite, savedAt: Date.now() }, ...current.grantExplorers] });
   };
 
   const restoreSourcesFromFavoriteRoute = (route: string) => {
@@ -1576,18 +1557,61 @@ export default function App() {
     setDataSourceSelections(Object.fromEntries(dataSourceNames.map(source => [source, selected.has(source)])));
   };
 
-  const openFavoriteDonor = (favorite: FavoriteDonorPayload) => {
-    restoreSourcesFromFavoriteRoute(favorite.route);
-    const query = new URLSearchParams(favorite.route.startsWith("?") ? favorite.route.slice(1) : favorite.route);
-    query.set("view", "donors");
-    query.set("donor", favorite.key);
+  const openFavoriteDonorWorkspace = (workspace: FavoriteDonorWorkspace) => {
+    const route = workspace.item.route;
+    favoriteReturnUrlRef.current = `${window.location.pathname}${window.location.search}`;
+    favoriteReturnScrollRef.current = window.scrollY;
+    restoreSourcesFromFavoriteRoute(route);
+    const query = new URLSearchParams(route.startsWith("?") ? route.slice(1) : route);
+    query.set("view", "favorites");
+    if (workspace.kind === "donor") query.set("donor", workspace.item.key);
+    else query.delete("donor");
     window.history.pushState({}, "", `${window.location.pathname}?${query.toString()}`);
     setSelectedCharity(null);
-    setDonorReturnToFavorites(true);
-    setDirectoryMode("donors");
-    setActiveTab("directory");
+    setFavoriteGrantExplorer(null);
+    setFavoriteDonorWorkspace(workspace);
+    setActiveTab("favorites");
     setMobileNavigationOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const closeFavoriteDonorWorkspace = () => {
+    const returnUrl = favoriteReturnUrlRef.current || `${window.location.pathname}?view=favorites`;
+    const scrollPosition = favoriteReturnScrollRef.current;
+    setFavoriteDonorWorkspace(null);
+    window.history.replaceState({}, "", returnUrl);
+    window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, behavior: "smooth" }));
+  };
+
+  const openFavoriteDonor = (favorite: FavoriteDonorPayload) => {
+    openFavoriteDonorWorkspace({ kind: "donor", item: favorite });
+  };
+
+  const openFavoriteDonorRequest = (request: FavoriteDonorRequestPayload) => {
+    openFavoriteDonorWorkspace({ kind: "request", item: request });
+  };
+
+  const openFavoriteGrantExplorer = (favorite: FavoriteGrantExplorerPayload) => {
+    favoriteReturnUrlRef.current = `${window.location.pathname}${window.location.search}`;
+    favoriteReturnScrollRef.current = window.scrollY;
+    restoreSourcesFromFavoriteRoute(favorite.route);
+    const query = new URLSearchParams(favorite.route.startsWith("?") ? favorite.route.slice(1) : favorite.route);
+    query.set("view", "favorites");
+    window.history.pushState({}, "", `${window.location.pathname}?${query.toString()}`);
+    setSelectedCharity(null);
+    setFavoriteDonorWorkspace(null);
+    setFavoriteGrantExplorer(favorite);
+    setActiveTab("favorites");
+    setMobileNavigationOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const closeFavoriteGrantExplorer = () => {
+    const returnUrl = favoriteReturnUrlRef.current || `${window.location.pathname}?view=favorites`;
+    const scrollPosition = favoriteReturnScrollRef.current;
+    setFavoriteGrantExplorer(null);
+    window.history.replaceState({}, "", returnUrl);
+    window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, behavior: "smooth" }));
   };
 
   const openFavoriteResearch = (favorite: FavoriteResearchView) => {
@@ -1604,15 +1628,6 @@ export default function App() {
     setProfileOffset(0);
     setSelectedCharity(null);
     navigateApplication("research");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const openFavoriteLandscape = (favorite: FavoriteLandscapeView) => {
-    restoreSourcesFromFavoriteRoute(favorite.route);
-    window.history.pushState({}, "", `${window.location.pathname}${favorite.route}`);
-    setSelectedCharity(null);
-    setActiveTab("overview");
-    setMobileNavigationOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -2084,97 +2099,164 @@ export default function App() {
               online={isBffOnline}
               selectedSources={selectedDataSources}
               onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+              onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
+              onSearchOrganization={(organizationName) => openOrganizationDirectoryFromMap({ ...EMPTY_GRANT_MAP_FILTERS, search: organizationName })}
               onExploreSourceFunders={openSourceFundersFromMap}
-              onToggleFavoriteLandscape={toggleFavoriteLandscape}
-              isFavoriteLandscape={isFavoriteLandscape}
+              favoriteGrantExplorerKeys={favorites.grantExplorers.map(favorite => favorite.key)}
+              onToggleFavoriteGrantExplorer={toggleFavoriteGrantExplorer}
             />
           )}
 
           {activeTab === "favorites" && (
-            <section className="favorites-page">
-              <div className="page-introduction favorites-introduction">
-                <div>
-                  <span className="page-eyebrow">Personal workspace</span>
-                  <h2>Favorites</h2>
-                  <p>Keep the organizations, observed donors, research configurations, and Funding Landscapes you want to revisit.</p>
+            favoriteGrantExplorer ? (
+              <OverviewDashboard
+                key={`favorite-explorer:${favoriteGrantExplorer.key}`}
+                apiBase={API_BASE}
+                online={isBffOnline}
+                selectedSources={selectedDataSources}
+                onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+                onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
+                onSearchOrganization={(organizationName) => openOrganizationDirectoryFromMap({ ...EMPTY_GRANT_MAP_FILTERS, search: organizationName })}
+                onExploreSourceFunders={openSourceFundersFromMap}
+                favoriteGrantExplorerKeys={favorites.grantExplorers.map(favorite => favorite.key)}
+                onToggleFavoriteGrantExplorer={toggleFavoriteGrantExplorer}
+                presentation="favorite-explorer"
+                initialDrilldown={favoriteGrantExplorer.selection}
+                onBackToFavorites={closeFavoriteGrantExplorer}
+              />
+            ) : favoriteDonorWorkspace ? (
+              <DonorDirectoryPage
+                key={`${favoriteDonorWorkspace.kind}:${favoriteDonorWorkspace.item.key}`}
+                apiBase={API_BASE}
+                online={isBffOnline}
+                selectedSources={selectedDataSources}
+                onHeaderStateChange={setDonorHeaderState}
+                onBackToLandscape={() => closeFavoriteDonorWorkspace()}
+                onOpenOrganizationResearch={() => navigateApplication("research")}
+                onOpenRegistrySearch={() => navigateApplication("registry")}
+                onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
+                favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
+                onToggleFavoriteDonor={toggleFavoriteDonor}
+                favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
+                onToggleFavoriteDonorRequest={toggleFavoriteDonorRequest}
+                presentation={favoriteDonorWorkspace.kind === "donor" ? "favorite-donor" : "favorite-request"}
+                onBackToFavorites={closeFavoriteDonorWorkspace}
+              />
+            ) : (
+              <section className="favorites-page">
+                <div className="page-introduction favorites-introduction">
+                  <div>
+                    <span className="page-eyebrow">Personal workspace</span>
+                    <h2>Favorites</h2>
+                    <p>Keep organizations, observed donors, grant explorations, donor requests, and research configurations you want to revisit.</p>
+                  </div>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={() => navigateApplication("overview")}>
-                  <TrendingUp size={16} /> Funding Landscape
-                </button>
-              </div>
 
-              {favorites.profiles.length + favorites.donors.length + favorites.researchViews.length + favorites.landscapeViews.length === 0 ? (
-                <div className="glass-card favorites-empty-state">
-                  <Star size={22} />
-                  <h3>No favorites yet</h3>
-                  <p>Use a star on an organization, observed donor, research view, or Funding Landscape to keep it here.</p>
-                </div>
-              ) : (
-                <div className="favorites-sections">
-                  {(favorites.profiles.length > 0 || favorites.donors.length > 0) && (
-                    <section className="favorites-section" aria-labelledby="favorite-organizations-heading">
-                      <div className="favorites-section-heading">
-                        <div><span className="page-eyebrow">Organizations</span><h3 id="favorite-organizations-heading">Pinned organizations & donors</h3></div>
-                        <span>{favorites.profiles.length + favorites.donors.length}</span>
-                      </div>
-                      <div className="favorites-grid">
-                        {favorites.profiles.map(favorite => (
-                          <article className="glass-card favorite-card" key={favorite.key}>
-                            <button type="button" className="favorite-card-open" onClick={() => openFavoriteProfile(favorite)}>
-                              <span className="favorite-card-type">Organization profile</span>
-                              <strong>{favorite.profile.charity_name}</strong>
-                              <small>{[favorite.profile.primary_source || "Organization data", favorite.profile.headquarters_country].filter(Boolean).join(" · ")}</small>
-                            </button>
-                            <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.profile.charity_name} from favorites`} onClick={() => toggleFavoriteProfile(favorite.profile)}><Star size={16} fill="currentColor" /></button>
-                          </article>
-                        ))}
-                        {favorites.donors.map(favorite => (
-                          <article className="glass-card favorite-card" key={`donor:${favorite.key}`}>
-                            <button type="button" className="favorite-card-open" onClick={() => openFavoriteDonor(favorite)}>
-                              <span className="favorite-card-type">Observed donor{favorite.country ? ` · ${favorite.country}` : ""}</span>
-                              <strong>{favorite.name}</strong>
-                              <small>{favorite.funding} · {favorite.grantCount.toLocaleString("en-GB")} grants · {favorite.recipientCount.toLocaleString("en-GB")} recipients</small>
-                            </button>
-                            <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.name} from favorites`} onClick={() => toggleFavoriteDonor(favorite)}><Star size={16} fill="currentColor" /></button>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  )}
+                {favorites.profiles.length + favorites.donors.length + favorites.donorRequests.length + favorites.researchViews.length + favorites.grantExplorers.length === 0 ? (
+                  <div className="glass-card favorites-empty-state">
+                    <Star size={22} />
+                    <h3>No favorites yet</h3>
+                    <p>Use a star on an organization, observed donor, grant exploration, donor request, or research view to keep it here.</p>
+                  </div>
+                ) : (
+                  <div className="favorites-sections">
+                    {(favorites.profiles.length > 0 || favorites.donors.length > 0) && (
+                      <section className="favorites-section" aria-labelledby="favorite-organizations-heading">
+                        <div className="favorites-section-heading">
+                          <div><span className="page-eyebrow">Organizations</span><h3 id="favorite-organizations-heading">Pinned organizations & donors</h3></div>
+                          <span>{favorites.profiles.length + favorites.donors.length}</span>
+                        </div>
+                        <div className="favorites-grid">
+                          {favorites.profiles.map(favorite => (
+                            <article className="glass-card favorite-card" key={favorite.key}>
+                              <button type="button" className="favorite-card-open" onClick={() => openFavoriteProfile(favorite)}>
+                                <span className="favorite-card-type">Organization profile</span>
+                                <strong>{favorite.profile.charity_name}</strong>
+                                <small>{[favorite.profile.primary_source || "Organization data", favorite.profile.headquarters_country].filter(Boolean).join(" · ")}</small>
+                              </button>
+                              <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.profile.charity_name} from favorites`} onClick={() => toggleFavoriteProfile(favorite.profile)}><Star size={16} fill="currentColor" /></button>
+                            </article>
+                          ))}
+                          {favorites.donors.map(favorite => (
+                            <article className="glass-card favorite-card" key={`donor:${favorite.key}`}>
+                              <button type="button" className="favorite-card-open" onClick={() => openFavoriteDonor(favorite)}>
+                                <span className="favorite-card-type">Observed donor{favorite.country ? ` · ${favorite.country}` : ""}</span>
+                                <strong>{favorite.name}</strong>
+                                <small>{favorite.funding} · {favorite.grantCount.toLocaleString("en-GB")} grants · {favorite.recipientCount.toLocaleString("en-GB")} recipients</small>
+                              </button>
+                              <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.name} from favorites`} onClick={() => toggleFavoriteDonor(favorite)}><Star size={16} fill="currentColor" /></button>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    )}
 
-                  {(favorites.researchViews.length > 0 || favorites.landscapeViews.length > 0) && (
-                    <section className="favorites-section" aria-labelledby="favorite-views-heading">
-                      <div className="favorites-section-heading">
-                        <div><span className="page-eyebrow">Saved views</span><h3 id="favorite-views-heading">Research & Funding Landscapes</h3></div>
-                        <span>{favorites.researchViews.length + favorites.landscapeViews.length}</span>
-                      </div>
-                      <div className="favorites-grid">
-                        {favorites.researchViews.map(favorite => (
-                          <article className="glass-card favorite-card" key={favorite.key}>
-                            <button type="button" className="favorite-card-open" onClick={() => openFavoriteResearch(favorite)}>
-                              <span className="favorite-card-type">Organization Research</span>
-                              <strong>{favorite.label.replace("Organization Research · ", "")}</strong>
-                              <small>Reopen saved filters and ranking</small>
-                            </button>
-                            <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.label} from favorites`} onClick={() => removeFavoriteResearch(favorite.key)}><Star size={16} fill="currentColor" /></button>
-                          </article>
-                        ))}
-                        {favorites.landscapeViews.map(favorite => (
-                          <article className="glass-card favorite-card" key={favorite.key}>
-                            <button type="button" className="favorite-card-open" onClick={() => openFavoriteLandscape(favorite)}>
-                              <span className="favorite-card-type">Funding Landscape</span>
-                              <strong>{favorite.label.replace("Funding Landscape · ", "")}</strong>
-                              <small>Reopen saved grant filters</small>
-                            </button>
-                            <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.label} from favorites`} onClick={() => setFavorites(current => ({ ...current, landscapeViews: current.landscapeViews.filter(item => item.key !== favorite.key) }))}><Star size={16} fill="currentColor" /></button>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                </div>
-              )}
-            </section>
+                    {favorites.donorRequests.length > 0 && (
+                      <section className="favorites-section" aria-labelledby="favorite-donor-requests-heading">
+                        <div className="favorites-section-heading">
+                          <div><span className="page-eyebrow">Observed grant data</span><h3 id="favorite-donor-requests-heading">Saved donor requests</h3></div>
+                          <span>{favorites.donorRequests.length}</span>
+                        </div>
+                        <div className="favorites-grid">
+                          {favorites.donorRequests.map(favorite => (
+                            <article className="glass-card favorite-card" key={favorite.key}>
+                              <button type="button" className="favorite-card-open" onClick={() => openFavoriteDonorRequest(favorite)}>
+                                <span className="favorite-card-type">Donor request</span>
+                                <strong>{favorite.label}</strong>
+                                <small>Reopen these observed funders and transactions</small>
+                              </button>
+                              <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.label} from favorites`} onClick={() => toggleFavoriteDonorRequest(favorite)}><Star size={16} fill="currentColor" /></button>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {favorites.grantExplorers.length > 0 && (
+                      <section className="favorites-section" aria-labelledby="favorite-grant-explorers-heading">
+                        <div className="favorites-section-heading">
+                          <div><span className="page-eyebrow">Observed grant data</span><h3 id="favorite-grant-explorers-heading">Saved grant explorations</h3></div>
+                          <span>{favorites.grantExplorers.length}</span>
+                        </div>
+                        <div className="favorites-grid">
+                          {favorites.grantExplorers.map(favorite => (
+                            <article className="glass-card favorite-card" key={favorite.key}>
+                              <button type="button" className="favorite-card-open" onClick={() => openFavoriteGrantExplorer(favorite)}>
+                                <span className="favorite-card-type">Observed Grant Explorer</span>
+                                <strong>{favorite.label.replace(/^(Grant period|Programme area) · /, "")}</strong>
+                                <small>Reopen this selected grant slice and its source evidence</small>
+                              </button>
+                              <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.label} from favorites`} onClick={() => toggleFavoriteGrantExplorer(favorite)}><Star size={16} fill="currentColor" /></button>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {favorites.researchViews.length > 0 && (
+                      <section className="favorites-section" aria-labelledby="favorite-views-heading">
+                        <div className="favorites-section-heading">
+                          <div><span className="page-eyebrow">Saved views</span><h3 id="favorite-views-heading">Organization Research</h3></div>
+                          <span>{favorites.researchViews.length}</span>
+                        </div>
+                        <div className="favorites-grid">
+                          {favorites.researchViews.map(favorite => (
+                            <article className="glass-card favorite-card" key={favorite.key}>
+                              <button type="button" className="favorite-card-open" onClick={() => openFavoriteResearch(favorite)}>
+                                <span className="favorite-card-type">Organization Research</span>
+                                <strong>{favorite.label.replace("Organization Research · ", "")}</strong>
+                                <small>Reopen saved filters and ranking</small>
+                              </button>
+                              <button type="button" className="favorite-toggle is-favorite" aria-label={`Remove ${favorite.label} from favorites`} onClick={() => removeFavoriteResearch(favorite.key)}><Star size={16} fill="currentColor" /></button>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                )}
+              </section>
+            )
           )}
 
           {/* Retained for rollback only; the active Overview is the compact, globally-filtered dashboard above. */}
@@ -2413,13 +2495,8 @@ export default function App() {
               })}
               favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
               onToggleFavoriteDonor={toggleFavoriteDonor}
-              onCloseFavoriteDonor={donorReturnToFavorites ? () => {
-                setDonorReturnToFavorites(false);
-                window.history.replaceState({}, "", `${window.location.pathname}?view=favorites`);
-                setActiveTab("favorites");
-                setMobileNavigationOpen(false);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              } : undefined}
+              favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
+              onToggleFavoriteDonorRequest={toggleFavoriteDonorRequest}
             />
           )}
 

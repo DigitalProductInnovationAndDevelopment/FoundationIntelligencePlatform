@@ -360,6 +360,8 @@ class SourceEvidenceLink(BaseModel):
     kind: str
     label: str
     role: Optional[str] = None
+    organization_name: Optional[str] = None
+    link_type: str = "website"
     url: str
     origin: str
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, LoaderCircle, SlidersHorizontal, Star, X } from "lucide-react";
+import { ArrowLeft, Building2, CalendarRange, ChevronRight, ExternalLink, LoaderCircle, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -96,14 +96,94 @@ interface OverviewPayload {
   available_date_range: { from: string | null; to: string | null };
 }
 
+interface EntitySuggestion {
+  name: string;
+  grant_count: number;
+}
+
+interface EntitySuggestionResponse {
+  status: string;
+  donors: EntitySuggestion[];
+  recipients: EntitySuggestion[];
+}
+
+type DrilldownSelection = { type: "period" | "programme_area"; value: string };
+type DrilldownTab = "funders" | "recipients" | "grants";
+export type FavoriteGrantExplorerPayload = {
+  key: string;
+  label: string;
+  route: string;
+  selection: DrilldownSelection;
+  savedAt: number;
+};
+type DrilldownProfile = { id: number; name: string } | null;
+interface DrilldownEntity {
+  funder_key?: string;
+  recipient_key?: string;
+  name: string;
+  grant_count: number;
+  funding_total: number | null;
+  currency: string | null;
+  profile: DrilldownProfile;
+}
+interface DrilldownGrant {
+  grant_id: string;
+  award_date: string | null;
+  funder_name: string;
+  recipient_name: string;
+  amount: number | null;
+  currency: string | null;
+  original_amount: number | null;
+  original_currency: string | null;
+  description: string | null;
+  evidence_links: Array<{ label: string; link_type: "website" | "json" | string; url: string }>;
+}
+interface DrilldownResponse {
+  status: string;
+  selection: { type: "period" | "programme_area"; value: string; label: string };
+  summary: {
+    grant_count: number;
+    funding_total: number | null;
+    currency: string | null;
+    funder_count: number;
+    recipient_count: number;
+    country_count: number;
+    amount_excluded_grant_count: number;
+  };
+  funders: DrilldownEntity[];
+  recipients: DrilldownEntity[];
+  countries: Array<{ country_code: string; country_name: string; grant_count: number }>;
+  grants: DrilldownGrant[];
+}
+
+// A saved exploration is normally reopened during the same application session.
+// Keeping its already-resolved result here makes that transition immediate, while
+// the server-side cache still covers a browser refresh or a later return visit.
+const drilldownResponseCache = new Map<string, DrilldownResponse>();
+const DRILLDOWN_RESPONSE_CACHE_LIMIT = 24;
+
+function rememberDrilldownResponse(key: string, response: DrilldownResponse) {
+  drilldownResponseCache.delete(key);
+  drilldownResponseCache.set(key, response);
+  if (drilldownResponseCache.size > DRILLDOWN_RESPONSE_CACHE_LIMIT) {
+    const oldestKey = drilldownResponseCache.keys().next().value;
+    if (oldestKey !== undefined) drilldownResponseCache.delete(oldestKey);
+  }
+}
+
 interface Props {
   apiBase: string;
   online: boolean;
   selectedSources: string[];
   onOpenOrganizationDirectory: (filters: GrantMapFilters) => void;
+  onOpenProfile: (profileId: number, profileName: string) => void;
+  onSearchOrganization: (organizationName: string) => void;
   onExploreSourceFunders: (selection: SourceFunderCountrySelection, filters: OverviewFilters) => void;
-  onToggleFavoriteLandscape: (filters: OverviewFilters) => void;
-  isFavoriteLandscape: (filters: OverviewFilters) => boolean;
+  favoriteGrantExplorerKeys?: string[];
+  onToggleFavoriteGrantExplorer?: (favorite: FavoriteGrantExplorerPayload) => void;
+  presentation?: "default" | "favorite-explorer";
+  initialDrilldown?: DrilldownSelection | null;
+  onBackToFavorites?: () => void;
 }
 
 const PROGRAMMES = [
@@ -169,7 +249,91 @@ function filtersFromUrl(): OverviewFilters {
   };
 }
 
-export default function OverviewDashboard({ apiBase, online, selectedSources, onOpenOrganizationDirectory, onExploreSourceFunders, onToggleFavoriteLandscape, isFavoriteLandscape }: Props) {
+function matchingEntitySuggestions(items: EntitySuggestion[], value: string): EntitySuggestion[] {
+  const query = value.trim().toLocaleLowerCase();
+  if (!query) return [];
+  const startsWith: EntitySuggestion[] = [];
+  const contains: EntitySuggestion[] = [];
+  for (const item of items) {
+    const name = item.name.toLocaleLowerCase();
+    if (name.startsWith(query)) startsWith.push(item);
+    else if (name.includes(query)) contains.push(item);
+    if (startsWith.length + contains.length >= 7) break;
+  }
+  return [...startsWith, ...contains].slice(0, 7);
+}
+
+function EntitySuggestionInput({
+  id,
+  label,
+  value,
+  suggestions,
+  loading,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  suggestions: EntitySuggestion[];
+  loading: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const matches = useMemo(() => matchingEntitySuggestions(suggestions, value), [suggestions, value]);
+  const showSuggestions = open && value.trim().length > 0;
+  const listId = `${id}-suggestions`;
+
+  return (
+    <div className="overview-entity-autocomplete">
+      <label htmlFor={id}><span>{label}</span></label>
+      <div className="overview-entity-input-wrap">
+        <input
+          id={id}
+          value={value}
+          placeholder="Name contains…"
+          autoComplete="off"
+          aria-autocomplete="list"
+          aria-expanded={showSuggestions}
+          aria-controls={showSuggestions ? listId : undefined}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          onKeyDown={event => {
+            if (event.key === "Escape") setOpen(false);
+          }}
+          onChange={event => {
+            onChange(event.target.value);
+            setOpen(true);
+          }}
+        />
+        {showSuggestions && (
+          <div id={listId} className="overview-entity-suggestions" role="listbox" aria-label={`${label} suggestions`}>
+            {loading ? (
+              <span>Loading cached names…</span>
+            ) : matches.length ? matches.map(item => (
+              <button
+                key={item.name}
+                type="button"
+                role="option"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => {
+                  onChange(item.name);
+                  setOpen(false);
+                }}
+              >
+                <strong>{item.name}</strong>
+                <small>{item.grant_count.toLocaleString("en-GB")} observed grants</small>
+              </button>
+            )) : (
+              <span>No cached matches yet.</span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function OverviewDashboard({ apiBase, online, selectedSources, onOpenOrganizationDirectory, onOpenProfile, onSearchOrganization, onExploreSourceFunders, favoriteGrantExplorerKeys = [], onToggleFavoriteGrantExplorer, presentation = "default", initialDrilldown = null, onBackToFavorites }: Props) {
   const [filters, setFilters] = useState<OverviewFilters>(filtersFromUrl);
   const [draft, setDraft] = useState<OverviewFilters>(filters);
   const [payload, setPayload] = useState<OverviewPayload | null>(null);
@@ -177,7 +341,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showAllProgrammes, setShowAllProgrammes] = useState(false);
-  const [includeUnclassified, setIncludeUnclassified] = useState(true);
+  const [includeUnclassified, setIncludeUnclassified] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedMapCountryCode, setSelectedMapCountryCode] = useState<string | null>(null);
   const [includeConnections, setIncludeConnections] = useState(false);
@@ -186,9 +350,22 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const [trendDateTo, setTrendDateTo] = useState(filters.dateTo);
   const [trendOverride, setTrendOverride] = useState<OverviewPayload["trends"] | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
+  const [drilldownSelection, setDrilldownSelection] = useState<DrilldownSelection | null>(initialDrilldown);
+  const [drilldown, setDrilldown] = useState<DrilldownResponse | null>(null);
+  const [drilldownTab, setDrilldownTab] = useState<DrilldownTab>("funders");
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+  const [drilldownError, setDrilldownError] = useState<string | null>(null);
+  const [entitySuggestions, setEntitySuggestions] = useState<EntitySuggestionResponse>({ status: "idle", donors: [], recipients: [] });
+  const [entitySuggestionsLoading, setEntitySuggestionsLoading] = useState(false);
   const requestVersion = useRef(0);
   const trendRequestVersion = useRef(0);
+  const drilldownRequestVersion = useRef(0);
   const drawerRef = useRef<HTMLElement>(null);
+  const entitySuggestionCache = useRef(new Map<string, EntitySuggestionResponse>());
+  const entitySuggestionSourceKey = useMemo(
+    () => [...selectedSources].map(source => source.trim()).filter(Boolean).sort().join("\u001f"),
+    [selectedSources],
+  );
   const activeFilterCount = Number(Boolean(filters.currency)) + Number(Boolean(filters.dateFrom || filters.dateTo))
     + filters.beneficiaryGeographies.length + filters.programmeAreas.length
     + Number(Boolean(filters.donor.trim())) + Number(Boolean(filters.recipient.trim()))
@@ -237,7 +414,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   ]);
 
   useEffect(() => {
-    if (!online) return;
+    if (!online || presentation === "favorite-explorer") return;
     const controller = new AbortController();
     const currentVersion = ++requestVersion.current;
     const requestScope: GrantScope = {
@@ -272,10 +449,10 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === requestVersion.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, includeConnections, online, overviewRequestFilters, refreshNonce, selectedSources]);
+  }, [apiBase, includeConnections, online, overviewRequestFilters, presentation, refreshNonce, selectedSources]);
 
   useEffect(() => {
-    if (!online || filters.granularity === "auto") {
+    if (!online || presentation === "favorite-explorer" || filters.granularity === "auto") {
       setTrendOverride(null);
       setTrendLoading(false);
       return;
@@ -312,7 +489,61 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === trendRequestVersion.current) setTrendLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, filters, online, selectedSources]);
+  }, [apiBase, filters, online, presentation, selectedSources]);
+
+  useEffect(() => {
+    if (!drilldownSelection) return;
+    if (!online) {
+      setDrilldown(null);
+      setDrilldownError("Observed grant details require the connected data service.");
+      return;
+    }
+    const currentVersion = ++drilldownRequestVersion.current;
+    const params = grantScopeToApiParams({
+      currency: filters.currency || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      beneficiaryGeographies: filters.beneficiaryGeographies,
+      programmeAreas: filters.programmeAreas,
+      donor: filters.donor,
+      recipient: filters.recipient,
+      sources: selectedSources,
+    });
+    params.set("selection_type", drilldownSelection.type);
+    params.set("selection_value", drilldownSelection.value);
+    const cacheKey = params.toString();
+    const cachedResponse = drilldownResponseCache.get(cacheKey);
+    if (cachedResponse) {
+      setDrilldown(cachedResponse);
+      setDrilldownError(null);
+      setDrilldownLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setDrilldownLoading(true);
+    setDrilldownError(null);
+    fetch(`${apiBase}/api/charities/grants/overview/drilldown?${params.toString()}`, { credentials: "include", signal: controller.signal })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || `Grant detail request failed (${response.status}).`);
+        return result as DrilldownResponse;
+      })
+      .then(result => {
+        if (currentVersion !== drilldownRequestVersion.current) return;
+        rememberDrilldownResponse(cacheKey, result);
+        setDrilldown(result);
+      })
+      .catch(requestError => {
+        if ((requestError as Error).name !== "AbortError" && currentVersion === drilldownRequestVersion.current) {
+          setDrilldownError((requestError as Error).message);
+          setDrilldown(null);
+        }
+      })
+      .finally(() => {
+        if (currentVersion === drilldownRequestVersion.current) setDrilldownLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiBase, drilldownSelection, filters, online, selectedSources]);
 
   useEffect(() => {
     updateUrl(filters);
@@ -336,6 +567,44 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       window.dispatchEvent(new CustomEvent("overview-filter-drawer-state", { detail: false }));
     };
   }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen || !online) return;
+    const cached = entitySuggestionCache.current.get(entitySuggestionSourceKey);
+    if (cached) {
+      setEntitySuggestions(cached);
+      return;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams({ limit: "2500" });
+    params.set("sources", entitySuggestionSourceKey.split("\u001f").filter(Boolean).join(","));
+    setEntitySuggestionsLoading(true);
+    fetch(`${apiBase}/api/charities/grants/overview/entity-suggestions?${params.toString()}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || `Entity suggestions failed (${response.status}).`);
+        return body as EntitySuggestionResponse;
+      })
+      .then(body => {
+        const next = {
+          status: body.status || "available",
+          donors: Array.isArray(body.donors) ? body.donors : [],
+          recipients: Array.isArray(body.recipients) ? body.recipients : [],
+        };
+        entitySuggestionCache.current.set(entitySuggestionSourceKey, next);
+        setEntitySuggestions(next);
+      })
+      .catch(reason => {
+        if ((reason as Error).name !== "AbortError") setEntitySuggestions({ status: "unavailable", donors: [], recipients: [] });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEntitySuggestionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiBase, drawerOpen, entitySuggestionSourceKey, online]);
 
   const closeDrawer = () => {
     setDrawerOpen(false);
@@ -447,14 +716,33 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     setTrendPeriodOpen(false);
   };
 
-  const visibleThemeItems = useMemo(() => {
-    const items = (payload?.themes.items || []).filter(item => includeUnclassified || item.programme_area !== "Unclassified");
-    if (showAllProgrammes || items.length <= 9) return items;
-    const top = items.filter(item => item.programme_area !== "Unclassified").slice(0, 8);
-    const remainder = items.filter(item => !top.includes(item));
-    const otherAmount = remainder.reduce((sum, item) => sum + item.allocated_amount, 0);
-    return otherAmount ? [...top, { programme_area: "Other", allocated_amount: otherAmount, distinct_grant_count: remainder.reduce((sum, item) => sum + item.distinct_grant_count, 0), unclassified_grant_count: 0 }] : top;
-  }, [includeUnclassified, payload?.themes.items, showAllProgrammes]);
+  const openDrilldown = (selection: DrilldownSelection) => {
+    setDrilldownSelection(selection);
+    setDrilldown(null);
+    setDrilldownError(null);
+    setDrilldownTab("funders");
+  };
+
+  const closeDrilldown = () => {
+    if (presentation === "favorite-explorer" && onBackToFavorites) {
+      onBackToFavorites();
+      return;
+    }
+    drilldownRequestVersion.current += 1;
+    setDrilldownSelection(null);
+    setDrilldown(null);
+    setDrilldownError(null);
+  };
+
+  const eligibleThemeItems = useMemo(
+    () => (payload?.themes.items || []).filter(item => includeUnclassified || item.programme_area !== "Unclassified"),
+    [includeUnclassified, payload?.themes.items],
+  );
+  const visibleThemeItems = useMemo(
+    () => showAllProgrammes ? eligibleThemeItems : eligibleThemeItems.slice(0, 8),
+    [eligibleThemeItems, showAllProgrammes],
+  );
+  const hiddenThemeCount = Math.max(0, eligibleThemeItems.length - visibleThemeItems.length);
 
   const beneficiaryOptions = useMemo(
     () => Array.from(new Set([
@@ -493,20 +781,33 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     recipient: filters.recipient,
     sources: selectedSources,
   }).filter(chip => chip.key !== "beneficiaryGeographies");
-  const landscapeIsFavorite = isFavoriteLandscape(filters);
-
+  const drilldownFavorite = useMemo(() => {
+    if (!drilldownSelection) return null;
+    const params = grantScopeToApiParams({
+      currency: filters.currency || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      beneficiaryGeographies: filters.beneficiaryGeographies,
+      programmeAreas: filters.programmeAreas,
+      donor: filters.donor,
+      recipient: filters.recipient,
+      sources: selectedSources,
+    });
+    if (filters.granularity !== "auto") params.set("grant_granularity", filters.granularity);
+    const label = drilldown?.selection.label || drilldownSelection.value;
+    const route = `?${params.toString()}`;
+    return {
+      key: `grant-explorer:${drilldownSelection.type}:${drilldownSelection.value}:${params.toString()}`,
+      label: `${drilldownSelection.type === "period" ? "Grant period" : "Programme area"} · ${label}`,
+      route,
+      selection: drilldownSelection,
+      savedAt: Date.now(),
+    } satisfies FavoriteGrantExplorerPayload;
+  }, [drilldown?.selection.label, drilldownSelection, filters, selectedSources]);
+  const drilldownIsFavorite = Boolean(drilldownFavorite && favoriteGrantExplorerKeys.includes(drilldownFavorite.key));
   return (
-    <div className="overview-dashboard">
-      <div className="overview-favorite-toolbar">
-        <span>Funding Landscape</span>
-        <button
-          type="button"
-          className={`favorite-toggle${landscapeIsFavorite ? " is-favorite" : ""}`}
-          aria-label={`${landscapeIsFavorite ? "Remove current funding landscape from" : "Add current funding landscape to"} favorites`}
-          aria-pressed={landscapeIsFavorite}
-          onClick={() => onToggleFavoriteLandscape(filters)}
-        ><Star size={16} fill={landscapeIsFavorite ? "currentColor" : "none"} /></button>
-      </div>
+    <div className={`overview-dashboard${presentation === "favorite-explorer" ? " favorite-explorer-dashboard" : ""}`}>
+      {presentation !== "favorite-explorer" && <>
       {overviewScopeChips.length > 0 && <div className="active-filter-chips" aria-label="Active Funding Landscape filters">
         {overviewScopeChips.slice(0, 3).map(chip => <span key={`${chip.key}-${chip.label}`}>{chip.label}</span>)}
         {overviewScopeChips.length > 3 && <button type="button" onClick={() => window.dispatchEvent(new Event("overview-open-filters"))}>+{overviewScopeChips.length - 3} more</button>}
@@ -535,36 +836,68 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
 
       <div className="analytics-charts-grid overview-analytics-grid">
         <section className="glass-card analytics-chart-card compact-chart" aria-labelledby="grant-trend-title">
-          <div className="chart-card-header">
-            <div><h3 id="grant-trend-title">Grant Awards Over Time</h3><span>{trends?.granularity === "yearly" ? "Annual" : "Monthly"} · {chartPeriod} · {filters.currency ? `${trends?.currency || filters.currency} original` : "EUR · Auto (ECB converted)"}</span></div>
-            <div className="chart-segmented" role="group" aria-label="Grant trend granularity">
-              {(["auto", "monthly", "yearly"] as Granularity[]).map(option => <button type="button" className={filters.granularity === option ? "active" : ""} key={option} onClick={() => setFilters(current => ({ ...current, granularity: option }))}>{option === "auto" ? "Auto" : option === "monthly" ? "Monthly" : "Yearly"}</button>)}
-              <button type="button" className={filters.periodPreset === "custom" ? "active" : ""} onClick={openTrendCustomPeriod}>Custom period</button>
+          <div className="chart-card-header trend-card-header">
+            <div><h3 id="grant-trend-title">Grant Awards Over Time</h3><span>{trends?.granularity === "yearly" ? "Annual view" : "Monthly view"} · {chartPeriod} · {filters.currency ? `${trends?.currency || filters.currency} original` : "EUR · Auto (ECB converted)"}</span></div>
+            <div className="trend-controls">
+              <div className="chart-segmented trend-segmented" role="group" aria-label="Grant trend view and period"><button type="button" className={filters.granularity === "auto" ? "active" : ""} onClick={() => setFilters(current => ({ ...current, granularity: "auto" }))}>Auto</button><button type="button" className={filters.granularity === "monthly" ? "active" : ""} onClick={() => setFilters(current => ({ ...current, granularity: "monthly" }))}>Monthly</button><button type="button" className={filters.granularity === "yearly" ? "active" : ""} onClick={() => setFilters(current => ({ ...current, granularity: "yearly" }))}>Yearly</button><button type="button" className={`trend-custom-trigger${filters.periodPreset === "custom" ? " active" : ""}`} aria-expanded={trendPeriodOpen} onClick={openTrendCustomPeriod}><CalendarRange size={14} /> Custom period</button></div>
+              {trendPeriodOpen && <section className="trend-period-picker" aria-label="Custom grant award period">
+                <div className="trend-period-copy"><strong>Custom period</strong><span>Choose the award-date range used across this dashboard.</span></div>
+                <div className="trend-period-fields"><label><span>From</span><input type="date" min={payload?.available_date_range.from || undefined} max={payload?.available_date_range.to || undefined} value={trendDateFrom} onChange={event => setTrendDateFrom(event.target.value)} /></label><label><span>To</span><input type="date" min={trendDateFrom || payload?.available_date_range.from || undefined} max={payload?.available_date_range.to || undefined} value={trendDateTo} onChange={event => setTrendDateTo(event.target.value)} /></label></div>
+                <div className="trend-period-actions"><button type="button" onClick={() => setTrendPeriodOpen(false)}>Cancel</button><button type="button" className="btn btn-primary" onClick={applyTrendCustomPeriod}>Apply period</button></div>
+              </section>}
             </div>
           </div>
-          {trendPeriodOpen && <div className="trend-period-picker" role="group" aria-label="Custom grant award period">
-            <label><span>From</span><input type="date" min={payload?.available_date_range.from || undefined} max={payload?.available_date_range.to || undefined} value={trendDateFrom} onChange={event => setTrendDateFrom(event.target.value)} /></label>
-            <label><span>To</span><input type="date" min={trendDateFrom || payload?.available_date_range.from || undefined} max={payload?.available_date_range.to || undefined} value={trendDateTo} onChange={event => setTrendDateTo(event.target.value)} /></label>
-            <p>This range also updates the map and programme allocation.</p>
-            <div><button type="button" onClick={() => setTrendPeriodOpen(false)}>Cancel</button><button type="button" className="btn btn-primary" onClick={applyTrendCustomPeriod}>Apply period</button></div>
-          </div>}
           {trendIsLoading && !trends ? <TrendLoadingState /> : trends?.status === "available" && trends.items.length ? <>
             <p className="visually-hidden">Grant awards are shown for {trends.items.length} {trends.granularity} periods in {trends.currency}. Use the chart tooltip to inspect total awarded funding, grant count, and mapped versus unmapped grants for each period.</p>
-            <div className={`analytics-chart-plot compact trend-chart-plot${trendIsLoading ? " is-refreshing" : ""}`}><ResponsiveContainer width="100%" height="100%"><BarChart data={trends.items} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,.09)" /><XAxis dataKey="month" minTickGap={28} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => String(value).slice(2)} /><YAxis width={58} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => formatCurrency(Number(value), trends.currency).replace("£", "£")} /><Tooltip content={({ active, payload: rows, label }) => { const item = rows?.[0]?.payload as TrendItem | undefined; if (!active || !item) return null; return <div className="chart-tooltip"><strong>{label}</strong>{item.coverage_status === "observed" ? <><span>{formatCurrency(item.total_amount, trends.currency)}</span><span>{item.grant_count} grants · {item.mapped_grant_count} mapped · {item.unmapped_grant_count} unmapped</span></> : <span>{item.coverage_status === "partial" ? "Source records without a valid aggregate." : "No source coverage established; not a confirmed zero."}</span>}</div>; }} /><Bar dataKey="total_amount" name="Awarded funding" fill="var(--nl-chart-primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart></ResponsiveContainer>{trendIsLoading && <div className="trend-chart-refresh"><TrendLoadingState compact /></div>}</div>
+            <div className={`analytics-chart-plot compact trend-chart-plot${trendIsLoading ? " is-refreshing" : ""}`}><ResponsiveContainer width="100%" height="100%"><BarChart data={trends.items} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,.09)" /><XAxis dataKey="month" minTickGap={28} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => String(value).slice(2)} /><YAxis width={58} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => formatCurrency(Number(value), trends.currency).replace("£", "£")} /><Tooltip content={({ active, payload: rows, label }) => { const item = rows?.[0]?.payload as TrendItem | undefined; if (!active || !item) return null; return <div className="chart-tooltip"><strong>{label}</strong>{item.coverage_status === "observed" ? <><span>{formatCurrency(item.total_amount, trends.currency)}</span><span>{item.grant_count} grants · {item.mapped_grant_count} mapped · {item.unmapped_grant_count} unmapped</span><small>Click to explore this period.</small></> : <span>{item.coverage_status === "partial" ? "Source records without a valid aggregate." : "No source coverage established; not a confirmed zero."}</span>}</div>; }} /><Bar dataKey="total_amount" name="Awarded funding" fill="var(--nl-chart-primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} cursor="pointer" onClick={data => { const item = data?.payload as TrendItem | undefined; if (item?.grant_count) openDrilldown({ type: "period", value: item.month }); }} /></BarChart></ResponsiveContainer>{trendIsLoading && <div className="trend-chart-refresh"><TrendLoadingState compact /></div>}</div>
             <details className="chart-methodology"><summary>Methodology and data coverage</summary><p>Award-date aggregation from the filtered 360Giving grant population. Auto uses the stored ECB reference rate for the award date, or the preceding ECB business day; empty periods are never shown as zero funding.</p></details>
           </> : <div className="data-notice data-notice-warning">No qualifying grant awards are available for the selected filters.</div>}
         </section>
 
         <section className="glass-card analytics-chart-card compact-chart" aria-labelledby="programme-chart-title">
-          <div className="chart-card-header"><div><h3 id="programme-chart-title">Grant Allocation by Programme Area</h3><span>Programme coverage: {themes?.classification_coverage.classified_percentage ?? "—"}% · {themes?.classification_coverage.classified_grant_count ?? 0} classified</span></div><div className="chart-actions"><button type="button" aria-pressed={includeUnclassified} onClick={() => setIncludeUnclassified(current => !current)}>{includeUnclassified ? "Classified only" : "Include unclassified"}</button><button type="button" onClick={() => setShowAllProgrammes(current => !current)}>{showAllProgrammes ? "Top categories" : "Show all"}</button></div></div>
+          <div className="chart-card-header programme-card-header"><div><h3 id="programme-chart-title">Grant Allocation by Programme Area</h3><span>{themes?.classification_coverage.classified_percentage ?? "—"}% classification coverage · {themes?.classification_coverage.classified_grant_count ?? 0} classified grants</span></div><div className="programme-controls"><div className="chart-segmented" role="group" aria-label="Classification scope"><button type="button" className={!includeUnclassified ? "active" : ""} aria-pressed={!includeUnclassified} onClick={() => setIncludeUnclassified(false)}>Classified</button><button type="button" className={includeUnclassified ? "active" : ""} aria-pressed={includeUnclassified} onClick={() => setIncludeUnclassified(true)}>All grants</button></div><div className="chart-segmented" role="group" aria-label="Programme category count"><button type="button" className={!showAllProgrammes ? "active" : ""} aria-pressed={!showAllProgrammes} onClick={() => setShowAllProgrammes(false)}>Top 8</button><button type="button" className={showAllProgrammes ? "active" : ""} aria-pressed={showAllProgrammes} onClick={() => setShowAllProgrammes(true)}>All categories</button></div></div></div>
           {loading && !themes ? <div className="chart-loading"><LoaderCircle size={20} /> Loading programme allocation…</div> : themes?.status === "available" && visibleThemeItems.length ? <>
             <p className="visually-hidden">Programme allocation is shown across {visibleThemeItems.length} categories in {themes.currency}. Programme classification coverage is {themes.classification_coverage.classified_percentage} percent.</p>
-            <div className="analytics-chart-plot compact"><ResponsiveContainer width="100%" height="100%"><BarChart data={visibleThemeItems} layout="vertical" margin={{ top: 0, right: 10, bottom: 0, left: 12 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,.09)" /><XAxis type="number" tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => formatCurrency(Number(value), themes.currency).replace("£", "£")} /><YAxis type="category" width={125} dataKey="programme_area" tick={{ fill: "#3f3f3f", fontSize: 10 }} /><Tooltip formatter={(value) => formatCurrency(Number(value), themes.currency)} /><Bar dataKey="allocated_amount" radius={[0, 4, 4, 0]} isAnimationActive={false}>{visibleThemeItems.map(item => <Cell key={item.programme_area} fill={item.programme_area === "Unclassified" ? "#a6a6a6" : item.programme_area === "Other" ? "#c6c6ff" : "#a29aff"} />)}</Bar></BarChart></ResponsiveContainer></div>
-            {!includeUnclassified && themes.classification_coverage.unclassified_grant_count > 0 && <p className="chart-coverage-note">Excluded from ranking: {themes.classification_coverage.unclassified_grant_count} unclassified grants. Programme coverage remains {themes.classification_coverage.classified_percentage}%.</p>}
+            <div className="analytics-chart-plot compact programme-chart-plot"><ResponsiveContainer width="100%" height="100%"><BarChart data={visibleThemeItems} layout="vertical" margin={{ top: 0, right: 10, bottom: 0, left: 20 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,.09)" /><XAxis type="number" tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => formatCurrency(Number(value), themes.currency).replace("£", "£")} /><YAxis type="category" width={158} dataKey="programme_area" tick={{ fill: "#3f3f3f", fontSize: 10 }} /><Tooltip formatter={(value) => formatCurrency(Number(value), themes.currency)} /><Bar dataKey="allocated_amount" radius={[0, 4, 4, 0]} isAnimationActive={false}>{visibleThemeItems.map(item => <Cell key={item.programme_area} fill={item.programme_area === "Unclassified" ? "#a6a6a6" : "#a29aff"} cursor="pointer" onClick={() => openDrilldown({ type: "programme_area", value: item.programme_area })} />)}</Bar></BarChart></ResponsiveContainer></div>
+            {(hiddenThemeCount > 0 || (!includeUnclassified && themes.classification_coverage.unclassified_grant_count > 0)) && <p className="chart-coverage-note">{hiddenThemeCount > 0 ? `Showing the top 8 of ${eligibleThemeItems.length} categories.` : ""}{hiddenThemeCount > 0 && !includeUnclassified && themes.classification_coverage.unclassified_grant_count > 0 ? " " : ""}{!includeUnclassified && themes.classification_coverage.unclassified_grant_count > 0 ? `${themes.classification_coverage.unclassified_grant_count} unclassified grants are excluded.` : ""}</p>}
             <details className="chart-methodology"><summary>Methodology and data coverage</summary><p>Source categories take precedence over accepted inferred categories. Multi-category amounts are split equally; Unclassified remains available as a neutral category.</p></details>
           </> : <div className="data-notice data-notice-warning">No programme allocation is available for the selected filters.</div>}
         </section>
       </div>
+      </>}
+
+      {drilldownSelection && <div className={`overview-drilldown-backdrop${presentation === "favorite-explorer" ? " is-favorite-explorer" : ""}`} onMouseDown={presentation === "favorite-explorer" ? undefined : closeDrilldown}>
+        <aside className="overview-drilldown" role="dialog" aria-modal={presentation !== "favorite-explorer" || undefined} aria-label="Observed grant explorer" onMouseDown={event => event.stopPropagation()}>
+          <div className="overview-drilldown-header">
+            <div><span>Observed grant explorer</span><h2>{drilldown?.selection.label || drilldownSelection.value}</h2><p>{drilldownSelection.type === "period" ? "Grants awarded in this selected period." : "Grants classified in this selected programme area."}</p></div>
+            <div className="overview-drilldown-actions">
+              {presentation === "favorite-explorer" && <button type="button" className="overview-drilldown-back" onClick={closeDrilldown}><ArrowLeft size={15} /> Favorites</button>}
+              {drilldownFavorite && onToggleFavoriteGrantExplorer && <button type="button" className={`favorite-toggle${drilldownIsFavorite ? " is-favorite" : ""}`} aria-label={`${drilldownIsFavorite ? "Remove" : "Save"} this grant explorer from favorites`} aria-pressed={drilldownIsFavorite} onClick={() => onToggleFavoriteGrantExplorer(drilldownFavorite)}><Star size={16} fill={drilldownIsFavorite ? "currentColor" : "none"} /></button>}
+              <button type="button" onClick={closeDrilldown} aria-label="Close observed grant explorer"><X size={18} /></button>
+            </div>
+          </div>
+          {drilldownLoading ? <div className="overview-drilldown-loading"><LoaderCircle size={22} /><div><strong>Preparing observed grant detail</strong><span>Ranking funders, recipients, and source grants for this selection.</span></div></div>
+            : drilldownError ? <div className="data-notice data-notice-warning">{drilldownError}</div>
+              : drilldown?.status === "available" ? <>
+                <section className="overview-drilldown-summary" aria-label="Selected grant summary">
+                  <div><span>Observed funding</span><strong>{formatCurrency(drilldown.summary.funding_total, drilldown.summary.currency)}</strong></div>
+                  <div><span>Grants</span><strong>{drilldown.summary.grant_count.toLocaleString("en-GB")}</strong></div>
+                  <div><span>Funders</span><strong>{drilldown.summary.funder_count.toLocaleString("en-GB")}</strong></div>
+                  <div><span>Recipients</span><strong>{drilldown.summary.recipient_count.toLocaleString("en-GB")}</strong></div>
+                </section>
+                <div className="overview-drilldown-countries"><span>Beneficiary geography</span><div>{drilldown.countries.length ? drilldown.countries.map(country => <em key={country.country_code || country.country_name}>{country.country_name} · {country.grant_count}</em>) : <small>No mapped beneficiary geography in this selection.</small>}</div></div>
+                {drilldown.summary.amount_excluded_grant_count > 0 && <p className="overview-drilldown-note">{drilldown.summary.amount_excluded_grant_count.toLocaleString("en-GB")} grant{drilldown.summary.amount_excluded_grant_count === 1 ? "" : "s"} have no usable {drilldown.summary.currency || "selected"} amount and are excluded from the funding total.</p>}
+                <div className="overview-drilldown-tabs" role="tablist" aria-label="Observed grant detail">
+                  <button type="button" role="tab" aria-selected={drilldownTab === "funders"} className={drilldownTab === "funders" ? "active" : ""} onClick={() => setDrilldownTab("funders")}>Funders <span>{drilldown.summary.funder_count}</span></button>
+                  <button type="button" role="tab" aria-selected={drilldownTab === "recipients"} className={drilldownTab === "recipients" ? "active" : ""} onClick={() => setDrilldownTab("recipients")}>Recipients <span>{drilldown.summary.recipient_count}</span></button>
+                  <button type="button" role="tab" aria-selected={drilldownTab === "grants"} className={drilldownTab === "grants" ? "active" : ""} onClick={() => setDrilldownTab("grants")}>Grants <span>{drilldown.summary.grant_count}</span></button>
+                </div>
+                {drilldownTab === "funders" && <div className="overview-drilldown-list">{drilldown.funders.map(funder => <article key={funder.funder_key || funder.name}><div><strong>{funder.name}</strong><small>{funder.grant_count.toLocaleString("en-GB")} grants · {formatCurrency(funder.funding_total, funder.currency)}</small></div>{funder.profile ? <button type="button" className="btn btn-secondary" onClick={() => { closeDrilldown(); onOpenProfile(funder.profile!.id, funder.profile!.name); }}><Building2 size={14} /> Open profile</button> : <button type="button" className="btn btn-secondary" onClick={() => { closeDrilldown(); onSearchOrganization(funder.name); }}><Search size={14} /> Search research</button>}</article>)}</div>}
+                {drilldownTab === "recipients" && <div className="overview-drilldown-list">{drilldown.recipients.map(recipientItem => <article key={recipientItem.recipient_key || recipientItem.name}><div><strong>{recipientItem.name}</strong><small>{recipientItem.grant_count.toLocaleString("en-GB")} grants · {formatCurrency(recipientItem.funding_total, recipientItem.currency)}</small></div>{recipientItem.profile ? <button type="button" className="btn btn-secondary" onClick={() => { closeDrilldown(); onOpenProfile(recipientItem.profile!.id, recipientItem.profile!.name); }}><Building2 size={14} /> Open profile</button> : <button type="button" className="btn btn-secondary" onClick={() => { closeDrilldown(); onSearchOrganization(recipientItem.name); }}><Search size={14} /> Search research</button>}</article>)}</div>}
+                {drilldownTab === "grants" && <div className="overview-drilldown-list overview-drilldown-grants">{drilldown.grants.map(grant => <article key={grant.grant_id}><div><strong>{grant.recipient_name}</strong><small>{grant.award_date || "Undated"} · {formatCurrency(grant.amount, grant.currency)} · from {grant.funder_name}</small>{grant.description && <p>{grant.description}</p>}</div><div className="overview-drilldown-evidence">{grant.evidence_links.slice(0, 2).map(link => <a key={`${link.label}-${link.url}`} href={link.url} target="_blank" rel="noreferrer"><span>{link.link_type === "json" ? "JSON" : "Website"}</span><ExternalLink size={13} /></a>)}</div></article>)}</div>}
+              </> : <div className="data-notice data-notice-warning">No qualifying grants are available for this selection.</div>}
+        </aside>
+      </div>}
 
       {drawerOpen && <div className="overview-filter-backdrop" onMouseDown={closeDrawer}><aside id="overview-filter-drawer" className="overview-filter-drawer" ref={drawerRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Global grant filters" onMouseDown={event => event.stopPropagation()}><div className="overview-filter-drawer-header"><div><span><SlidersHorizontal size={15} /> Global grant filters</span><h2>Filter grant analysis</h2></div><button type="button" aria-label="Close filters" onClick={closeDrawer}><X size={18} /></button></div><div className="overview-filter-drawer-body">
         <label><span>Period</span><select value={draft.periodPreset} onChange={event => setDraft(applyPreset(event.target.value as PeriodPreset))}><option value="all">All available data</option><option value="last12">Last 12 months</option><option value="last24">Last 24 months</option><option value="currentYear">Current calendar year</option><option value="custom">Custom range</option></select></label>
@@ -573,8 +906,8 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         <label><span>Time granularity</span><select value={draft.granularity} onChange={event => setDraft(current => ({ ...current, granularity: event.target.value as Granularity }))}><option value="auto">Auto</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label>
         <fieldset><legend>Beneficiary geography</legend><div className="filter-checklist">{beneficiaryOptions.map(value => <label key={value}><input type="checkbox" checked={draft.beneficiaryGeographies.includes(value)} onChange={event => setDraft(current => ({ ...current, beneficiaryGeographies: event.target.checked ? [...current.beneficiaryGeographies, value] : current.beneficiaryGeographies.filter(item => item !== value) }))} />{value}</label>)}</div></fieldset>
         <fieldset><legend>Programme area</legend><div className="filter-checklist">{PROGRAMMES.map(value => <label key={value}><input type="checkbox" checked={draft.programmeAreas.includes(value)} onChange={event => setDraft(current => ({ ...current, programmeAreas: event.target.checked ? [...current.programmeAreas, value] : current.programmeAreas.filter(item => item !== value) }))} />{value}</label>)}</div></fieldset>
-        <label><span>Donor</span><input value={draft.donor} placeholder="Name contains…" onChange={event => setDraft(current => ({ ...current, donor: event.target.value }))} /></label>
-        <label><span>Recipient</span><input value={draft.recipient} placeholder="Name contains…" onChange={event => setDraft(current => ({ ...current, recipient: event.target.value }))} /></label>
+        <EntitySuggestionInput id="overview-donor-filter" label="Donor" value={draft.donor} suggestions={entitySuggestions.donors} loading={entitySuggestionsLoading} onChange={value => setDraft(current => ({ ...current, donor: value }))} />
+        <EntitySuggestionInput id="overview-recipient-filter" label="Recipient" value={draft.recipient} suggestions={entitySuggestions.recipients} loading={entitySuggestionsLoading} onChange={value => setDraft(current => ({ ...current, recipient: value }))} />
       </div><div className="overview-filter-drawer-footer"><button type="button" onClick={() => setDraft(EMPTY_FILTERS)}>Reset</button><button type="button" className="btn btn-primary" onClick={applyFilters}>Apply filters <ChevronRight size={15} /></button></div></aside></div>}
     </div>
   );

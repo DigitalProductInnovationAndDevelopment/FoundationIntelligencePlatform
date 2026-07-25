@@ -152,6 +152,8 @@ def migrate_grant_overview_schema(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_key_country ON grant_source_funder_facts(source_funder_key, country_code)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_date ON grant_source_funder_facts(country_code, award_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_profile ON grant_source_funder_facts(linked_profile_id, source_funder_key)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_source_funder_name ON grant_source_funder_facts(source_namespace, display_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_source_recipient_name ON grant_source_funder_facts(source_namespace, recipient_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_source_date ON grants(source, date)")
 
 def create_tables(conn, reset=False):
