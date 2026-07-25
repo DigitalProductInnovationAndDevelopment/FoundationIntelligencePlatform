@@ -85,6 +85,13 @@ export type FavoriteDonorPayload = {
   savedAt: number;
 };
 
+export type FavoriteDonorRequestPayload = {
+  key: string;
+  label: string;
+  route: string;
+  savedAt: number;
+};
+
 type DonorListResponse = {
   status: string;
   country: { code: string; name: string };
@@ -105,6 +112,8 @@ type EvidenceLink = {
   kind: string;
   label: string;
   role?: string | null;
+  organization_name?: string | null;
+  link_type?: "website" | "json" | string | null;
   url: string;
   origin: string;
 };
@@ -159,7 +168,10 @@ interface Props {
   onOpenProfile: (profileId: number, profileName: string) => void;
   favoriteDonorKeys: string[];
   onToggleFavoriteDonor: (donor: FavoriteDonorPayload) => void;
-  onCloseFavoriteDonor?: () => void;
+  favoriteDonorRequestKeys: string[];
+  onToggleFavoriteDonorRequest: (request: FavoriteDonorRequestPayload) => void;
+  presentation?: "default" | "favorite-donor" | "favorite-request";
+  onBackToFavorites?: () => void;
 }
 
 function routeState(
@@ -206,6 +218,23 @@ function profileStatusLabel(profile: ProfileLink): string {
   return "Observed only";
 }
 
+function evidenceRole(evidence: EvidenceLink): "funder" | "recipient" | "publisher" {
+  if (evidence.role === "recipient" || evidence.role === "publisher") return evidence.role;
+  if (evidence.kind.includes("publisher")) return "publisher";
+  return "funder";
+}
+
+function evidenceLinkType(evidence: EvidenceLink): "website" | "json" {
+  if (evidence.link_type === "json" || evidence.kind.endsWith("_record")) return "json";
+  return "website";
+}
+
+function evidenceOrganizationName(evidence: EvidenceLink): string {
+  if (evidence.organization_name?.trim()) return evidence.organization_name;
+  const role = evidenceRole(evidence);
+  return role === "recipient" ? "Recipient organization" : role === "publisher" ? "Publisher" : "Funder organization";
+}
+
 export default function DonorDirectoryPage({
   apiBase,
   online,
@@ -217,8 +246,14 @@ export default function DonorDirectoryPage({
   onOpenProfile,
   favoriteDonorKeys,
   onToggleFavoriteDonor,
-  onCloseFavoriteDonor,
+  favoriteDonorRequestKeys,
+  onToggleFavoriteDonorRequest,
+  presentation = "default",
+  onBackToFavorites,
 }: Props) {
+  const isFavoriteDetail = presentation === "favorite-donor";
+  const isFavoriteRequest = presentation === "favorite-request";
+  const isFavoritePresentation = isFavoriteDetail || isFavoriteRequest;
   const initial = useMemo(() => routeState(selectedSources), [selectedSources]);
   const [scope, setScope] = useState<GrantScope>(initial.scope);
   const [draft, setDraft] = useState<GrantScope>(initial.scope);
@@ -233,6 +268,10 @@ export default function DonorDirectoryPage({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [activityLoaded, setActivityLoaded] = useState(false);
+  const [activitySectionOpen, setActivitySectionOpen] = useState(isFavoriteDetail);
+  const [evidenceSettingsOpen, setEvidenceSettingsOpen] = useState(false);
+  const [evidenceRoleVisibility, setEvidenceRoleVisibility] = useState({ funder: true, recipient: true, publisher: true });
+  const [evidenceTypeVisibility, setEvidenceTypeVisibility] = useState({ website: true, json: true });
   const requestVersion = useRef(0);
   const detailVersion = useRef(0);
   const listScrollPosition = useRef(0);
@@ -422,16 +461,16 @@ export default function DonorDirectoryPage({
 
   useEffect(() => {
     if (!selectedKey) return;
-    return fetchDetail(selectedKey, false);
-  }, [fetchDetail, selectedKey]);
+    return fetchDetail(selectedKey, isFavoriteDetail);
+  }, [fetchDetail, isFavoriteDetail, selectedKey]);
 
   useEffect(() => {
     if (!selectedKey) return;
     detailRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (onCloseFavoriteDonor) {
-        onCloseFavoriteDonor();
+      if (onBackToFavorites) {
+        onBackToFavorites();
         return;
       }
       if (window.history.state?.donorDetail) {
@@ -447,7 +486,7 @@ export default function DonorDirectoryPage({
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [directory, onCloseFavoriteDonor, scope, selectedKey]);
+  }, [directory, onBackToFavorites, scope, selectedKey]);
 
   useEffect(() => {
     if (!selectedKey || !detail) return;
@@ -488,8 +527,8 @@ export default function DonorDirectoryPage({
   };
 
   const closeDetail = () => {
-    if (onCloseFavoriteDonor) {
-      onCloseFavoriteDonor();
+    if (onBackToFavorites) {
+      onBackToFavorites();
       return;
     }
     if (window.history.state?.donorDetail) {
@@ -550,21 +589,73 @@ export default function DonorDirectoryPage({
     country,
     savedAt: Date.now(),
   });
+  const favoriteRequestPayload = (): FavoriteDonorRequestPayload => {
+    const params = applyGrantScopeToParams(
+      new URLSearchParams(),
+      scope,
+      { persistEmptySources: true },
+    );
+    applyDonorDirectoryStateToParams(params, { ...directory, page: 1, donorKey: undefined });
+    params.set("view", "donors");
+    const route = `?${params.toString()}`;
+    const description = [
+      countryLabel,
+      directory.search.trim() ? `“${directory.search.trim()}”` : "",
+      directory.status !== "all" ? directory.status.replace("_", " ") : "",
+    ].filter(Boolean).join(" · ");
+    return {
+      key: `donor-request:${route}`,
+      label: description || "Observed donor request",
+      route,
+      savedAt: Date.now(),
+    };
+  };
+  const currentFavoriteRequest = favoriteRequestPayload();
+  const requestIsFavorite = favoriteDonorRequestKeys.includes(currentFavoriteRequest.key);
+  const visibleEvidence = useMemo(() => (detail?.source_evidence || [])
+    .filter(evidence => (
+      evidenceRoleVisibility[evidenceRole(evidence)]
+      && evidenceTypeVisibility[evidenceLinkType(evidence)]
+    ))
+    .sort((left, right) => {
+      const typeOrder = Number(evidenceLinkType(left) === "json") - Number(evidenceLinkType(right) === "json");
+      if (typeOrder) return typeOrder;
+      return evidenceOrganizationName(left).localeCompare(evidenceOrganizationName(right));
+    }), [detail?.source_evidence, evidenceRoleVisibility, evidenceTypeVisibility]);
 
   return (
-    <section className="donor-directory-page" aria-labelledby="donor-directory-title">
+    <section className={`donor-directory-page${isFavoriteDetail ? " favorite-donor-detail-page" : ""}${isFavoriteRequest ? " favorite-donor-request-page" : ""}`} aria-labelledby="donor-directory-title">
       <div className="page-introduction donor-directory-introduction">
         <div>
-          <span className="page-eyebrow">Observed grant relationships</span>
-          <h2 id="donor-directory-title">Donor Directory</h2>
-          <p>{countryLabel ? `Funders observed in ${countryLabel}.` : "Funders observed in the selected beneficiary geography."}</p>
+          <span className="page-eyebrow">{isFavoritePresentation ? "Favorites" : "Observed grant relationships"}</span>
+          <h2 id="donor-directory-title">{isFavoriteDetail ? "Saved donor activity" : isFavoriteRequest ? "Saved donor request" : "Donor Directory"}</h2>
+          <p>{isFavoriteDetail ? "Observed grants, recipients, and source evidence for this pinned donor." : countryLabel ? `Funders observed in ${countryLabel}.` : "Funders observed in the selected beneficiary geography."}</p>
         </div>
-        <button type="button" className="btn btn-secondary" onClick={() => onBackToLandscape(scope)}>
-          <ArrowLeft size={16} /> Funding Landscape
-        </button>
+        <div className="donor-directory-actions">
+          {isFavoritePresentation ? (
+            <button type="button" className="btn btn-secondary" onClick={onBackToFavorites}>
+              <ArrowLeft size={16} /> Back to Favorites
+            </button>
+          ) : (
+            <button type="button" className="btn btn-secondary" onClick={() => onBackToLandscape(scope)}>
+              <ArrowLeft size={16} /> Funding Landscape
+            </button>
+          )}
+          {!isFavoriteDetail && (
+            <button
+              type="button"
+              className={`btn btn-secondary donor-request-save${requestIsFavorite ? " is-favorite" : ""}`}
+              aria-pressed={requestIsFavorite}
+              onClick={() => onToggleFavoriteDonorRequest(currentFavoriteRequest)}
+              title={requestIsFavorite ? "Remove saved donor request" : "Save this donor request"}
+            >
+              <Star size={16} fill={requestIsFavorite ? "currentColor" : "none"} /> {requestIsFavorite ? "Saved request" : "Save request"}
+            </button>
+          )}
+        </div>
       </div>
 
-      {chips.length > 0 && (
+      {!isFavoriteDetail && chips.length > 0 && (
         <div className="active-filter-chips" aria-label="Active grant scope">
           {chips.map(chip => (
             <button type="button" key={`${chip.key}-${chip.label}`} onClick={() => removeChip(chip.key, chip.label)}>
@@ -574,13 +665,13 @@ export default function DonorDirectoryPage({
         </div>
       )}
 
-      <section className="donor-directory-secondary" aria-label="Other organization research paths">
+      {!isFavoriteDetail && <section className="donor-directory-secondary" aria-label="Other organization research paths">
         <span className="donor-directory-secondary-label">Other research paths</span>
         <div className="donor-directory-secondary-links">
           <button type="button" onClick={onOpenOrganizationResearch}><Building2 size={18} /><span><strong>Organization Research</strong><small>Explore enriched profiles; inclusion does not imply observed funding.</small></span><ArrowRight size={16} /></button>
           <button type="button" onClick={onOpenRegistrySearch}><FileSearch size={18} /><span><strong>Advanced Charity Commission Search</strong><small>Search official registry records and registered locations.</small></span><ArrowRight size={16} /></button>
         </div>
-      </section>
+      </section>}
 
       {!scope.beneficiaryCountry ? (
         <div className="directory-empty-state donor-directory-no-country">
@@ -590,7 +681,7 @@ export default function DonorDirectoryPage({
         </div>
       ) : (
         <>
-          <div className="donor-directory-toolbar">
+          {!isFavoriteDetail && <div className="donor-directory-toolbar">
             <label className="donor-search">
               <span className="sr-only">Search observed funders</span>
               <Search size={17} aria-hidden="true" />
@@ -609,19 +700,19 @@ export default function DonorDirectoryPage({
                 <option value="most_recently_active">Most recently active</option>
               </select>
             </label>
-          </div>
+          </div>}
 
-          <div className="donor-status-tabs" role="group" aria-label="Donor profile status">
+          {!isFavoriteDetail && <div className="donor-status-tabs" role="group" aria-label="Donor profile status">
             <button type="button" className={directory.status === "all" ? "active" : ""} aria-pressed={directory.status === "all"} onClick={() => setStatus("all")}>All observed <span>{statusCounts.all}</span></button>
             <button type="button" className={directory.status === "linked" ? "active" : ""} aria-pressed={directory.status === "linked"} onClick={() => setStatus("linked")}>Linked profiles <span>{statusCounts.linked}</span></button>
             <button type="button" className={directory.status === "observed_only" ? "active" : ""} aria-pressed={directory.status === "observed_only"} onClick={() => setStatus("observed_only")}>Observed only <span>{statusCounts.observed_only}</span></button>
-          </div>
+          </div>}
 
           {error && <div className="data-notice data-notice-error" role="alert">{error}</div>}
           {!online && <div className="data-notice data-notice-warning">The local backend is required for observed donor results.</div>}
           {loading && <div className="donor-directory-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /> Loading observed donors…</div>}
 
-          {!loading && result?.items.length === 0 && (
+          {!isFavoriteDetail && !loading && result?.items.length === 0 && (
             <div className="directory-empty-state">
               <h3>No observed funders match this scope</h3>
               <p>Try a shorter donor search or fewer grant-scope filters. This result does not imply that no organization exists.</p>
@@ -629,9 +720,9 @@ export default function DonorDirectoryPage({
             </div>
           )}
 
-          {!loading && result && result.items.length > 0 && (
+          {!loading && result && (result.items.length > 0 || (isFavoriteDetail && Boolean(selectedKey))) && (
             <div className={`donor-directory-workspace${selectedKey ? " has-detail" : ""}`}>
-              <div className="donor-results-pane">
+              {!isFavoriteDetail && <div className="donor-results-pane">
                 <div className="donor-list-summary">
                   <strong>{result.pagination.total_items.toLocaleString("en-GB")} observed funders</strong>
                   <span>{result.summary.matching_grant_count.toLocaleString("en-GB")} matching grants</span>
@@ -679,7 +770,7 @@ export default function DonorDirectoryPage({
                     <button type="button" className="btn btn-secondary" disabled={directory.page >= result.pagination.total_pages} onClick={() => setPage(directory.page + 1)}>Next <ChevronRight size={16} /></button>
                   </nav>
                 )}
-              </div>
+              </div>}
 
               {selectedKey && (
                 <aside className="donor-detail-shell" ref={detailRef} tabIndex={-1} aria-label="Donor details">
@@ -717,8 +808,9 @@ export default function DonorDirectoryPage({
                         </div>
                       </section>
 
-                      <details className="donor-detail-section" onToggle={event => {
+                      <details className="donor-detail-section" open={activitySectionOpen} onToggle={event => {
                         const section = event.currentTarget as HTMLDetailsElement;
+                        setActivitySectionOpen(section.open);
                         if (!section.open) return;
                         window.requestAnimationFrame(() => section.scrollIntoView({ behavior: "smooth", block: "start" }));
                         if (!activityLoaded && !detailLoading) fetchDetail(selectedKey, true);
@@ -775,12 +867,28 @@ export default function DonorDirectoryPage({
                               <span><strong>Source organization identifier</strong><code>{detail.funder.identity.source_organization_id || detail.funder.identity.normalized_name_fallback || "Not supplied"}</code></span>
                               {(detail.funder.identity.source_organization_id || detail.funder.identity.normalized_name_fallback) && <button type="button" onClick={() => navigator.clipboard?.writeText(detail.funder.identity.source_organization_id || detail.funder.identity.normalized_name_fallback || "")} aria-label="Copy source organization identifier"><Copy size={14} /></button>}
                             </div>
-                            {detail.source_evidence.length ? detail.source_evidence.map((evidence, index) => (
-                              <a key={`${evidence.kind}-${evidence.url}-${index}`} href={evidence.url} target="_blank" rel="noopener noreferrer">
-                                <span><strong>{evidence.label}</strong><small>{evidence.origin.replaceAll("_", " ")}{evidence.role ? ` · ${evidence.role}` : ""}</small></span>
-                                <ExternalLink size={15} aria-hidden="true" />
-                              </a>
-                            )) : <p>No safe HTTP(S) evidence link is stored for this sample.</p>}
+                            {detail.source_evidence.length ? <>
+                              <div className="evidence-display-controls">
+                                <span>{visibleEvidence.length} of {detail.source_evidence.length} links shown</span>
+                                <button type="button" aria-expanded={evidenceSettingsOpen} onClick={() => setEvidenceSettingsOpen(current => !current)}><SlidersHorizontal size={14} /> Evidence settings</button>
+                              </div>
+                              {evidenceSettingsOpen && <div className="evidence-settings-panel" aria-label="Evidence display settings">
+                                <div><strong>Organization role</strong>{(["funder", "recipient", "publisher"] as const).map(role => <label key={role}><input type="checkbox" checked={evidenceRoleVisibility[role]} onChange={event => setEvidenceRoleVisibility(current => ({ ...current, [role]: event.target.checked }))} />{role[0].toUpperCase() + role.slice(1)}</label>)}</div>
+                                <div><strong>Link type</strong>{(["website", "json"] as const).map(type => <label key={type}><input type="checkbox" checked={evidenceTypeVisibility[type]} onChange={event => setEvidenceTypeVisibility(current => ({ ...current, [type]: event.target.checked }))} />{type === "json" ? "JSON record" : "Website"}</label>)}</div>
+                                <button type="button" onClick={() => {
+                                  setEvidenceRoleVisibility({ funder: true, recipient: true, publisher: true });
+                                  setEvidenceTypeVisibility({ website: true, json: true });
+                                }}>Show all</button>
+                              </div>}
+                              {visibleEvidence.length ? visibleEvidence.map((evidence, index) => {
+                                const role = evidenceRole(evidence);
+                                const linkType = evidenceLinkType(evidence);
+                                return <a key={`${evidence.kind}-${evidence.url}-${index}`} href={evidence.url} target="_blank" rel="noopener noreferrer" aria-label={evidence.label}>
+                                  <span><strong>{evidenceOrganizationName(evidence)}</strong><small>{role[0].toUpperCase() + role.slice(1)} {linkType === "json" ? "record" : "website"} · stored source record</small></span>
+                                  <span className="evidence-link-meta"><em className={`evidence-link-type ${linkType}`}>{linkType === "json" ? "JSON" : "Website"}</em><ExternalLink size={15} aria-hidden="true" /></span>
+                                </a>;
+                              }) : <p>No evidence matches the selected settings.</p>}
+                            </> : <p>No safe HTTP(S) evidence link is stored for this sample.</p>}
                             <p className="evidence-policy">Links come from stored source records. The platform does not fetch, preflight, proxy, or verify external destinations.</p>
                           </div>
                         )}

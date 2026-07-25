@@ -252,6 +252,23 @@ async def get_filtered_grant_overview(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/grants/overview/entity-suggestions", response_model=Dict[str, Any])
+async def get_grant_entity_suggestions(
+    sources: Optional[str] = Query(default=None, max_length=500),
+    limit: int = Query(default=2_500, ge=1, le=5_000),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return a source-scoped cache of observed donor and recipient names.
+
+    The browser filters this response locally as the user types. No Overview
+    aggregation is refreshed until the user explicitly applies their draft.
+    """
+    return await repo.get_grant_entity_suggestions(
+        sources=_split_grant_filter(sources) if sources is not None else None,
+        limit=limit,
+    )
+
+
 @router.get("/grants/overview/trends", response_model=GrantTrendsResponse)
 async def get_filtered_grant_overview_trends(
     currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
@@ -290,6 +307,42 @@ async def get_filtered_grant_overview_trends(
             recipient=recipient,
             sources=split_values(sources) if sources is not None else None,
             granularity=granularity,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/grants/overview/drilldown", response_model=Dict[str, Any])
+async def get_grant_overview_drilldown(
+    selection_type: str = Query(..., pattern="^(period|programme_area)$"),
+    selection_value: str = Query(..., min_length=1, max_length=160),
+    currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
+    date_from: Optional[str] = Query(default=None, max_length=10),
+    date_to: Optional[str] = Query(default=None, max_length=10),
+    beneficiary_geographies: Optional[str] = Query(default=None, max_length=500),
+    programme_areas: Optional[str] = Query(default=None, max_length=1000),
+    donor: Optional[str] = Query(default=None, max_length=160),
+    recipient: Optional[str] = Query(default=None, max_length=160),
+    sources: Optional[str] = Query(default=None, max_length=500),
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return a bounded funder, recipient, and grant slice for one chart value."""
+    parsed_from = _parse_grant_date(date_from, "date_from")
+    parsed_to = _parse_grant_date(date_to, "date_to")
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
+    try:
+        return await repo.get_grant_overview_drilldown(
+            selection_type=selection_type,
+            selection_value=selection_value,
+            currency=currency,
+            date_from=parsed_from,
+            date_to=parsed_to,
+            beneficiary_geographies=_split_grant_filter(beneficiary_geographies),
+            programme_areas=_split_grant_filter(programme_areas),
+            donor=donor,
+            recipient=recipient,
+            sources=_split_grant_filter(sources) if sources is not None else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

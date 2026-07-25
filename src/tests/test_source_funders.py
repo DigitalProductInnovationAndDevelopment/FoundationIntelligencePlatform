@@ -202,8 +202,8 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
         raw = {
             "data": {
                 "dataSource": "https://publisher.example/grants",
-                "fundingOrganization": [{"url": "https://fund.example/"}],
-                "recipientOrganization": [{"url": "javascript:alert(1)"}],
+                "fundingOrganization": [{"name": "Evidence Fund", "url": "https://fund.example/"}],
+                "recipientOrganization": [{"name": "Recipient", "url": "javascript:alert(1)"}],
             },
             "funders": [{"self": "https://api.threesixtygiving.org/api/v1/org/FUND/"}],
             "recipients": [
@@ -235,6 +235,10 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("360giving_recipient_record", kinds)
         self.assertNotIn("observed_recipient_website", kinds)
         self.assertTrue(all("@" not in item["url"] for item in full["source_evidence"]))
+        funder_record = next(item for item in full["source_evidence"] if item["kind"] == "360giving_funder_record")
+        self.assertEqual(funder_record["organization_name"], "Evidence Fund")
+        self.assertEqual(funder_record["role"], "funder")
+        self.assertEqual(funder_record["link_type"], "json")
 
     async def test_endpoint_validates_country_and_returns_paginated_source_funders(self):
         self.grant("A-1", funder_name="Alpha", funder_source_id="alpha")
