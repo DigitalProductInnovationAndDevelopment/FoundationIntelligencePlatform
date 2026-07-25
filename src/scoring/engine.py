@@ -46,9 +46,9 @@ def validate_score_configuration(raw: Mapping[str, Any]) -> ScoreConfiguration:
     if not target:
         raise ScoreConfigurationError("score_target is required")
     missing_behavior = str(raw.get("missing_data_behavior") or "")
-    if missing_behavior != "renormalize_available_components":
+    if missing_behavior != "zero_for_missing_components":
         raise ScoreConfigurationError(
-            "Only explicit renormalize_available_components missing-data behavior is supported"
+            "Only explicit zero_for_missing_components missing-data behavior is supported"
         )
     weights_raw = raw.get("weights")
     if not isinstance(weights_raw, Mapping) or not weights_raw:
@@ -283,13 +283,15 @@ def score_relevance(
     available_weight = sum(item["weight"] for item in available)
     data_completeness = round(available_weight, 3)
     if available_weight:
+        # Do not renormalize partial evidence. A 100% match on only one
+        # criterion is a partial fit, not a 100-point profile. Each missing
+        # criterion therefore contributes zero to the weighted total.
         relevance = round(
-            sum(item["score"] * item["weight"] for item in available) / available_weight,
+            sum(item["score"] * item["weight"] for item in available),
             2,
         )
         confidence = round(
-            sum(item["confidence"] * item["weight"] for item in available) / available_weight
-            * data_completeness,
+            sum(item["confidence"] * item["weight"] for item in available),
             3,
         )
     else:

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, LoaderCircle, SlidersHorizontal, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, LoaderCircle, SlidersHorizontal, Star, X } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -10,12 +10,24 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import GrantWorldMap, { type GrantMapFilters, type GrantMapResponse } from "./GrantWorldMap";
+import GrantWorldMap, {
+  type GrantMapFilters,
+  type GrantMapResponse,
+  type MapCountrySelection,
+  type SourceFunderCountrySelection,
+} from "./GrantWorldMap";
+import {
+  applyGrantScopeToParams,
+  grantScopeChips,
+  grantScopeFromUrl,
+  grantScopeToApiParams,
+  type GrantScope,
+} from "../lib/grantScope";
 
 type PeriodPreset = "all" | "last12" | "last24" | "currentYear" | "custom";
 type Granularity = "auto" | "monthly" | "yearly";
 
-interface OverviewFilters {
+export interface OverviewFilters {
   currency: string;
   dateFrom: string;
   dateTo: string;
@@ -89,6 +101,9 @@ interface Props {
   online: boolean;
   selectedSources: string[];
   onOpenOrganizationDirectory: (filters: GrantMapFilters) => void;
+  onExploreSourceFunders: (selection: SourceFunderCountrySelection, filters: OverviewFilters) => void;
+  onToggleFavoriteLandscape: (filters: OverviewFilters) => void;
+  isFavoriteLandscape: (filters: OverviewFilters) => boolean;
 }
 
 const PROGRAMMES = [
@@ -109,13 +124,25 @@ const EMPTY_MAP: GrantMapResponse = {
   multi_country_grant_count: 0, funding_excluded_multi_country_count: 0, funding_excluded_multi_country_amount: 0,
   funding_excluded_currency_count: 0, funding_excluded_invalid_amount_count: 0, connections: [],
   connection_grant_count: 0, connection_excluded_no_headquarters_count: 0, connection_same_country_count: 0,
-  minimum_coverage_threshold: 0.3,
+  minimum_coverage_threshold: 0,
   metadata: { data_mode: "unavailable", source: [], record_count: 0, limitations: [] },
 };
 
 function formatCurrency(value: number | null, currency: string | null) {
   if (value === null || value === undefined || !currency) return "Unavailable";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, notation: value >= 1_000_000 ? "compact" : "standard", maximumFractionDigits: value >= 1_000_000 ? 1 : 0 }).format(value);
+}
+
+function TrendLoadingState({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`trend-loading-state${compact ? " compact" : ""}`} role="status" aria-live="polite">
+      <LoaderCircle size={compact ? 18 : 26} aria-hidden="true" />
+      <div>
+        <strong>{compact ? "Updating grant awards" : "Preparing grant awards over time"}</strong>
+        <span>{compact ? "Applying the selected period and granularity" : "Matching the selected grants and calculating award periods"}</span>
+      </div>
+    </div>
+  );
 }
 
 function shiftMonths(endDate: string, months: number) {
@@ -126,22 +153,23 @@ function shiftMonths(endDate: string, months: number) {
 
 function filtersFromUrl(): OverviewFilters {
   const params = new URLSearchParams(window.location.search);
-  const dateFrom = params.get("grant_from") || "";
-  const dateTo = params.get("grant_to") || "";
+  const scope = grantScopeFromUrl(params);
+  const dateFrom = scope.dateFrom || "";
+  const dateTo = scope.dateTo || "";
   return {
-    currency: params.get("grant_currency") || "",
+    currency: scope.currency || "",
     dateFrom,
     dateTo,
-    beneficiaryGeographies: (params.get("grant_geo") || "").split(",").filter(Boolean),
-    programmeAreas: (params.get("grant_programme") || "").split(",").filter(Boolean),
-    donor: params.get("grant_donor") || "",
-    recipient: params.get("grant_recipient") || "",
+    beneficiaryGeographies: scope.beneficiaryGeographies,
+    programmeAreas: scope.programmeAreas,
+    donor: scope.donor || "",
+    recipient: scope.recipient || "",
     granularity: (["auto", "monthly", "yearly"].includes(params.get("grant_granularity") || "") ? params.get("grant_granularity") : "auto") as Granularity,
     periodPreset: dateFrom || dateTo ? "custom" : "all",
   };
 }
 
-export default function OverviewDashboard({ apiBase, online, selectedSources, onOpenOrganizationDirectory }: Props) {
+export default function OverviewDashboard({ apiBase, online, selectedSources, onOpenOrganizationDirectory, onExploreSourceFunders, onToggleFavoriteLandscape, isFavoriteLandscape }: Props) {
   const [filters, setFilters] = useState<OverviewFilters>(filtersFromUrl);
   const [draft, setDraft] = useState<OverviewFilters>(filters);
   const [payload, setPayload] = useState<OverviewPayload | null>(null);
@@ -151,42 +179,80 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const [showAllProgrammes, setShowAllProgrammes] = useState(false);
   const [includeUnclassified, setIncludeUnclassified] = useState(true);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [selectedMapCountryCode, setSelectedMapCountryCode] = useState<string | null>(null);
+  const [includeConnections, setIncludeConnections] = useState(false);
+  const [trendPeriodOpen, setTrendPeriodOpen] = useState(false);
+  const [trendDateFrom, setTrendDateFrom] = useState(filters.dateFrom);
+  const [trendDateTo, setTrendDateTo] = useState(filters.dateTo);
+  const [trendOverride, setTrendOverride] = useState<OverviewPayload["trends"] | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
   const requestVersion = useRef(0);
+  const trendRequestVersion = useRef(0);
   const drawerRef = useRef<HTMLElement>(null);
   const activeFilterCount = Number(Boolean(filters.currency)) + Number(Boolean(filters.dateFrom || filters.dateTo))
     + filters.beneficiaryGeographies.length + filters.programmeAreas.length
     + Number(Boolean(filters.donor.trim())) + Number(Boolean(filters.recipient.trim()))
     + Number(filters.granularity !== "auto");
 
-  const updateUrl = (next: OverviewFilters) => {
-    const query = new URLSearchParams(window.location.search);
+  const updateUrl = useCallback((next: OverviewFilters) => {
+    const query = applyGrantScopeToParams(
+      new URLSearchParams(window.location.search),
+      {
+        currency: next.currency || undefined,
+        dateFrom: next.dateFrom || undefined,
+        dateTo: next.dateTo || undefined,
+        beneficiaryGeographies: next.beneficiaryGeographies,
+        programmeAreas: next.programmeAreas,
+        donor: next.donor,
+        recipient: next.recipient,
+        sources: selectedSources,
+      },
+      { includeCountry: false, persistEmptySources: true },
+    );
     const assign = (key: string, value: string) => value ? query.set(key, value) : query.delete(key);
-    assign("grant_currency", next.currency);
-    assign("grant_from", next.dateFrom);
-    assign("grant_to", next.dateTo);
-    assign("grant_geo", next.beneficiaryGeographies.join(","));
-    assign("grant_programme", next.programmeAreas.join(","));
-    assign("grant_donor", next.donor.trim());
-    assign("grant_recipient", next.recipient.trim());
     assign("grant_granularity", next.granularity === "auto" ? "" : next.granularity);
     const suffix = query.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${suffix ? `?${suffix}` : ""}`);
-  };
+  }, [selectedSources]);
+
+  // Granularity affects only the time-series presentation. The map, KPIs and
+  // programme allocation can keep their cached Auto result while the chart
+  // asks for its compact trend-only response.
+  const overviewRequestFilters = useMemo(() => ({
+    currency: filters.currency,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    beneficiaryGeographies: filters.beneficiaryGeographies,
+    programmeAreas: filters.programmeAreas,
+    donor: filters.donor,
+    recipient: filters.recipient,
+  }), [
+    filters.currency,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.beneficiaryGeographies,
+    filters.programmeAreas,
+    filters.donor,
+    filters.recipient,
+  ]);
 
   useEffect(() => {
     if (!online) return;
     const controller = new AbortController();
     const currentVersion = ++requestVersion.current;
-    const params = new URLSearchParams();
-    if (filters.currency) params.set("currency", filters.currency);
-    if (filters.dateFrom) params.set("date_from", filters.dateFrom);
-    if (filters.dateTo) params.set("date_to", filters.dateTo);
-    if (filters.beneficiaryGeographies.length) params.set("beneficiary_geographies", filters.beneficiaryGeographies.join(","));
-    if (filters.programmeAreas.length) params.set("programme_areas", filters.programmeAreas.join(","));
-    if (filters.donor.trim()) params.set("donor", filters.donor.trim());
-    if (filters.recipient.trim()) params.set("recipient", filters.recipient.trim());
-    params.set("sources", selectedSources.join(","));
-    params.set("granularity", filters.granularity);
+    const requestScope: GrantScope = {
+      currency: overviewRequestFilters.currency || undefined,
+      dateFrom: overviewRequestFilters.dateFrom || undefined,
+      dateTo: overviewRequestFilters.dateTo || undefined,
+      beneficiaryGeographies: overviewRequestFilters.beneficiaryGeographies,
+      programmeAreas: overviewRequestFilters.programmeAreas,
+      donor: overviewRequestFilters.donor,
+      recipient: overviewRequestFilters.recipient,
+      sources: selectedSources,
+    };
+    const params = grantScopeToApiParams(requestScope);
+    params.set("granularity", "auto");
+    if (includeConnections) params.set("include_connections", "true");
     setLoading(true);
     fetch(`${apiBase}/api/charities/grants/overview?${params.toString()}`, { credentials: "include", signal: controller.signal })
       .then(async response => {
@@ -206,12 +272,63 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === requestVersion.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, filters, online, refreshNonce, selectedSources]);
+  }, [apiBase, includeConnections, online, overviewRequestFilters, refreshNonce, selectedSources]);
+
+  useEffect(() => {
+    if (!online || filters.granularity === "auto") {
+      setTrendOverride(null);
+      setTrendLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const currentVersion = ++trendRequestVersion.current;
+    const params = grantScopeToApiParams({
+      currency: filters.currency || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
+      beneficiaryGeographies: filters.beneficiaryGeographies,
+      programmeAreas: filters.programmeAreas,
+      donor: filters.donor,
+      recipient: filters.recipient,
+      sources: selectedSources,
+    });
+    params.set("granularity", filters.granularity);
+    setTrendLoading(true);
+    fetch(`${apiBase}/api/charities/grants/overview/trends?${params.toString()}`, { credentials: "include", signal: controller.signal })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || `Trend request failed (${response.status}).`);
+        return result as OverviewPayload["trends"];
+      })
+      .then(result => {
+        if (currentVersion !== trendRequestVersion.current) return;
+        setTrendOverride(result);
+        setError(null);
+      })
+      .catch(requestError => {
+        if ((requestError as Error).name !== "AbortError" && currentVersion === trendRequestVersion.current) setError((requestError as Error).message);
+      })
+      .finally(() => {
+        if (currentVersion === trendRequestVersion.current) setTrendLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiBase, filters, online, selectedSources]);
 
   useEffect(() => {
     updateUrl(filters);
     window.dispatchEvent(new CustomEvent("overview-filter-count", { detail: activeFilterCount }));
-  }, [activeFilterCount, filters]);
+  }, [activeFilterCount, filters, updateUrl]);
+
+  useEffect(() => {
+    const restoreFromHistory = () => {
+      const next = filtersFromUrl();
+      setFilters(next);
+      setDraft(next);
+      setSelectedMapCountryCode(null);
+    };
+    window.addEventListener("popstate", restoreFromHistory);
+    return () => window.removeEventListener("popstate", restoreFromHistory);
+  }, []);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("overview-filter-drawer-state", { detail: drawerOpen }));
@@ -241,6 +358,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       setDraft(next);
       setError(null);
       setDrawerOpen(false);
+      setSelectedMapCountryCode(null);
     };
     window.addEventListener("overview-reset-filters", resetOverviewFilters);
     return () => window.removeEventListener("overview-reset-filters", resetOverviewFilters);
@@ -300,7 +418,33 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       return;
     }
     setFilters(draft);
+    if (draft.beneficiaryGeographies.join("|") !== filters.beneficiaryGeographies.join("|")) {
+      setSelectedMapCountryCode(null);
+    }
     closeDrawer();
+  };
+
+  const openTrendCustomPeriod = () => {
+    setTrendDateFrom(filters.dateFrom || payload?.available_date_range.from || "");
+    setTrendDateTo(filters.dateTo || payload?.available_date_range.to || "");
+    setTrendPeriodOpen(true);
+  };
+
+  const applyTrendCustomPeriod = () => {
+    if (trendDateFrom && trendDateTo && trendDateFrom > trendDateTo) {
+      setError("The period start cannot be after the period end.");
+      return;
+    }
+    const next = {
+      ...filters,
+      dateFrom: trendDateFrom,
+      dateTo: trendDateTo,
+      periodPreset: "custom" as const,
+    };
+    setFilters(next);
+    setDraft(next);
+    setError(null);
+    setTrendPeriodOpen(false);
   };
 
   const visibleThemeItems = useMemo(() => {
@@ -322,9 +466,10 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     [draft.beneficiaryGeographies, filters.beneficiaryGeographies, payload?.map.items],
   );
 
-  const selectMapCountry = (countryName: string | null) => {
+  const selectMapCountry = (selection: MapCountrySelection | null) => {
+    setSelectedMapCountryCode(selection?.countryCode || null);
     setFilters(current => {
-      const next = { ...current, beneficiaryGeographies: countryName ? [countryName] : [] };
+      const next = { ...current, beneficiaryGeographies: selection ? [selection.countryName] : [] };
       setDraft(next);
       return next;
     });
@@ -334,21 +479,59 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   // Only beneficiary geography is safely carried from a country selection.
   const legacyMapFilters: GrantMapFilters = { search: "", tags: [], foundationRegions: [], fundingRegions: filters.beneficiaryGeographies, minAnnualGiving: 0, minAvgGrantSize: 0 };
   const kpis = payload?.kpis;
-  const trends = payload?.trends;
+  const trends = trendOverride || payload?.trends;
+  const trendIsLoading = trendLoading || (loading && filters.granularity === "auto");
   const themes = payload?.themes;
   const chartPeriod = trends?.period ? `${trends.period.from}–${trends.period.to}` : "Selected period";
+  const overviewScopeChips = grantScopeChips({
+    currency: filters.currency || undefined,
+    dateFrom: filters.dateFrom || undefined,
+    dateTo: filters.dateTo || undefined,
+    beneficiaryGeographies: filters.beneficiaryGeographies,
+    programmeAreas: filters.programmeAreas,
+    donor: filters.donor,
+    recipient: filters.recipient,
+    sources: selectedSources,
+  }).filter(chip => chip.key !== "beneficiaryGeographies");
+  const landscapeIsFavorite = isFavoriteLandscape(filters);
 
   return (
     <div className="overview-dashboard">
+      <div className="overview-favorite-toolbar">
+        <span>Funding Landscape</span>
+        <button
+          type="button"
+          className={`favorite-toggle${landscapeIsFavorite ? " is-favorite" : ""}`}
+          aria-label={`${landscapeIsFavorite ? "Remove current funding landscape from" : "Add current funding landscape to"} favorites`}
+          aria-pressed={landscapeIsFavorite}
+          onClick={() => onToggleFavoriteLandscape(filters)}
+        ><Star size={16} fill={landscapeIsFavorite ? "currentColor" : "none"} /></button>
+      </div>
+      {overviewScopeChips.length > 0 && <div className="active-filter-chips" aria-label="Active Funding Landscape filters">
+        {overviewScopeChips.slice(0, 3).map(chip => <span key={`${chip.key}-${chip.label}`}>{chip.label}</span>)}
+        {overviewScopeChips.length > 3 && <button type="button" onClick={() => window.dispatchEvent(new Event("overview-open-filters"))}>+{overviewScopeChips.length - 3} more</button>}
+      </div>}
       {error && <div className="data-notice data-notice-warning">{error}</div>}
-      <div className="overview-kpi-grid compact">
+
+      <div className="overview-kpi-grid compact landscape-metrics">
         <div className="glass-card overview-kpi"><span>Awarded funding</span><strong>{formatCurrency(kpis?.awarded_funding ?? null, kpis?.currency ?? null)}</strong><small>{filters.currency ? `${kpis?.currency || filters.currency} original source amounts` : "Auto · ECB-converted EUR"}</small></div>
         <div className="glass-card overview-kpi"><span>Grants monitored</span><strong>{kpis?.grants_monitored?.toLocaleString("en-GB") ?? "—"}</strong><small>Active grant scope</small></div>
-        <div className="glass-card overview-kpi"><span>Country coverage</span><strong>{kpis ? `${kpis.country_coverage_percentage}%` : "—"}</strong><small>{kpis ? `${kpis.mapped_grant_count} mapped · ${kpis.unmapped_grant_count} unmapped` : "Beneficiary geography"}</small></div>
-        <div className="glass-card overview-kpi"><span>Programme coverage</span><strong>{kpis ? `${kpis.programme_coverage_percentage}%` : "—"}</strong><small>{kpis ? `${kpis.classified_grant_count} classified grants` : "Classification"}</small></div>
+        <div className="glass-card overview-kpi"><span>Observed funder scope</span><strong>{payload?.map.items.reduce((sum, item) => sum + item.distinct_funders, 0).toLocaleString("en-GB") ?? "—"}</strong><small>Country-level source funder associations</small></div>
+        <div className="glass-card overview-kpi"><span>Project coverage</span><strong>{kpis?.programme_coverage_percentage != null ? `${kpis.programme_coverage_percentage}%` : "—"}</strong><small>{kpis?.classified_grant_count?.toLocaleString("en-GB") ?? "—"} classified grants</small></div>
       </div>
 
-      <GrantWorldMap data={payload?.map || EMPTY_MAP} loading={loading && !payload} error={null} filters={legacyMapFilters} onOpenOrganizationDirectory={onOpenOrganizationDirectory} onCountrySelectionChange={selectMapCountry} />
+      <GrantWorldMap
+        data={payload?.map || EMPTY_MAP}
+        loading={loading && !payload}
+        error={null}
+        filters={legacyMapFilters}
+        onOpenOrganizationDirectory={onOpenOrganizationDirectory}
+        onExploreSourceFunders={(selection) => onExploreSourceFunders(selection, filters)}
+        selectedCountryCode={selectedMapCountryCode}
+        onCountrySelectionChange={selectMapCountry}
+        refreshing={loading && Boolean(payload)}
+        onConnectionsVisibilityChange={setIncludeConnections}
+      />
 
       <div className="analytics-charts-grid overview-analytics-grid">
         <section className="glass-card analytics-chart-card compact-chart" aria-labelledby="grant-trend-title">
@@ -356,11 +539,18 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
             <div><h3 id="grant-trend-title">Grant Awards Over Time</h3><span>{trends?.granularity === "yearly" ? "Annual" : "Monthly"} · {chartPeriod} · {filters.currency ? `${trends?.currency || filters.currency} original` : "EUR · Auto (ECB converted)"}</span></div>
             <div className="chart-segmented" role="group" aria-label="Grant trend granularity">
               {(["auto", "monthly", "yearly"] as Granularity[]).map(option => <button type="button" className={filters.granularity === option ? "active" : ""} key={option} onClick={() => setFilters(current => ({ ...current, granularity: option }))}>{option === "auto" ? "Auto" : option === "monthly" ? "Monthly" : "Yearly"}</button>)}
+              <button type="button" className={filters.periodPreset === "custom" ? "active" : ""} onClick={openTrendCustomPeriod}>Custom period</button>
             </div>
           </div>
-          {loading && !trends ? <div className="chart-loading"><LoaderCircle size={20} /> Loading grant trend…</div> : trends?.status === "available" && trends.items.length ? <>
+          {trendPeriodOpen && <div className="trend-period-picker" role="group" aria-label="Custom grant award period">
+            <label><span>From</span><input type="date" min={payload?.available_date_range.from || undefined} max={payload?.available_date_range.to || undefined} value={trendDateFrom} onChange={event => setTrendDateFrom(event.target.value)} /></label>
+            <label><span>To</span><input type="date" min={trendDateFrom || payload?.available_date_range.from || undefined} max={payload?.available_date_range.to || undefined} value={trendDateTo} onChange={event => setTrendDateTo(event.target.value)} /></label>
+            <p>This range also updates the map and programme allocation.</p>
+            <div><button type="button" onClick={() => setTrendPeriodOpen(false)}>Cancel</button><button type="button" className="btn btn-primary" onClick={applyTrendCustomPeriod}>Apply period</button></div>
+          </div>}
+          {trendIsLoading && !trends ? <TrendLoadingState /> : trends?.status === "available" && trends.items.length ? <>
             <p className="visually-hidden">Grant awards are shown for {trends.items.length} {trends.granularity} periods in {trends.currency}. Use the chart tooltip to inspect total awarded funding, grant count, and mapped versus unmapped grants for each period.</p>
-            <div className="analytics-chart-plot compact"><ResponsiveContainer width="100%" height="100%"><BarChart data={trends.items} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,.09)" /><XAxis dataKey="month" minTickGap={28} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => String(value).slice(2)} /><YAxis width={58} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => formatCurrency(Number(value), trends.currency).replace("£", "£")} /><Tooltip content={({ active, payload: rows, label }) => { const item = rows?.[0]?.payload as TrendItem | undefined; if (!active || !item) return null; return <div className="chart-tooltip"><strong>{label}</strong>{item.coverage_status === "observed" ? <><span>{formatCurrency(item.total_amount, trends.currency)}</span><span>{item.grant_count} grants · {item.mapped_grant_count} mapped · {item.unmapped_grant_count} unmapped</span></> : <span>{item.coverage_status === "partial" ? "Source records without a valid aggregate." : "No source coverage established; not a confirmed zero."}</span>}</div>; }} /><Bar dataKey="total_amount" name="Awarded funding" fill="var(--nl-chart-primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart></ResponsiveContainer></div>
+            <div className={`analytics-chart-plot compact trend-chart-plot${trendIsLoading ? " is-refreshing" : ""}`}><ResponsiveContainer width="100%" height="100%"><BarChart data={trends.items} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,.09)" /><XAxis dataKey="month" minTickGap={28} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => String(value).slice(2)} /><YAxis width={58} tick={{ fill: "#707070", fontSize: 10 }} tickFormatter={value => formatCurrency(Number(value), trends.currency).replace("£", "£")} /><Tooltip content={({ active, payload: rows, label }) => { const item = rows?.[0]?.payload as TrendItem | undefined; if (!active || !item) return null; return <div className="chart-tooltip"><strong>{label}</strong>{item.coverage_status === "observed" ? <><span>{formatCurrency(item.total_amount, trends.currency)}</span><span>{item.grant_count} grants · {item.mapped_grant_count} mapped · {item.unmapped_grant_count} unmapped</span></> : <span>{item.coverage_status === "partial" ? "Source records without a valid aggregate." : "No source coverage established; not a confirmed zero."}</span>}</div>; }} /><Bar dataKey="total_amount" name="Awarded funding" fill="var(--nl-chart-primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart></ResponsiveContainer>{trendIsLoading && <div className="trend-chart-refresh"><TrendLoadingState compact /></div>}</div>
             <details className="chart-methodology"><summary>Methodology and data coverage</summary><p>Award-date aggregation from the filtered 360Giving grant population. Auto uses the stored ECB reference rate for the award date, or the preceding ECB business day; empty periods are never shown as zero funding.</p></details>
           </> : <div className="data-notice data-notice-warning">No qualifying grant awards are available for the selected filters.</div>}
         </section>

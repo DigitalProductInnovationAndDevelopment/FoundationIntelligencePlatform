@@ -32,9 +32,16 @@ origins = [
     "http://127.0.0.1:5174",
 ]
 
+# Vite moves to the next available port when another local development session
+# already owns its default port. Keep credentialed browser requests local-only,
+# while allowing those fallback Vite ports without having to restart the BFF for
+# each one.
+local_development_origin = r"http://(localhost|127\.0\.0\.1):\d+"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=local_development_origin,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,10 +50,16 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def warm_repository() -> None:
-    """Initialize indexes/cache before the browser makes its first request."""
-    repository = get_charity_repository()
-    await repository.get_grant_overview(
-        sources=["360Giving", "Charity Commission for England and Wales", "Philea"]
+    """Initialize the repository without blocking readiness on a full scan.
+
+    Persisted derived indexes and cached Overview payloads are reused by the
+    first relevant request. A synchronous full-Overview warmup previously kept
+    the health endpoint unavailable for tens of seconds on the audited 1.3 GB
+    SQLite file, making a healthy local process look crashed.
+    """
+    get_charity_repository()
+    logger.info(
+        "Repository initialized; expensive Overview aggregation is request-driven."
     )
 
 # Request-Response logging middleware

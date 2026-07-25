@@ -38,7 +38,7 @@ def grant_stats():
 class TestScoreConfiguration(unittest.TestCase):
     def test_checked_in_example_configuration_loads_and_is_experimental(self):
         config = load_score_configuration()
-        self.assertEqual(config.score_version, "example-relevance-v1")
+        self.assertEqual(config.score_version, "example-relevance-v2")
         self.assertEqual(config.configuration_status, "experimental")
         self.assertAlmostEqual(sum(config.weights.values()), 1.0)
 
@@ -47,7 +47,7 @@ class TestScoreConfiguration(unittest.TestCase):
             "score_version": "test",
             "configuration_status": "experimental",
             "score_target": "test relevance",
-            "missing_data_behavior": "renormalize_available_components",
+            "missing_data_behavior": "zero_for_missing_components",
             "review_confidence_threshold": 0.6,
             "weights": {
                 "thematic_fit": 0.35,
@@ -96,7 +96,7 @@ class TestRelevanceScore(unittest.TestCase):
         self.assertEqual(component["evidence"][0]["matched_values"], ["education"])
         self.assertEqual(result["configuration_status"], "experimental")
 
-    def test_strong_geography_with_no_financial_data_renormalizes(self):
+    def test_strong_geography_with_no_financial_data_remains_a_partial_score(self):
         organization = strong_organization()
         organization["annual_expenditure"] = None
         result = score_relevance(organization, target_profile(), {}, self.config)
@@ -104,7 +104,18 @@ class TestRelevanceScore(unittest.TestCase):
         self.assertFalse(result["components"]["funding_capacity_fit"]["available"])
         self.assertFalse(result["components"]["historical_grant_size_fit"]["available"])
         self.assertEqual(result["data_completeness"], 0.7)
+        self.assertEqual(result["score"], 70.0)
         self.assertIn("annual expenditure missing", result["missing_inputs"])
+
+    def test_perfect_single_component_cannot_receive_a_perfect_profile_score(self):
+        organization = {
+            "programme_areas_source": ["Education", "Health"],
+            "programme_areas_inferred": [],
+        }
+        result = score_relevance(organization, target_profile(), {}, self.config)
+        self.assertEqual(result["components"]["thematic_fit"]["score"], 100.0)
+        self.assertEqual(result["score"], 35.0)
+        self.assertEqual(result["data_completeness"], 0.35)
 
     def test_source_geography_objects_are_normalized_with_uk_rollup(self):
         organization = strong_organization()
@@ -165,7 +176,7 @@ class TestRelevanceScore(unittest.TestCase):
             for component in first["components"].values()
             if component["available"]
         )
-        self.assertEqual(first["score"], round(weighted_total / available_weight, 2))
+        self.assertEqual(first["score"], round(weighted_total, 2))
         self.assertLessEqual(first["confidence"], 1.0)
         self.assertNotEqual(first["confidence"], first["score"])
 
@@ -174,7 +185,7 @@ class TestRelevanceScore(unittest.TestCase):
             "score_version": "custom-test-v1",
             "configuration_status": "experimental",
             "score_target": "test relevance",
-            "missing_data_behavior": "renormalize_available_components",
+            "missing_data_behavior": "zero_for_missing_components",
             "review_confidence_threshold": 0.6,
             "weights": {
                 "thematic_fit": 0.7,

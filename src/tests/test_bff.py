@@ -166,6 +166,49 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(data[1]["charity_name"], "Removed Charity Two")
         self.assertEqual(data[1]["latest_income"], 100000.0)
 
+    def test_list_charities_can_include_page_score_summaries(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        response = self.client.get(
+            "/api/charities?include_score=true",
+            cookies={"session_id": login_resp.cookies.get("session_id")},
+        )
+        self.assertEqual(response.status_code, 200)
+        score = response.json()[0]
+        self.assertIn("relevance_score", score)
+        self.assertIn("score_completeness", score)
+        self.assertEqual(score["score_version"], "example-relevance-v2")
+        self.assertEqual(score["score_configuration_status"], "experimental")
+
+    def test_directory_score_sort_is_global_before_pagination_and_honours_maximums(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        cookies = {"session_id": login_resp.cookies.get("session_id")}
+        first_page = self.client.get(
+            "/api/charities?include_score=true&sort=score_desc&limit=1&skip=0",
+            cookies=cookies,
+        )
+        second_page = self.client.get(
+            "/api/charities?include_score=true&sort=score_desc&limit=1&skip=1",
+            cookies=cookies,
+        )
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(second_page.status_code, 200)
+        first_score = first_page.json()[0]["relevance_score"]
+        second_score = second_page.json()[0]["relevance_score"]
+        self.assertGreaterEqual(first_score, second_score)
+
+        maximum = self.client.get(
+            "/api/charities?max_annual_giving=100000",
+            cookies=cookies,
+        )
+        self.assertEqual(maximum.status_code, 200)
+        self.assertEqual([item["charity_name"] for item in maximum.json()], ["Removed Charity Two"])
+
     def test_list_charities_filters(self):
         # Login
         login_resp = self.client.post(
@@ -353,7 +396,11 @@ class TestBFF(unittest.TestCase):
                 funding_regions=None,
                 sources=None,
                 min_annual_giving=None,
+                max_annual_giving=None,
                 min_avg_grant_size=None,
+                max_avg_grant_size=None,
+                include_score=False,
+                sort="name_asc",
                 skip=0,
                 limit=20
             )
@@ -382,7 +429,11 @@ class TestBFF(unittest.TestCase):
                 funding_regions=None,
                 sources=None,
                 min_annual_giving=None,
+                max_annual_giving=None,
                 min_avg_grant_size=None,
+                max_avg_grant_size=None,
+                include_score=False,
+                sort="name_asc",
                 skip=0,
                 limit=20
             )
@@ -539,7 +590,7 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["configuration_status"], "experimental")
-        self.assertEqual(data["score_version"], "example-relevance-v1")
+        self.assertEqual(data["score_version"], "example-relevance-v2")
         self.assertTrue(data["not_a_prediction"])
         self.assertIn("components", data)
 
@@ -753,6 +804,34 @@ class TestAdminPipelineExtra(unittest.TestCase):
                     self.assertEqual(json_data["summary"], "This is a summary.")
                     self.assertEqual(len(json_data["sources"]), 1)
                     self.assertEqual(json_data["sources"][0]["title"], "Netlight Open Source")
+
+    def test_news_summary_stream_reports_research_stages_and_result(self):
+        from bff.news import Article
+        mock_articles = [
+            Article(
+                title="Netlight Open Source",
+                link="http://netlight.com/news1",
+                source="Netlight News",
+                published="2026-07-20",
+                text="Foundations news detail",
+                note="Article content",
+            )
+        ]
+        with patch("bff.news.fetch_news_entries", return_value=mock_articles):
+            with patch("bff.news.enrich_articles", return_value=mock_articles):
+                with patch("bff.news.summarize_with_claude", return_value="This is a summary."):
+                    response = self.client.get(
+                        "/api/news/Netlight%20Foundation/summary/stream",
+                        cookies={"session_id": self.session_cookie},
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.headers["content-type"].split(";")[0], "text/event-stream")
+                    self.assertIn("event: progress", response.text)
+                    self.assertIn('"step": "discovering"', response.text)
+                    self.assertIn('"step": "reading"', response.text)
+                    self.assertIn('"step": "summarizing"', response.text)
+                    self.assertIn("event: complete", response.text)
+                    self.assertIn('"summary": "This is a summary."', response.text)
 
 
 if __name__ == "__main__":

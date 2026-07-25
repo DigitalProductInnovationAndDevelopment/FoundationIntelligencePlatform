@@ -74,6 +74,13 @@ class TestEnrichmentStorage(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["registered_charity_number"] for item in results], [11])
         self.assertEqual(results[0]["programme_areas_source"], ["Education"])
 
+    async def test_directory_page_can_include_score_summary(self):
+        results = await self.repo.get_all(include_score=True)
+        self.assertEqual(len(results), 1)
+        self.assertIn("relevance_score", results[0])
+        self.assertIn("score_completeness", results[0])
+        self.assertEqual(results[0]["score_version"], "example-relevance-v2")
+
     async def test_headquarters_filter_is_distinct_from_beneficiary_filter(self):
         headquarters = await self.repo.get_all(foundation_regions=["United Kingdom"])
         beneficiary = await self.repo.get_all(funding_regions=["Ghana"])

@@ -48,6 +48,15 @@ REQUIRED_SCHEMA = {
     "grant_beneficiary_terms": {"grant_id", "term"},
     "grant_beneficiary_countries": {"grant_id", "country_code", "country_name"},
     "grant_programme_categories": {"grant_id", "programme_area"},
+    "grant_source_funder_facts": {
+        "grant_id", "country_code", "country_name", "source_namespace",
+        "source_funder_key", "identity_method", "source_organization_id",
+        "normalized_name_fallback", "display_name", "recipient_key",
+        "recipient_name", "award_date", "currency", "original_amount_minor",
+        "original_amount_status", "eur_amount_minor", "eur_amount_status",
+        "conversion_status", "country_count", "linked_profile_id",
+        "publisher_source_url", "source_record_id", "data_revision",
+    },
     "grant_overview_cache": {"cache_key", "data_revision", "payload", "created_at"},
 }
 
@@ -105,9 +114,44 @@ def migrate_grant_overview_schema(conn):
             created_at TEXT NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_source_funder_facts (
+            grant_id TEXT NOT NULL,
+            country_code TEXT NOT NULL,
+            country_name TEXT NOT NULL,
+            source_namespace TEXT NOT NULL,
+            source_funder_key TEXT NOT NULL,
+            identity_method TEXT NOT NULL,
+            source_organization_id TEXT,
+            normalized_name_fallback TEXT,
+            display_name TEXT NOT NULL,
+            recipient_key TEXT NOT NULL,
+            recipient_name TEXT NOT NULL,
+            award_date TEXT,
+            currency TEXT,
+            original_amount_minor INTEGER,
+            original_amount_status TEXT NOT NULL,
+            eur_amount_minor INTEGER,
+            eur_amount_status TEXT NOT NULL,
+            conversion_status TEXT,
+            country_count INTEGER NOT NULL,
+            linked_profile_id INTEGER,
+            publisher_source_url TEXT,
+            source_record_id TEXT,
+            data_revision TEXT NOT NULL,
+            PRIMARY KEY (grant_id, country_code),
+            FOREIGN KEY (grant_id) REFERENCES grants(grant_id) ON DELETE CASCADE
+        )
+    """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_terms_term ON grant_beneficiary_terms(term, grant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_countries_name ON grant_beneficiary_countries(country_name, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_countries_code ON grant_beneficiary_countries(country_code, grant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area ON grant_programme_categories(programme_area, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area_nocase ON grant_programme_categories(programme_area COLLATE NOCASE, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_key ON grant_source_funder_facts(country_code, source_namespace, source_funder_key)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_key_country ON grant_source_funder_facts(source_funder_key, country_code)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_date ON grant_source_funder_facts(country_code, award_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_profile ON grant_source_funder_facts(linked_profile_id, source_funder_key)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_source_date ON grants(source, date)")
 
 def create_tables(conn, reset=False):
@@ -217,6 +261,7 @@ def create_tables(conn, reset=False):
         
         if reset:
             logger.info("Dropping existing tables for a clean reload...")
+            cursor.execute("DROP TABLE IF EXISTS grant_source_funder_facts;")
             cursor.execute("DROP TABLE IF EXISTS grants;")
             cursor.execute("DROP TABLE IF EXISTS exchange_rates;")
             cursor.execute("DROP TABLE IF EXISTS charities;")
@@ -718,6 +763,12 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
         logger.info(f"Loaded {grant_count} grants.")
         result["grants_loaded"] = grant_count
 
+    # Every supported load path invalidates all derived grant structures. The
+    # next read rebuilds them from the newly committed immutable source facts;
+    # a preserved staging database must never advertise an old revision while
+    # its derived source-funder facts are empty or stale.
+    cursor.execute("DELETE FROM metadata WHERE key = 'grant_overview_index_revision'")
+    cursor.execute("DELETE FROM grant_overview_cache")
     conn.commit()
     logger.info("Database load transaction committed successfully.")
     return result

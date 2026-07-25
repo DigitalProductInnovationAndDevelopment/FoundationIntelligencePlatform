@@ -43,6 +43,17 @@ export interface GrantMapFilters {
   minAvgGrantSize: number;
 }
 
+export interface SourceFunderCountrySelection {
+  countryCode: string;
+  countryName: string;
+  funderCount: number;
+}
+
+export interface MapCountrySelection {
+  countryCode: string;
+  countryName: string;
+}
+
 export interface GrantMapResponse {
   status: string;
   geographic_dimension: string;
@@ -80,7 +91,11 @@ interface GrantWorldMapProps {
   error: string | null;
   filters: GrantMapFilters;
   onOpenOrganizationDirectory: (filters: GrantMapFilters) => void;
-  onCountrySelectionChange?: (countryName: string | null) => void;
+  onExploreSourceFunders?: (selection: SourceFunderCountrySelection) => void;
+  selectedCountryCode?: string | null;
+  onCountrySelectionChange?: (selection: MapCountrySelection | null) => void;
+  refreshing?: boolean;
+  onConnectionsVisibilityChange?: (visible: boolean) => void;
 }
 
 type MapMetric = "count" | "funding";
@@ -160,19 +175,64 @@ function RankingList({ items }: { items: MapRankingItem[] }) {
   );
 }
 
+const MAP_LOADING_STAGES = [
+  { title: "Matching grant scope", detail: "Applying your filters and data sources" },
+  { title: "Resolving beneficiary locations", detail: "Preparing mapped country associations" },
+  { title: "Drawing the world view", detail: "Updating the interactive map" },
+];
+
+function MapLoadingProgress({ progress, overlay }: { progress: number; overlay?: boolean }) {
+  const stageIndex = progress < 42 ? 0 : progress < 76 ? 1 : 2;
+  const stage = MAP_LOADING_STAGES[stageIndex];
+  return (
+    <div className={`map-loading-progress${overlay ? " overlay" : ""}`} role="status" aria-live="polite">
+      <div className="map-loading-panel">
+        <div className="map-loading-orbit" aria-hidden="true"><span /></div>
+        <div className="map-loading-copy">
+          <span className="map-loading-eyebrow">Amplify map analysis</span>
+          <strong>{stage.title}</strong>
+          <p>{stage.detail}</p>
+        </div>
+        <div
+          className="map-loading-track"
+          role="progressbar"
+          aria-label="Map loading progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
+        >
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        <ol className="map-loading-steps" aria-label="Map loading steps">
+          {MAP_LOADING_STAGES.map((item, index) => (
+            <li key={item.title} className={index < stageIndex ? "complete" : index === stageIndex ? "current" : ""}>
+              <span>{index < stageIndex ? "✓" : index + 1}</span>{item.title}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 export default function GrantWorldMap({
   data,
   loading,
   error,
   filters,
   onOpenOrganizationDirectory,
+  onExploreSourceFunders,
+  selectedCountryCode,
   onCountrySelectionChange,
+  refreshing = false,
+  onConnectionsVisibilityChange,
 }: GrantWorldMapProps) {
   const [metric, setMetric] = useState<MapMetric>("count");
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
-  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [uncontrolledSelectedCode, setUncontrolledSelectedCode] = useState<string | null>(null);
   const [showConnections, setShowConnections] = useState(false);
   const [connectionGeometry, setConnectionGeometry] = useState<ConnectionGeometry[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const pathRefs = useRef(new Map<string, SVGPathElement>());
   const countryExplorerRef = useRef<HTMLElement>(null);
   const lastScrolledCountryCode = useRef<string | null>(null);
@@ -240,6 +300,9 @@ export default function GrantWorldMap({
       .map(item => [String(item.region_or_country_code).toUpperCase(), item]),
   ), [data.items]);
 
+  const isSelectionControlled = selectedCountryCode !== undefined;
+  const selectedCode = isSelectionControlled ? selectedCountryCode : uncontrolledSelectedCode;
+
   const values = useMemo(() => data.items
     .map(item => activeMetric === "count" ? item.grant_count : item.total_amount)
     .filter((value): value is number => value !== null && Number.isFinite(value)),
@@ -253,7 +316,25 @@ export default function GrantWorldMap({
   );
   const selectedItem = selectedCode ? itemByCode.get(selectedCode) : undefined;
   const totalFiltered = data.known_geography_count + data.unknown_geography_count;
-  const isMapAvailable = ["available", "low_coverage"].includes(data.status) && data.items.length > 0;
+  const isMapAvailable = data.status === "available" && data.items.length > 0;
+  const isMapLoading = loading || refreshing;
+
+  useEffect(() => {
+    if (!isMapLoading) {
+      setLoadingProgress(100);
+      return;
+    }
+    const startedAt = window.performance.now();
+    const updateProgress = () => {
+      const elapsed = window.performance.now() - startedAt;
+      // The BFF does not stream granular progress, so this remains an honest,
+      // capped activity indicator instead of implying a precise completion time.
+      setLoadingProgress(elapsed < 450 ? 18 : elapsed < 1_400 ? 42 : elapsed < 3_500 ? 66 : 84);
+    };
+    updateProgress();
+    const timer = window.setInterval(updateProgress, 350);
+    return () => window.clearInterval(timer);
+  }, [isMapLoading]);
 
   const legendLabels = scale.thresholds.map((threshold, index) => {
     const formatter = activeMetric === "funding"
@@ -281,13 +362,17 @@ export default function GrantWorldMap({
   const selectCountry = (code: string) => {
     const isDeselecting = selectedCode === code;
     const nextCode = isDeselecting ? null : code;
-    setSelectedCode(nextCode);
+    if (!isSelectionControlled) setUncontrolledSelectedCode(nextCode);
     if (nextCode) lastScrolledCountryCode.current = null;
-    onCountrySelectionChange?.(nextCode ? itemByCode.get(nextCode)?.region_or_country_name || null : null);
+    const item = nextCode ? itemByCode.get(nextCode) : undefined;
+    onCountrySelectionChange?.(item ? {
+      countryCode: nextCode as string,
+      countryName: item.region_or_country_name,
+    } : null);
   };
 
   const clearCountrySelection = () => {
-    setSelectedCode(null);
+    if (!isSelectionControlled) setUncontrolledSelectedCode(null);
     onCountrySelectionChange?.(null);
   };
 
@@ -325,13 +410,19 @@ export default function GrantWorldMap({
               type="button"
               className={showConnections ? "active" : ""}
               aria-pressed={showConnections}
-              onClick={() => setShowConnections(current => !current)}
+              onClick={() => setShowConnections(current => {
+                const next = !current;
+                onConnectionsVisibilityChange?.(next);
+                return next;
+              })}
             >
               Connections
             </button>
           </div>
         </div>
       </div>
+
+      {refreshing && <div className="world-map-refreshing" aria-hidden="true">Refreshing map data</div>}
 
       <div className="map-coverage-inline" aria-label="Map data coverage">
         <span>{totalFiltered.toLocaleString("en-GB")} filtered grants</span>
@@ -341,22 +432,20 @@ export default function GrantWorldMap({
       </div>
 
       {loading ? (
-        <div className="world-map-state" role="status"><div className="spinner" /><span>Loading beneficiary geography…</span></div>
+        <div className="world-map-state"><MapLoadingProgress progress={loadingProgress} /></div>
       ) : error ? (
         <div className="world-map-state data-notice data-notice-warning" role="alert">{error}</div>
       ) : (
         <>
           {!isMapAvailable && (
             <div className="data-notice data-notice-warning map-inline-notice" role="status">
-              {data.status === "low_coverage"
-                ? `Only ${data.coverage_percentage}% of filtered grants have usable country geography. Values are withheld below the ${Math.round(data.minimum_coverage_threshold * 100)}% coverage threshold.`
-                : data.status === "no_geography"
+              {data.status === "no_geography"
                   ? "The current grants contain no beneficiary geography that can be resolved to a country."
                   : "Beneficiary-country data is unavailable for the current grant scope."}
             </div>
           )}
 
-          <div className="world-map-stage">
+          <div className={`world-map-stage${refreshing ? " is-refreshing" : ""}`} aria-busy={refreshing}>
             <svg
               className="world-map-svg"
               viewBox={FOCUSED_WORLD_VIEWBOX}
@@ -473,6 +562,7 @@ export default function GrantWorldMap({
                 </>
               )}
             </aside>
+            {refreshing && <MapLoadingProgress progress={loadingProgress} overlay />}
           </div>
 
           {values.length > 0 && (
@@ -536,15 +626,28 @@ export default function GrantWorldMap({
               <button
                 type="button"
                 className="country-explorer-directory-button"
-                onClick={() => onOpenOrganizationDirectory({
-                  ...filters,
-                  fundingRegions: [selectedItem.region_or_country_name],
-                })}
+                onClick={() => {
+                  const countryCode = String(selectedItem.region_or_country_code || "").toUpperCase();
+                  if (onExploreSourceFunders && countryCode) {
+                    onExploreSourceFunders({
+                      countryCode,
+                      countryName: selectedItem.region_or_country_name,
+                      funderCount: selectedItem.distinct_funders,
+                    });
+                    return;
+                  }
+                  onOpenOrganizationDirectory({
+                    ...filters,
+                    fundingRegions: [selectedItem.region_or_country_name],
+                  });
+                }}
               >
                 <Building2 size={18} />
                 <span>
-                  <strong>View matching organizations</strong>
-                  <small>Open the directory with these filters and {selectedItem.region_or_country_name} selected</small>
+                  <strong>{onExploreSourceFunders ? `Explore ${selectedItem.distinct_funders} active funders` : "View matching organizations"}</strong>
+                  <small>{onExploreSourceFunders
+                    ? `Open source-reported funders active in ${selectedItem.region_or_country_name}`
+                    : `Open the directory with these filters and ${selectedItem.region_or_country_name} selected`}</small>
                 </span>
                 <ArrowRight size={18} />
               </button>
