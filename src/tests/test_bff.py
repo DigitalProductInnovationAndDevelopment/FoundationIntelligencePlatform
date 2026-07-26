@@ -502,6 +502,72 @@ class TestBFF(unittest.TestCase):
         data = response.json()
         self.assertIn("status", data)
 
+    @patch("bff.charity._fast_link_confirmed_profiles")
+    def test_enrich_source_funders_is_bounded_and_uses_confirmed_numbers(self, mock_fast_link):
+        mock_fast_link.return_value = []
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.post(
+            "/api/charities/grants/funders/enrich",
+            json={"reg_numbers": [1002, 1001, 1001]},
+            cookies={"session_id": session_cookie},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+        self.assertEqual(response.json()["last_run_source"], "directory_enrichment")
+        mock_fast_link.assert_called_once_with([1001, 1002])
+
+    def test_enrich_source_funders_rejects_more_than_five_organizations(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+        response = self.client.post(
+            "/api/charities/grants/funders/enrich",
+            json={"reg_numbers": [1, 2, 3, 4, 5, 6]},
+            cookies={"session_id": session_cookie},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    @patch("bff.charity._fast_link_confirmed_profiles")
+    def test_registry_detail_enrichment_is_single_and_uses_confirmed_number(self, mock_fast_link):
+        mock_fast_link.return_value = []
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.post(
+            "/api/charities/directory/organizations/enrich",
+            json={"reg_numbers": [1165944]},
+            cookies={"session_id": session_cookie},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["last_run_source"], "registry_enrichment")
+        self.assertEqual(response.json()["status"], "success")
+        mock_fast_link.assert_called_once_with([1165944])
+
+    def test_registry_detail_enrichment_rejects_more_than_one_organization(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+        response = self.client.post(
+            "/api/charities/directory/organizations/enrich",
+            json={"reg_numbers": [1001, 1002]},
+            cookies={"session_id": session_cookie},
+        )
+        self.assertEqual(response.status_code, 400)
+
     @patch("bff.admin.run_pipeline_task")
     def test_trigger_pipeline_success(self, mock_run_task):
         login_resp = self.client.post(

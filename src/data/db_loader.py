@@ -48,6 +48,16 @@ REQUIRED_SCHEMA = {
     "grant_beneficiary_terms": {"grant_id", "term"},
     "grant_beneficiary_countries": {"grant_id", "country_code", "country_name"},
     "grant_programme_categories": {"grant_id", "programme_area"},
+    "grant_overview_facts": {
+        "grant_id", "source_namespace", "award_date", "award_date_status", "currency",
+        "original_amount_minor", "original_amount_status", "eur_amount_minor",
+        "eur_amount_status", "conversion_status", "funding_name",
+        "funding_name_normalized", "recipient_name", "recipient_name_normalized",
+        "country_count", "programme_category_count", "programme_provenance",
+        "invalid_source_label", "low_confidence_inference",
+        "origin_country_code", "origin_country_name", "origin_source",
+        "data_revision",
+    },
     "grant_source_funder_facts": {
         "grant_id", "country_code", "country_name", "source_namespace",
         "source_funder_key", "identity_method", "source_organization_id",
@@ -81,6 +91,35 @@ def migrate_grant_overview_schema(conn):
     reparsing every transaction JSON payload on each page load.
     """
     cursor = conn.cursor()
+
+    # These two tables contain only reproducible projections of ``grants``.
+    # During development (and future upgrades) an older projection may already
+    # exist with fewer columns. SQLite's CREATE TABLE IF NOT EXISTS cannot add
+    # those columns, so replace only the incompatible derived table and let the
+    # repository rebuild it below. Source grants and organization records are
+    # deliberately never touched here.
+    existing_tables = {
+        str(row[0])
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    for table_name in ("grant_overview_facts", "grant_source_funder_facts"):
+        if table_name not in existing_tables:
+            continue
+        existing_columns = {
+            str(row[1])
+            for row in cursor.execute(f"PRAGMA table_info({table_name})")
+        }
+        required_columns = REQUIRED_SCHEMA[table_name]
+        if not required_columns.issubset(existing_columns):
+            logger.info(
+                "Replacing incompatible derived table %s (missing: %s)",
+                table_name,
+                ", ".join(sorted(required_columns - existing_columns)),
+            )
+            cursor.execute(f"DROP TABLE {table_name}")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS grant_beneficiary_terms (
             grant_id TEXT NOT NULL,
@@ -112,6 +151,34 @@ def migrate_grant_overview_schema(conn):
             data_revision TEXT NOT NULL,
             payload TEXT NOT NULL,
             created_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_overview_facts (
+            grant_id TEXT PRIMARY KEY,
+            source_namespace TEXT NOT NULL,
+            award_date TEXT,
+            award_date_status TEXT NOT NULL,
+            currency TEXT,
+            original_amount_minor INTEGER,
+            original_amount_status TEXT NOT NULL,
+            eur_amount_minor INTEGER,
+            eur_amount_status TEXT NOT NULL,
+            conversion_status TEXT,
+            funding_name TEXT NOT NULL,
+            funding_name_normalized TEXT NOT NULL,
+            recipient_name TEXT NOT NULL,
+            recipient_name_normalized TEXT NOT NULL,
+            country_count INTEGER NOT NULL,
+            programme_category_count INTEGER NOT NULL,
+            programme_provenance TEXT NOT NULL,
+            invalid_source_label INTEGER NOT NULL DEFAULT 0,
+            low_confidence_inference INTEGER NOT NULL DEFAULT 0,
+            origin_country_code TEXT,
+            origin_country_name TEXT,
+            origin_source TEXT,
+            data_revision TEXT NOT NULL,
+            FOREIGN KEY (grant_id) REFERENCES grants(grant_id) ON DELETE CASCADE
         )
     """)
     cursor.execute("""
@@ -148,6 +215,10 @@ def migrate_grant_overview_schema(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_countries_code ON grant_beneficiary_countries(country_code, grant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area ON grant_programme_categories(programme_area, grant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area_nocase ON grant_programme_categories(programme_area COLLATE NOCASE, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_source_date ON grant_overview_facts(source_namespace, award_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_source_currency ON grant_overview_facts(source_namespace, currency)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_funder ON grant_overview_facts(source_namespace, funding_name_normalized)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_recipient ON grant_overview_facts(source_namespace, recipient_name_normalized)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_key ON grant_source_funder_facts(country_code, source_namespace, source_funder_key)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_key_country ON grant_source_funder_facts(source_funder_key, country_code)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_date ON grant_source_funder_facts(country_code, award_date)")
@@ -437,6 +508,49 @@ def _json_value(value, default):
         return value
     return json.dumps(value, ensure_ascii=False)
 
+
+def link_existing_grants_to_charities(conn, charity_ids):
+    """Link prior 360Giving grants to newly available Charity Commission profiles.
+
+    A 360Giving funder identifier in the ``GB-CHC-<number>`` form is a stable,
+    publisher-supplied Charity Commission identifier.  We may therefore repair
+    only grants that are still unlinked and have that *exact* identifier.  This
+    deliberately does not use organization names or touch recipient links.
+
+    The caller owns the transaction.  A non-zero return value means derived
+    grant indexes and cached overview payloads have been invalidated so the
+    next read rebuilds them with the new profile relationship.
+    """
+    normalized_ids = sorted({
+        int(charity_id)
+        for charity_id in charity_ids
+        if str(charity_id).strip().isdigit()
+    })
+    if not normalized_ids:
+        return 0
+
+    cursor = conn.cursor()
+    linked_count = 0
+    for charity_id in normalized_ids:
+        cursor.execute(
+            """
+            UPDATE grants
+               SET funding_charity_id = ?
+             WHERE funding_charity_id IS NULL
+               AND funding_org_source_id = ?
+            """,
+            (charity_id, f"GB-CHC-{charity_id}"),
+        )
+        linked_count += max(0, cursor.rowcount)
+
+    if linked_count:
+        # Source-funder facts carry the resolved profile ID, so neither their
+        # persisted rows nor cached dashboard responses are valid any longer.
+        cursor.execute("DELETE FROM metadata WHERE key = 'grant_overview_index_revision'")
+        cursor.execute("DELETE FROM grant_overview_cache")
+    return linked_count
+
+
 def insert_charities(conn, charities_list):
     """Inserts or replaces charity profiles in the charities table."""
     cursor = conn.cursor()
@@ -507,6 +621,9 @@ def insert_charities(conn, charities_list):
                 _json_value(c.get("deduplication_candidates"), []),
                 )
             )
+        link_existing_grants_to_charities(
+            conn, [charity.get("charity_id") for charity in charities_list]
+        )
         conn.commit()
     except Exception:
         conn.rollback()

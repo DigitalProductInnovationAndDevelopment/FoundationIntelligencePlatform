@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from bff.main import app
 from bff.repositories import SQLiteCharityRepository, get_charity_repository
-from data.db_loader import create_tables
+from data.db_loader import create_tables, insert_charities
 
 
 class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
@@ -118,6 +118,35 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["display_name"] for item in response["items"]], ["Tech Fund"])
         self.assertEqual(response["items"][0]["observed_funding"]["currency"], "EUR")
 
+    async def test_auto_eur_returns_single_original_currency_when_conversion_is_missing(self):
+        self.grant(
+            "GBP-NO-EUR", funder_name="Sterling Fund", funder_source_id="sterling",
+            amount=125, currency="GBP", conversion_status="missing",
+        )
+
+        response = await self.repo.get_source_funders(beneficiary_country="GH")
+        funding = response["items"][0]["observed_funding"]
+
+        self.assertIsNone(funding["amount"])
+        self.assertEqual(funding["fallback_original_amount"], 125.0)
+        self.assertEqual(funding["fallback_original_currency"], "GBP")
+        self.assertEqual(funding["fallback_original_grant_count"], 1)
+
+    async def test_detail_does_not_present_missing_eur_conversion_as_zero_euros(self):
+        self.grant(
+            "GBP-NO-EUR", funder_name="Sterling Fund", funder_source_id="sterling",
+            recipient="Unconverted recipient", amount=125, currency="GBP",
+            conversion_status="missing",
+        )
+        listing = await self.repo.get_source_funders(beneficiary_country="GH")
+        detail = await self.repo.get_source_funder_detail(
+            listing["items"][0]["source_funder_key"], beneficiary_country="GH"
+        )
+
+        self.assertEqual(detail["top_recipients"], [])
+        self.assertEqual(detail["relationships"]["status"], "no_monetary_transactions")
+        self.assertEqual(detail["relationship_summary"]["recipient_count"], 1)
+
     async def test_sorting_uses_country_attributable_amount_but_recency_keeps_multi_country_activity(self):
         self.grant("RECENT-MULTI", funder_name="Recent multi-country", funder_source_id="recent", amount=500,
                    date="2025-12-01", geography=[{"name": "Ghana", "countryCode": "GH"}, {"name": "Kenya", "countryCode": "KE"}])
@@ -184,6 +213,30 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(linked["summary"]["status_counts"], {
             "all": 1, "linked": 1, "observed_only": 0,
         })
+
+    async def test_new_profile_exactly_relinks_prior_source_grants_and_rebuilds_facts(self):
+        self.grant(
+            "PRIOR-CHC-GRANT",
+            funder_name="Confirmed Funder",
+            funder_source_id="GB-CHC-1075920",
+            funder_charity_id=None,
+        )
+        before = await self.repo.get_source_funders(beneficiary_country="GH")
+        self.assertEqual(before["items"][0]["profile_link"]["status"], "none")
+
+        insert_charities(self.conn, [{
+            "charity_id": 1075920,
+            "name": "Confirmed Funder",
+            "type": "Charity",
+        }])
+
+        grant_row = self.conn.execute(
+            "SELECT funding_charity_id FROM grants WHERE grant_id = 'PRIOR-CHC-GRANT'"
+        ).fetchone()
+        self.assertEqual(grant_row[0], 1075920)
+        after = await self.repo.get_source_funders(beneficiary_country="GH")
+        self.assertEqual(after["items"][0]["profile_link"]["status"], "single")
+        self.assertEqual(after["items"][0]["profile_link"]["profile_id"], 1075920)
 
     async def test_multiple_profile_links_are_not_auto_selected(self):
         self.conn.execute("INSERT INTO charities (charity_id, name) VALUES (2, 'Second candidate')")

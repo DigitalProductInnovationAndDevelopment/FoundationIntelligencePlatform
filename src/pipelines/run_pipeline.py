@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 import json
+from pathlib import Path
 
 # Ensure src directory is in sys.path so imports work regardless of working directory
 PIPELINES_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -50,6 +51,7 @@ from preprocessing.philea_adapter import integrate_philea_organizations
 from preprocessing.extract_impressum import crawl_impressum
 import data.db_loader as db_loader
 from data.db_loader import insert_charities, insert_grants
+from pipelines.backfill_ecb_exchange_rates import backfill_database
 import sqlite3
 
 def load_existing_raw(path):
@@ -60,6 +62,42 @@ def load_existing_raw(path):
         except Exception as e:
             logger.warning(f"Failed to read existing raw data at {path}: {e}")
     return []
+
+
+def apply_ecb_conversion_backfill(db_file: str, report_path: str, timeout: int) -> dict:
+    """Publish official ECB conversions after new grants have been imported.
+
+    The full-run pipeline writes original published grant amounts first.  This
+    final step then atomically backfills `amount_eur` using the award-date ECB
+    reference rate (or the previous ECB business day), before the run is
+    reported as successful.
+    """
+    return backfill_database(
+        Path(db_file),
+        Path(report_path),
+        timeout=timeout,
+    )
+
+
+def publish_full_run_database_with_ecb_conversion(
+    staging_db_file: str,
+    db_file: str,
+    timeout: int,
+) -> dict:
+    """Publish enrichment results, then make Auto/EUR metrics immediately valid."""
+    db_loader.publish_staging_database(staging_db_file, db_file)
+    logger.info("Step G: Applying official ECB EUR conversions to observed grants...")
+    report_path = os.path.join(
+        PROJECT_ROOT,
+        "data/processed/ecb_exchange_rate_backfill_report.json",
+    )
+    report = apply_ecb_conversion_backfill(db_file, report_path, timeout)
+    logger.info(
+        "Step G complete: %s of %s grants now have an EUR amount.",
+        report.get("grants_with_eur_amount", report.get("converted_grants", 0)),
+        report.get("grants_total", report.get("total_grants", 0)),
+    )
+    return report
 
 def run_pipeline(args):
     source = args.source.lower()
@@ -411,7 +449,11 @@ def run_pipeline(args):
                 insert_charities(conn, philea_only)
                 logger.info("Loaded %s cached Philea organizations.", len(philea_only))
                 conn.close()
-            db_loader.publish_staging_database(staging_db_file, db_file)
+            publish_full_run_database_with_ecb_conversion(
+                staging_db_file,
+                db_file,
+                args.timeout,
+            )
             return
             
         logger.info(f"Found {len(target_tuples)} target foundations to process.")
@@ -523,7 +565,11 @@ def run_pipeline(args):
             )
             conn.close()
             logger.info("Database connection closed.")
-        db_loader.publish_staging_database(staging_db_file, db_file)
+        publish_full_run_database_with_ecb_conversion(
+            staging_db_file,
+            db_file,
+            args.timeout,
+        )
 
     else:
         logger.error(f"Unsupported pipeline source: {source}")

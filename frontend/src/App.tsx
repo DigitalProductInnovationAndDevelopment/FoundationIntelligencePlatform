@@ -9,6 +9,7 @@ import {
   ArrowRight,
   TrendingDown,
   DollarSign,
+  Download,
   Play,
   Newspaper,
   LoaderCircle,
@@ -31,10 +32,10 @@ import {
 import GrantWorldMap from "./components/GrantWorldMap";
 import OverviewDashboard, { type FavoriteGrantExplorerPayload, type OverviewFilters } from "./components/OverviewDashboard";
 import AppHeader from "./components/AppHeader";
-import DonorDirectoryPage, {
-  type FavoriteDonorPayload,
-  type FavoriteDonorRequestPayload,
-  type HeaderContextState,
+import type {
+  FavoriteDonorPayload,
+  FavoriteDonorRequestPayload,
+  HeaderContextState,
 } from "./components/DonorDirectoryPage";
 import {
   applyGrantScopeToParams,
@@ -49,6 +50,7 @@ import type {
 } from "./components/GrantWorldMap";
 
 const RegistryDirectory = lazy(() => import("./components/RegistryDirectory"));
+const DonorDirectoryPage = lazy(() => import("./components/DonorDirectoryPage"));
 
 // Configuration for API requests
 const API_BASE = import.meta.env.VITE_API_BASE_URL
@@ -204,6 +206,133 @@ function formatNewsDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
+
+function newsSummaryPlainText(summary: string): string {
+  return summary
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_>#]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function pdfSafeText(value: string): string {
+  const replacements: Record<string, string> = {
+    "–": "-", "—": "-", "…": "...", "“": "\"", "”": "\"", "‘": "'", "’": "'", "•": "-",
+  };
+  return value
+    .replace(/[–—…“”‘’•]/g, character => replacements[character] || character)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "?")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function wrapPdfText(value: string, limit = 88): string[] {
+  const lines: string[] = [];
+  for (const paragraph of value.split("\n")) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push("");
+      continue;
+    }
+    let line = "";
+    for (const word of words) {
+      if (!line) {
+        line = word;
+      } else if (line.length + word.length + 1 <= limit) {
+        line += ` ${word}`;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+function createSimplePdf(lines: string[]): Blob {
+  const linesPerPage = 48;
+  const pages = Array.from(
+    { length: Math.max(1, Math.ceil(lines.length / linesPerPage)) },
+    (_, index) => lines.slice(index * linesPerPage, (index + 1) * linesPerPage),
+  );
+  const fontObjectId = 3 + pages.length * 2;
+  const objects: string[] = Array.from({ length: fontObjectId + 1 }, () => "");
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`;
+  pages.forEach((pageLines, index) => {
+    const pageObjectId = 3 + index * 2;
+    const contentObjectId = pageObjectId + 1;
+    const stream = [
+      "BT",
+      "/F1 10 Tf",
+      "14 TL",
+      "50 792 Td",
+      ...pageLines.flatMap(line => [`(${pdfSafeText(line)}) Tj`, "T*"]),
+      "ET",
+    ].join("\n");
+    objects[pageObjectId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
+    objects[contentObjectId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+  });
+  objects[fontObjectId] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let index = 1; index <= fontObjectId; index += 1) {
+    offsets[index] = pdf.length;
+    pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
+  }
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${fontObjectId + 1}\n0000000000 65535 f \n`;
+  for (let index = 1; index <= fontObjectId; index += 1) {
+    pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${fontObjectId + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return new Blob([pdf], { type: "application/pdf" });
+}
+
+function downloadNewsBriefingPdf(briefing: NewsSummaryPayload): void {
+  const lines = [
+    "Foundation Intelligence Platform",
+    "AI News Briefing",
+    "",
+    `Organization: ${briefing.foundation}`,
+    `Generated: ${formatNewsDate(briefing.generated_at)}`,
+    `Coverage: last ${briefing.searched_weeks} weeks`,
+    "",
+    "SUMMARY",
+    ...wrapPdfText(newsSummaryPlainText(briefing.summary)),
+    "",
+    "CITED SOURCES",
+    ...briefing.sources.flatMap((source, index) => [
+      `${index + 1}. ${source.title}`,
+      `   ${source.source} - ${formatNewsDate(source.published)}`,
+      `   ${source.link}`,
+      ...(source.note ? [`   Note: ${source.note}`] : []),
+      "",
+    ]),
+    "This briefing is evidence support, not a statement from the organization.",
+  ];
+  const url = URL.createObjectURL(createSimplePdf(lines));
+  const anchor = document.createElement("a");
+  const date = new Date(briefing.generated_at);
+  const suffix = Number.isNaN(date.getTime()) ? "briefing" : date.toISOString().slice(0, 10);
+  const name = briefing.foundation
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/(^-|-$)/g, "")
+    .toLowerCase() || "organization";
+  anchor.href = url;
+  anchor.download = `${name}-news-briefing-${suffix}.pdf`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
 interface KPIStats {
@@ -503,7 +632,7 @@ const ANNUAL_GIVING_STEPS = [0, 100000, 500000, 1000000, 5000000, 10000000, 5000
 const ANNUAL_GIVING_LABELS = ["£0", "£100k", "£500k", "£1M", "£5M", "£10M", "£50M", "£100M", "£500M"];
 
 const AVG_GRANT_SIZE_STEPS = [0, 1000, 5000, 10000, 50000, 100000, 250000, 500000, 1000000];
-const AVG_GRANT_SIZE_LABELS = ["£0", "£1k", "£5k", "£10k", "£50k", "£100k", "£250k", "£500k", "£1M"];
+const AVG_GRANT_SIZE_LABELS = ["€0", "€1k", "€5k", "€10k", "€50k", "€100k", "€250k", "€500k", "€1M"];
 
 const optionalFilterAmount = (value: string): number | null => {
   if (!value.trim()) return null;
@@ -1459,8 +1588,6 @@ export default function App() {
       source_names: [],
       transaction_coverage: "unknown",
     });
-    navigateApplication("research");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const resetDirectoryFilters = () => {
@@ -2125,23 +2252,25 @@ export default function App() {
                 onBackToFavorites={closeFavoriteGrantExplorer}
               />
             ) : favoriteDonorWorkspace ? (
-              <DonorDirectoryPage
-                key={`${favoriteDonorWorkspace.kind}:${favoriteDonorWorkspace.item.key}`}
-                apiBase={API_BASE}
-                online={isBffOnline}
-                selectedSources={selectedDataSources}
-                onHeaderStateChange={setDonorHeaderState}
-                onBackToLandscape={() => closeFavoriteDonorWorkspace()}
-                onOpenOrganizationResearch={() => navigateApplication("research")}
-                onOpenRegistrySearch={() => navigateApplication("registry")}
-                onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
-                favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
-                onToggleFavoriteDonor={toggleFavoriteDonor}
-                favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
-                onToggleFavoriteDonorRequest={toggleFavoriteDonorRequest}
-                presentation={favoriteDonorWorkspace.kind === "donor" ? "favorite-donor" : "favorite-request"}
-                onBackToFavorites={closeFavoriteDonorWorkspace}
-              />
+              <Suspense fallback={<div className="route-loading"><LoaderCircle className="spin" size={22} /> Loading saved donor view…</div>}>
+                <DonorDirectoryPage
+                  key={`${favoriteDonorWorkspace.kind}:${favoriteDonorWorkspace.item.key}`}
+                  apiBase={API_BASE}
+                  online={isBffOnline}
+                  selectedSources={selectedDataSources}
+                  onHeaderStateChange={setDonorHeaderState}
+                  onBackToLandscape={() => closeFavoriteDonorWorkspace()}
+                  onOpenOrganizationResearch={() => navigateApplication("research")}
+                  onOpenRegistrySearch={() => navigateApplication("registry")}
+                  onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
+                  favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
+                  onToggleFavoriteDonor={toggleFavoriteDonor}
+                  favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
+                  onToggleFavoriteDonorRequest={toggleFavoriteDonorRequest}
+                  presentation={favoriteDonorWorkspace.kind === "donor" ? "favorite-donor" : "favorite-request"}
+                  onBackToFavorites={closeFavoriteDonorWorkspace}
+                />
+              </Suspense>
             ) : (
               <section className="favorites-page">
                 <div className="page-introduction favorites-introduction">
@@ -2463,41 +2592,43 @@ export default function App() {
           {/* Primary observed-donor directory. Organization and registry search
               remain available as clearly-labelled secondary research tools. */}
           {activeTab === "directory" && directoryMode === "donors" && (
-            <DonorDirectoryPage
-              apiBase={API_BASE}
-              online={isBffOnline}
-              selectedSources={selectedDataSources}
-              onHeaderStateChange={setDonorHeaderState}
-              onBackToLandscape={(scope: GrantScope) => {
-                const query = applyGrantScopeToParams(
-                  new URLSearchParams(window.location.search),
-                  { ...scope, beneficiaryCountry: undefined },
-                  { includeCountry: false, persistEmptySources: true },
-                );
-                ["funder_country", "funder_sort", "funder_page", "donor_search", "donor_status", "donor"].forEach(key => query.delete(key));
-                query.delete("view");
-                const overviewSuffix = query.toString();
-                window.history.pushState({}, "", `${window.location.pathname}${overviewSuffix ? `?${overviewSuffix}` : ""}`);
-                setActiveTab("overview");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              onOpenOrganizationResearch={() => {
-                navigateApplication("research");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              onOpenRegistrySearch={() => {
-                navigateApplication("registry");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({
-                charity_id: profileId,
-                name: profileName,
-              })}
-              favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
-              onToggleFavoriteDonor={toggleFavoriteDonor}
-              favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
-              onToggleFavoriteDonorRequest={toggleFavoriteDonorRequest}
-            />
+            <Suspense fallback={<div className="route-loading"><LoaderCircle className="spin" size={22} /> Loading Donor Directory…</div>}>
+              <DonorDirectoryPage
+                apiBase={API_BASE}
+                online={isBffOnline}
+                selectedSources={selectedDataSources}
+                onHeaderStateChange={setDonorHeaderState}
+                onBackToLandscape={(scope: GrantScope) => {
+                  const query = applyGrantScopeToParams(
+                    new URLSearchParams(window.location.search),
+                    { ...scope, beneficiaryCountry: undefined },
+                    { includeCountry: false, persistEmptySources: true },
+                  );
+                  ["funder_country", "funder_sort", "funder_page", "donor_search", "donor_status", "donor"].forEach(key => query.delete(key));
+                  query.delete("view");
+                  const overviewSuffix = query.toString();
+                  window.history.pushState({}, "", `${window.location.pathname}${overviewSuffix ? `?${overviewSuffix}` : ""}`);
+                  setActiveTab("overview");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onOpenOrganizationResearch={() => {
+                  navigateApplication("research");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onOpenRegistrySearch={() => {
+                  navigateApplication("registry");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({
+                  charity_id: profileId,
+                  name: profileName,
+                })}
+                favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
+                onToggleFavoriteDonor={toggleFavoriteDonor}
+                favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
+                onToggleFavoriteDonorRequest={toggleFavoriteDonorRequest}
+              />
+            </Suspense>
           )}
 
           {activeTab === "directory" && directoryMode === "registry" && (
@@ -2553,6 +2684,55 @@ export default function App() {
                   <button type="button" className="btn btn-secondary" onClick={() => navigateApplication("donors")}><ArrowLeft size={16} /> Donor Directory</button>
                 </div>
               </div>
+            <div className="organization-primary-search">
+              <div>
+                <span className="organization-primary-search-label">Find an organization</span>
+                <p>Search enriched organization profiles by name.</p>
+              </div>
+              <div className="organization-name-filter organization-primary-search-input">
+                <Search size={16} aria-hidden="true" />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Search organization name…"
+                  value={searchTerm}
+                  onChange={(event) => {
+                    setSearchTerm(event.target.value);
+                    setSuggestionsOpen(true);
+                  }}
+                  onFocus={() => setSuggestionsOpen(true)}
+                  onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+                  aria-label="Search Organization Research by name"
+                />
+                {searchTerm && <button type="button" className="organization-name-filter-clear" onMouseDown={event => event.preventDefault()} onClick={() => setSearchTerm("")}>Clear</button>}
+                {suggestionsOpen && searchTerm.trim().length >= 2 && (
+                  <div className="organization-suggestions" role="listbox" aria-label="Organization suggestions">
+                    {suggestionsLoading ? (
+                      <span className="organization-suggestions-status">Looking for organizations…</span>
+                    ) : organizationSuggestions.length > 0 ? (
+                      organizationSuggestions.map(suggestion => (
+                        <button
+                          key={`${suggestion.registered_charity_number}-${suggestion.source_record_id || ""}`}
+                          type="button"
+                          role="option"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setSearchTerm(suggestion.charity_name);
+                            setSuggestionsOpen(false);
+                            setSelectedCharity(suggestion);
+                          }}
+                        >
+                          <strong>{suggestion.charity_name}</strong>
+                          <span>{suggestion.primary_source || "Organization profile"}{suggestion.headquarters_country ? ` · ${suggestion.headquarters_country}` : ""}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <span className="organization-suggestions-status">No matching organization profiles.</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="organization-research-workspace">
               {profileFiltersOpen && <div className="filter-drawer-backdrop" onMouseDown={() => setProfileFiltersOpen(false)}>
                 <aside className="filter-drawer organization-research-filter-drawer" role="dialog" aria-modal="true" aria-label="Organization research filters" onMouseDown={event => event.stopPropagation()}>
@@ -2561,54 +2741,6 @@ export default function App() {
                     <button type="button" onClick={() => setProfileFiltersOpen(false)} aria-label="Close filters"><X size={18} /></button>
                   </div>
                   <div id="organization-research-filters" className="filter-drawer-body organization-filter-drawer-body">
-                <div className="filter-group organization-filter-section">
-                  <span className="filter-label">Organization name</span>
-                  <span className="organization-filter-hint">Find a specific organization by name.</span>
-                  <div className="organization-name-filter">
-                    <Search size={14} style={{ position: "absolute", left: "10px", top: "12px", color: "var(--text-muted)" }} />
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Organization name..."
-                      style={{ paddingLeft: "32px" }}
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        setSuggestionsOpen(true);
-                      }}
-                      onFocus={() => setSuggestionsOpen(true)}
-                      onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
-                    />
-                    {searchTerm && <button type="button" className="organization-name-filter-clear" onMouseDown={event => event.preventDefault()} onClick={() => setSearchTerm("")}>Clear</button>}
-                    {suggestionsOpen && searchTerm.trim().length >= 2 && (
-                      <div className="organization-suggestions" role="listbox" aria-label="Organization suggestions">
-                        {suggestionsLoading ? (
-                          <span className="organization-suggestions-status">Looking for organizations…</span>
-                        ) : organizationSuggestions.length > 0 ? (
-                          organizationSuggestions.map(suggestion => (
-                            <button
-                              key={`${suggestion.registered_charity_number}-${suggestion.source_record_id || ""}`}
-                              type="button"
-                              role="option"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => {
-                                setSearchTerm(suggestion.charity_name);
-                                setSuggestionsOpen(false);
-                                setSelectedCharity(suggestion);
-                              }}
-                            >
-                              <strong>{suggestion.charity_name}</strong>
-                              <span>{suggestion.primary_source || "Organization profile"}{suggestion.headquarters_country ? ` · ${suggestion.headquarters_country}` : ""}</span>
-                            </button>
-                          ))
-                        ) : (
-                          <span className="organization-suggestions-status">No matching organization profiles.</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
                 <div className="filter-group organization-filter-section">
                   <span className="filter-label">Thematic Sector</span>
                   <div className="organization-filter-checklist">
@@ -2682,70 +2814,66 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="filter-group organization-filter-section">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span className="filter-label" style={{ margin: 0 }}>Minimum annual expenditure</span>
-                    <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--nl-unicorn)" }}>
-                      {ANNUAL_GIVING_LABELS[annualGivingIndex]}
-                    </span>
+                <div className="filter-group organization-filter-section organization-amount-filter">
+                  <div className="organization-amount-filter-header">
+                    <div>
+                      <span className="filter-label">Annual expenditure</span>
+                      <small>Minimum {ANNUAL_GIVING_LABELS[annualGivingIndex]}</small>
+                    </div>
+                    <label className="organization-amount-filter-maximum">
+                      <span>Maximum</span>
+                      <span className="organization-amount-input"><i>£</i><input
+                        type="number"
+                        min="0"
+                        inputMode="decimal"
+                        placeholder="No limit"
+                        aria-label="Maximum annual expenditure"
+                        value={maxAnnualGivingInput}
+                        onChange={event => setMaxAnnualGivingInput(event.target.value)}
+                      /></span>
+                    </label>
                   </div>
                   <input
+                    className="organization-amount-slider"
                     type="range"
                     min="0"
                     max={ANNUAL_GIVING_STEPS.length - 1}
                     value={annualGivingIndex}
+                    aria-label="Minimum annual expenditure"
                     onChange={(e) => setAnnualGivingIndex(parseInt(e.target.value))}
-                    style={{
-                      width: "100%",
-                      accentColor: "var(--nl-unicorn)",
-                      cursor: "pointer",
-                      marginTop: "4px"
-                    }}
                   />
-                  <label className="organization-maximum-input">
-                    <span>Maximum (optional)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      inputMode="decimal"
-                      placeholder="No maximum"
-                      value={maxAnnualGivingInput}
-                      onChange={event => setMaxAnnualGivingInput(event.target.value)}
-                    />
-                  </label>
+                  <span className="organization-amount-filter-hint">Use the slider for the lower limit; leave maximum empty to include all larger organizations.</span>
                 </div>
 
-                <div className="filter-group organization-filter-section">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span className="filter-label" style={{ margin: 0 }}>Minimum average grant size</span>
-                    <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--nl-unicorn)" }}>
-                      {AVG_GRANT_SIZE_LABELS[avgGrantSizeIndex]}
-                    </span>
+                <div className="filter-group organization-filter-section organization-amount-filter">
+                  <div className="organization-amount-filter-header">
+                    <div>
+                      <span className="filter-label">Average grant size</span>
+                      <small>Minimum {AVG_GRANT_SIZE_LABELS[avgGrantSizeIndex]} · ECB-converted EUR</small>
+                    </div>
+                    <label className="organization-amount-filter-maximum">
+                      <span>Maximum</span>
+                      <span className="organization-amount-input"><i>€</i><input
+                        type="number"
+                        min="0"
+                        inputMode="decimal"
+                        placeholder="No limit"
+                        aria-label="Maximum average grant size in EUR"
+                        value={maxAvgGrantSizeInput}
+                        onChange={event => setMaxAvgGrantSizeInput(event.target.value)}
+                      /></span>
+                    </label>
                   </div>
                   <input
+                    className="organization-amount-slider"
                     type="range"
                     min="0"
                     max={AVG_GRANT_SIZE_STEPS.length - 1}
                     value={avgGrantSizeIndex}
+                    aria-label="Minimum average grant size in EUR"
                     onChange={(e) => setAvgGrantSizeIndex(parseInt(e.target.value))}
-                    style={{
-                      width: "100%",
-                      accentColor: "var(--nl-unicorn)",
-                      cursor: "pointer",
-                      marginTop: "4px"
-                    }}
                   />
-                  <label className="organization-maximum-input">
-                    <span>Maximum (optional)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      inputMode="decimal"
-                      placeholder="No maximum"
-                      value={maxAvgGrantSizeInput}
-                      onChange={event => setMaxAvgGrantSizeInput(event.target.value)}
-                    />
-                  </label>
+                  <span className="organization-amount-filter-hint">Calculated only from grants with a valid official ECB EUR conversion.</span>
                 </div>
 
                 <button
@@ -2799,7 +2927,6 @@ export default function App() {
                             aria-label={`Open organization profile for ${ch.charity_name}`}
                           >
                             <div className="organization-card-topline">
-                              <span className="charity-card-id">Profile #{ch.source_record_id || ch.registered_charity_number}</span>
                               <span className={`organization-fit-score${scoreAvailable ? "" : " unavailable"}`} title={scoreAvailable ? "Target-profile relevance score" : "No fit score is available for this profile"}>{scoreAvailable ? `Fit ${Math.round(ch.relevance_score!)}` : "Fit —"}</span>
                             </div>
                             <h3 className="charity-card-name">{ch.charity_name}</h3>
@@ -3134,6 +3261,11 @@ export default function App() {
                       {savedNewsRunIsOpen ? "Close saved briefing" : `Open saved · ${formatNewsDate(savedNewsRun.savedAt)}`}
                     </button>
                   )}
+                  {newsSummary && !newsLoading && (
+                    <button type="button" className="btn btn-secondary" onClick={() => downloadNewsBriefingPdf(newsSummary)}>
+                      <Download size={16} /> Download PDF
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={`btn ${newsLoading ? "btn-secondary" : "btn-primary"}`}
@@ -3301,9 +3433,8 @@ export default function App() {
                 </div>
                 {scoreData ? (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px", marginBottom: "16px" }}>
                       <div><span className="kpi-label">Relevance</span><div className="kpi-value" style={{ fontSize: "22px" }}>{scoreData.score === null ? "Unavailable" : `${scoreData.score.toFixed(1)}/100`}</div></div>
-                      <div><span className="kpi-label">Confidence</span><div className="kpi-value" style={{ fontSize: "22px" }}>{Math.round(scoreData.confidence * 100)}%</div></div>
                       <div><span className="kpi-label">Completeness</span><div className="kpi-value" style={{ fontSize: "22px" }}>{Math.round(scoreData.data_completeness * 100)}%</div></div>
                     </div>
                     <details className="profile-score-breakdown">
@@ -3319,7 +3450,7 @@ export default function App() {
                         ))}
                       </div>
                       <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px" }}>
-                        Version {scoreData.score_version}. The score is the weighted sum of all criteria; missing criteria contribute zero and reduce completeness and confidence.
+                        Version {scoreData.score_version}. The score is the weighted sum of all criteria; missing criteria contribute zero and are reflected in completeness.
                       </div>
                     </details>
                   </>

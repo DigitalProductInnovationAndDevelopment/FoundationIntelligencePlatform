@@ -383,6 +383,9 @@ class SourceFunderObservedFunding(BaseModel):
     excluded_missing_amount_grant_count: int = 0
     excluded_invalid_amount_grant_count: int = 0
     excluded_negative_amount_grant_count: int = 0
+    fallback_original_amount: Optional[float] = None
+    fallback_original_currency: Optional[str] = None
+    fallback_original_grant_count: int = 0
 
 
 class SourceFunderItem(BaseModel):
@@ -632,6 +635,18 @@ class PipelineTrigger(BaseModel):
     search_term: Optional[str] = None
     reg_numbers: Optional[List[int]] = None
     skip_contact_crawler: Optional[bool] = False
+
+
+class SourceFunderEnrichmentRequest(BaseModel):
+    """A deliberately bounded request to enrich observed funders.
+
+    This is separate from the broader administrative pipeline trigger: the
+    donor-directory UI can only submit confirmed Charity Commission numbers
+    and may never start an unbounded scrape.
+    """
+
+    reg_numbers: List[int] = Field(..., min_length=1, max_length=5)
+    skip_contact_crawler: bool = False
 
 
 class SankeyNode(BaseModel):

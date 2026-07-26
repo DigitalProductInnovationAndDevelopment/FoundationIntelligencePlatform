@@ -88,6 +88,36 @@ class TestDatabaseValidation(unittest.TestCase):
         conn.close()
         self.assertEqual(db_loader.validate_database(db_path), (True, "valid"))
 
+    def test_overview_migration_replaces_only_incompatible_derived_table(self):
+        db_path = self.path("overview-upgrade.db")
+        conn = sqlite3.connect(db_path)
+        db_loader.create_tables(conn)
+        conn.execute("DROP TABLE grant_overview_facts")
+        conn.execute(
+            "CREATE TABLE grant_overview_facts (grant_id TEXT PRIMARY KEY, source_namespace TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO grant_overview_facts (grant_id, source_namespace) VALUES ('stale', 'old')"
+        )
+
+        db_loader.migrate_grant_overview_schema(conn)
+
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(grant_overview_facts)")
+        }
+        self.assertTrue(
+            db_loader.REQUIRED_SCHEMA["grant_overview_facts"].issubset(columns)
+        )
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM grant_overview_facts").fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM grants").fetchone()[0],
+            0,
+        )
+        conn.close()
+
     def test_repository_selector_falls_back_for_invalid_database(self):
         from bff import repositories
 
@@ -187,6 +217,9 @@ class TestFullRunInitialization(unittest.TestCase):
                 pipeline_module, "consolidate_uk_datasets", return_value=([sample_charity()], [])
             ), patch.object(pipeline_module, "save_raw_cc"), patch.object(
                 pipeline_module, "save_raw_ts"
+            ), patch.object(
+                pipeline_module, "apply_ecb_conversion_backfill",
+                return_value={"converted_grants": 0, "total_grants": 0},
             ):
                 pipeline_module.run_pipeline(self.make_args(fresh))
 
@@ -203,6 +236,27 @@ class TestFullRunInitialization(unittest.TestCase):
 
     def test_first_fresh_run_creates_schema(self):
         self.execute_full_run(fresh=True)
+
+    def test_full_run_triggers_ecb_conversion_after_publishing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            raw_cc = {"registered_charity_number": 123456}
+            with patch.object(pipeline_module, "PROJECT_ROOT", temp_dir), patch.object(
+                pipeline_module, "scrape_cc", return_value=[raw_cc]
+            ), patch.object(pipeline_module, "scrape_ts", return_value=[]), patch.object(
+                pipeline_module, "consolidate_uk_datasets", return_value=([sample_charity()], [])
+            ), patch.object(pipeline_module, "save_raw_cc"), patch.object(
+                pipeline_module, "save_raw_ts"
+            ), patch.object(
+                pipeline_module, "apply_ecb_conversion_backfill",
+                return_value={"converted_grants": 0, "total_grants": 0},
+            ) as backfill:
+                pipeline_module.run_pipeline(self.make_args(fresh=True))
+
+            backfill.assert_called_once_with(
+                os.path.join(temp_dir, "data", "charities.db"),
+                os.path.join(temp_dir, "data", "processed", "ecb_exchange_rate_backfill_report.json"),
+                1,
+            )
 
 
 if __name__ == "__main__":

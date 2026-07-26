@@ -378,6 +378,24 @@ class TestGrantTransactions(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["registered_charity_number"], 1)
 
+    async def test_directory_grant_size_filter_uses_ecb_eur_values_across_source_currencies(self):
+        self._grant("GBP", donor_id=1, donor_name="Alpha Foundation", amount=100, currency="GBP")
+        self._grant("USD", donor_id=1, donor_name="Alpha Foundation", amount=200, currency="USD")
+        self.conn.execute(
+            "UPDATE grants SET amount_eur = ? WHERE grant_id = ?",
+            (150.0, "USD"),
+        )
+        self.conn.commit()
+
+        result = await self.repo.get_all(
+            min_avg_grant_size=120,
+            max_avg_grant_size=130,
+            sort="name_asc",
+            limit=50,
+        )
+
+        self.assertEqual([item["registered_charity_number"] for item in result], [1])
+
     async def test_directory_geography_matches_map_iso_fallback_and_uk_rollup(self):
         self._grant(
             "RAW-MALAWI",

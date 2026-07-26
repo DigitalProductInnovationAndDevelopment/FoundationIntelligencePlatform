@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import requests
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,10 +93,20 @@ def extend_overflow_pages(
         org_id = str(record["org_id"])
         offset = len(record.get("grants_made") or [])
         for _ in range(max_pages_per_publisher):
-            status, response = client.get_json(
-                f"{API_BASE_URL}/org/{org_id}/grants_made/",
-                params={"limit": 1000, "offset": offset},
-            )
+            try:
+                status, response = client.get_json(
+                    f"{API_BASE_URL}/org/{org_id}/grants_made/",
+                    params={"limit": 1000, "offset": offset},
+                )
+            except requests.RequestException:
+                # The collector is intentionally resumable. A transient public
+                # API timeout must preserve the current checkpoint and let the
+                # rest of the bounded publisher sample continue; this record
+                # remains marked as truncated and will be retried on a later
+                # run from the same offset.
+                counters["request_errors"] += 1
+                _write_json(input_path, payload)
+                break
             if status == 404:
                 counters["publisher_not_found"] += 1
                 record["grants_made_truncated"] = False

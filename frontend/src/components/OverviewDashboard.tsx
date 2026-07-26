@@ -161,6 +161,16 @@ interface DrilldownResponse {
 // the server-side cache still covers a browser refresh or a later return visit.
 const drilldownResponseCache = new Map<string, DrilldownResponse>();
 const DRILLDOWN_RESPONSE_CACHE_LIMIT = 24;
+const overviewResponseCache = new Map<string, { payload: OverviewPayload; cachedAt: number }>();
+const OVERVIEW_RESPONSE_CACHE_LIMIT = 24;
+// The server maintains a persisted overview cache keyed by the source-data
+// revision. Keep the browser cache short so an enrichment/pipeline publish is
+// visible promptly even when it finishes while this tab is open.
+const OVERVIEW_RESPONSE_CACHE_TTL_MS = 15 * 1000;
+const ORGANIZATION_ONLY_SOURCES = new Set([
+  "Charity Commission for England and Wales",
+  "Philea",
+]);
 
 function rememberDrilldownResponse(key: string, response: DrilldownResponse) {
   drilldownResponseCache.delete(key);
@@ -168,6 +178,19 @@ function rememberDrilldownResponse(key: string, response: DrilldownResponse) {
   if (drilldownResponseCache.size > DRILLDOWN_RESPONSE_CACHE_LIMIT) {
     const oldestKey = drilldownResponseCache.keys().next().value;
     if (oldestKey !== undefined) drilldownResponseCache.delete(oldestKey);
+  }
+}
+
+function rememberOverviewResponse(key: string, payload: OverviewPayload) {
+  // A no-data response is often a transient result while a pipeline has just
+  // published a new database or while a user changes the scope. Do not make
+  // that empty state sticky in the browser for a later return to the map.
+  if (payload.map.status !== "available") return;
+  overviewResponseCache.delete(key);
+  overviewResponseCache.set(key, { payload, cachedAt: Date.now() });
+  if (overviewResponseCache.size > OVERVIEW_RESPONSE_CACHE_LIMIT) {
+    const oldestKey = overviewResponseCache.keys().next().value;
+    if (oldestKey !== undefined) overviewResponseCache.delete(oldestKey);
   }
 }
 
@@ -360,11 +383,19 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const requestVersion = useRef(0);
   const trendRequestVersion = useRef(0);
   const drilldownRequestVersion = useRef(0);
+  const handledRefreshNonce = useRef(refreshNonce);
   const drawerRef = useRef<HTMLElement>(null);
   const entitySuggestionCache = useRef(new Map<string, EntitySuggestionResponse>());
+  const overviewSourcesKey = selectedSources
+    .filter(source => !ORGANIZATION_ONLY_SOURCES.has(source.trim()))
+    .map(source => source.trim()).filter(Boolean).sort().join("\u001f");
+  const overviewSources = useMemo(
+    () => overviewSourcesKey.split("\u001f").filter(Boolean),
+    [overviewSourcesKey],
+  );
   const entitySuggestionSourceKey = useMemo(
-    () => [...selectedSources].map(source => source.trim()).filter(Boolean).sort().join("\u001f"),
-    [selectedSources],
+    () => overviewSourcesKey,
+    [overviewSourcesKey],
   );
   const activeFilterCount = Number(Boolean(filters.currency)) + Number(Boolean(filters.dateFrom || filters.dateTo))
     + filters.beneficiaryGeographies.length + filters.programmeAreas.length
@@ -425,13 +456,23 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       programmeAreas: overviewRequestFilters.programmeAreas,
       donor: overviewRequestFilters.donor,
       recipient: overviewRequestFilters.recipient,
-      sources: selectedSources,
+      sources: overviewSources,
     };
     const params = grantScopeToApiParams(requestScope);
     params.set("granularity", "auto");
     if (includeConnections) params.set("include_connections", "true");
+    const requestUrl = `${apiBase}/api/charities/grants/overview?${params.toString()}`;
+    const forceRefresh = handledRefreshNonce.current !== refreshNonce;
+    handledRefreshNonce.current = refreshNonce;
+    const cachedOverview = overviewResponseCache.get(requestUrl);
+    if (!forceRefresh && cachedOverview && Date.now() - cachedOverview.cachedAt < OVERVIEW_RESPONSE_CACHE_TTL_MS) {
+      setPayload(cachedOverview.payload);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetch(`${apiBase}/api/charities/grants/overview?${params.toString()}`, { credentials: "include", signal: controller.signal })
+    fetch(requestUrl, { credentials: "include", signal: controller.signal })
       .then(async response => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || `Overview request failed (${response.status}).`);
@@ -439,6 +480,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       })
       .then(result => {
         if (currentVersion !== requestVersion.current) return;
+        rememberOverviewResponse(requestUrl, result);
         setPayload(result);
         setError(null);
       })
@@ -449,7 +491,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === requestVersion.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, includeConnections, online, overviewRequestFilters, presentation, refreshNonce, selectedSources]);
+  }, [apiBase, includeConnections, online, overviewRequestFilters, overviewSources, presentation, refreshNonce]);
 
   useEffect(() => {
     if (!online || presentation === "favorite-explorer" || filters.granularity === "auto") {
@@ -467,7 +509,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       programmeAreas: filters.programmeAreas,
       donor: filters.donor,
       recipient: filters.recipient,
-      sources: selectedSources,
+      sources: overviewSources,
     });
     params.set("granularity", filters.granularity);
     setTrendLoading(true);
@@ -489,7 +531,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === trendRequestVersion.current) setTrendLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, filters, online, presentation, selectedSources]);
+  }, [apiBase, filters, online, overviewSources, presentation]);
 
   useEffect(() => {
     if (!drilldownSelection) return;
@@ -507,7 +549,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       programmeAreas: filters.programmeAreas,
       donor: filters.donor,
       recipient: filters.recipient,
-      sources: selectedSources,
+      sources: overviewSources,
     });
     params.set("selection_type", drilldownSelection.type);
     params.set("selection_value", drilldownSelection.value);
@@ -543,7 +585,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === drilldownRequestVersion.current) setDrilldownLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, drilldownSelection, filters, online, selectedSources]);
+  }, [apiBase, drilldownSelection, filters, online, overviewSources]);
 
   useEffect(() => {
     updateUrl(filters);
@@ -638,6 +680,16 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     window.addEventListener("overview-refresh", refreshOverview);
     return () => window.removeEventListener("overview-refresh", refreshOverview);
   }, []);
+
+  useEffect(() => {
+    const refreshWhenReturningToTab = () => {
+      if (document.visibilityState === "visible" && online && presentation === "default") {
+        setRefreshNonce(current => current + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", refreshWhenReturningToTab);
+    return () => document.removeEventListener("visibilitychange", refreshWhenReturningToTab);
+  }, [online, presentation]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -832,6 +884,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         onCountrySelectionChange={selectMapCountry}
         refreshing={loading && Boolean(payload)}
         onConnectionsVisibilityChange={setIncludeConnections}
+        onResetScope={() => window.dispatchEvent(new Event("overview-reset-filters"))}
       />
 
       <div className="analytics-charts-grid overview-analytics-grid">

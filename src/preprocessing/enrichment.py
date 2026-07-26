@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 
-RULE_VERSION = "deterministic-enrichment-v1"
+RULE_VERSION = "deterministic-enrichment-v2"
 DEFAULT_REVIEW_THRESHOLD = 0.55
 
 
@@ -113,8 +113,27 @@ PROGRAMME_SOURCE_ALIASES = {
     "youth/children development": "Youth/Children Development",
     "technology": "tech-enablement",
     "digital transformation": "tech-enablement",
+    "digital infrastructure": "tech-enablement",
+    "digital public infrastructure": "tech-enablement",
+    "digital skills": "tech-enablement",
+    "digital literacy": "tech-enablement",
+    "open data": "tech-enablement",
+    "civic tech": "tech-enablement",
+    "civic technology": "tech-enablement",
+    "govtech": "tech-enablement",
+    "edtech": "tech-enablement",
+    "education technology": "tech-enablement",
+    "learning technology": "tech-enablement",
+    "stem": "tech-enablement",
+    "engineering": "tech-enablement",
+    "ict": "tech-enablement",
+    "computer science": "tech-enablement",
+    "cybersecurity": "tech-enablement",
+    "cyber security": "tech-enablement",
+    "software": "tech-enablement",
+    "artificial intelligence": "tech-enablement",
+    "technology transfer": "tech-enablement",
     "scientific research and technology transfer": "tech-enablement",
-    "innovation": "tech-enablement",
     "tech-enablement": "tech-enablement",
 }
 
@@ -138,7 +157,16 @@ PROGRAMME_RULES = (
     _programme_rule("programme.civic", "Citizenship, Social Justice & Public Affairs", r"democracy|civil society|civic|citizenship|public affairs|advocacy|journalism|social cohesion|public policy", 0.80),
     _programme_rule("programme.nonprofit", "Civil society, Voluntarism & Non-Profit Sector", r"philanthropy|philanthropic|fundraising|donors?|grant[- ]making|non[- ]profits?|voluntarism", 0.75),
     _programme_rule("programme.peace", "Peace & Conflict Resolution", r"peacebuilding|peace work|conflict resolution|conflict sensitivity", 0.85),
-    _programme_rule("programme.technology", "tech-enablement", r"technology|technological|digital(?:isation|ization| transformation| inclusion)?|software|data science|artificial intelligence|\bAI\b|\bIT\b(?=\s+(?:systems?|services?|infrastructure|support))", 0.80),
+    # Tech Enablement requires a concrete technology capability,
+    # infrastructure, application or transfer activity. Generic "innovation"
+    # is intentionally absent: alone it is too broad to be a technology signal.
+    _programme_rule("programme.technology_core", "tech-enablement", r"technology|technological|digital(?:isation|ization| transformation| inclusion)?|software|data science|artificial intelligence|machine learning|\bAI\b|\bIT\b(?=\s+(?:systems?|services?|infrastructure|support))", 0.80),
+    _programme_rule("programme.technology_infrastructure", "tech-enablement", r"digital (?:public )?infrastructure|digital (?:skills?|literacy|capabilit(?:y|ies)|access|connectivity)|broadband|internet access|data (?:infrastructure|governance|platforms?)|open data", 0.80),
+    _programme_rule("programme.technology_public_interest", "tech-enablement", r"civic tech(?:nology)?|govtech|public[- ]interest technology|assistive technology", 0.80),
+    _programme_rule("programme.technology_learning", "tech-enablement", r"edtech|education(?:al)? technology|learning technology|computer science|coding", 0.80),
+    _programme_rule("programme.technology_security_transfer", "tech-enablement", r"cyber ?security|cyber safety|robotics|(?:technology|tech) transfer|technical research(?:\s+(?:and|&))?\s+(?:technology|tech) transfer", 0.80),
+    _programme_rule("programme.technology_stem_engineering", "tech-enablement", r"\bSTEM\b|engineering", 0.80),
+    _programme_rule("programme.technology_computing", "tech-enablement", r"\bICT\b|computing|computer(?: science|s?| programming| games? development| equipment| literacy)|digital fabrication|makerspaces?|maker spaces?|fab labs?", 0.80),
     _programme_rule("programme.weak_social", "Socio-economic Development, Poverty", r"social change|social innovation", 0.45),
 )
 

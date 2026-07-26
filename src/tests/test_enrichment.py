@@ -50,6 +50,37 @@ class TestProgrammeEnrichment(unittest.TestCase):
         self.assertIn("tech-enablement", result["categories"])
         self.assertTrue(all(item["rule_id"] for item in result["evidence"]))
 
+    def test_extended_tech_enablement_taxonomy_requires_concrete_technology(self):
+        result = classify_programme_fields({
+            "description": (
+                "Open data and digital public infrastructure; civic technology, EdTech, "
+                "cybersecurity and technology transfer for local organisations."
+            )
+        })
+        self.assertIn("tech-enablement", result["categories"])
+        rule_ids = {item["rule_id"] for item in result["evidence"] if item["accepted"]}
+        self.assertIn("programme.technology_infrastructure", rule_ids)
+        self.assertIn("programme.technology_public_interest", rule_ids)
+        self.assertIn("programme.technology_learning", rule_ids)
+        self.assertIn("programme.technology_security_transfer", rule_ids)
+
+    def test_stem_engineering_and_ict_are_tech_enablement(self):
+        result = classify_programme_fields({
+            "description": "STEM engineering and ICT training, including computer programming."
+        })
+        self.assertIn("tech-enablement", result["categories"])
+        rule_ids = {item["rule_id"] for item in result["evidence"] if item["accepted"]}
+        self.assertIn("programme.technology_stem_engineering", rule_ids)
+        self.assertIn("programme.technology_computing", rule_ids)
+
+    def test_generic_innovation_is_not_a_tech_enablement_match(self):
+        result = classify_programme_fields(
+            {"description": "We fund innovation across the voluntary sector."},
+            ["Innovation"],
+        )
+        self.assertNotIn("tech-enablement", result["source_categories"])
+        self.assertNotIn("tech-enablement", result["categories"])
+
     def test_word_boundaries_prevent_substring_false_positive(self):
         result = classify_programme_fields({"description": "We build partnerships and repair artifacts."})
         self.assertNotIn("Arts & Culture", result["categories"])

@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileSearch,
   LoaderCircle,
+  Plus,
   Search,
   SlidersHorizontal,
   Star,
@@ -65,6 +66,15 @@ type DonorResult = {
     observed_funding: number | null;
     displayed_currency: string | null;
     programme_areas: Array<{ name: string; count?: number; provenance?: string }>;
+  };
+  observed_funding: {
+    amount: number | null;
+    currency: string | null;
+    excluded_multi_country_grant_count: number;
+    excluded_multi_country_amount: number | null;
+    fallback_original_amount: number | null;
+    fallback_original_currency: string | null;
+    fallback_original_grant_count: number;
   };
   amount_policy: {
     mode: "automatic_eur" | "original_currency";
@@ -151,6 +161,47 @@ type DonorDetail = {
   source_evidence: EvidenceLink[];
 };
 
+type RegistryCandidate = {
+  registry_id: string;
+  charity_number: string;
+  registered_name: string;
+  registration_status: string | null;
+  city: string | null;
+  has_enriched_profile: boolean;
+};
+
+type EnrichmentQueueItem = {
+  donorKey: string;
+  donorName: string;
+  charityNumber: number;
+  officialName: string;
+  resolution: "confirmed_identifier" | "cached_registry_candidate";
+};
+
+type EnrichmentDialogState = {
+  donor: DonorResult;
+  candidates: RegistryCandidate[];
+  loading: boolean;
+  error: string | null;
+};
+
+type EnrichmentRun = {
+  status: "running" | "success" | "failed";
+  current: number;
+  total: number;
+  progress?: number;
+  startedAt?: number;
+  message: string;
+  donorKeys: string[];
+  profiles: Array<{
+    donorKey: string;
+    profileId: number;
+    profileName: string;
+    resolution: EnrichmentQueueItem["resolution"];
+  }>;
+  error?: string | null;
+};
+
 export type HeaderContextState = {
   filterCount: number;
   resetDisabled: boolean;
@@ -210,6 +261,53 @@ function formatAmount(value: number | null, currency: string | null): string {
   } catch {
     return `${currency} ${value.toLocaleString("en-GB")}`;
   }
+}
+
+function donorFundingDisplay(item: DonorResult): { value: string; note: string | null } {
+  const observed = item.observed_activity.observed_funding;
+  const displayedCurrency = item.observed_activity.displayed_currency;
+  if (observed !== null && displayedCurrency) {
+    return { value: formatAmount(observed, displayedCurrency), note: null };
+  }
+
+  if (
+    item.observed_funding.fallback_original_amount !== null
+    && item.observed_funding.fallback_original_currency
+  ) {
+    return {
+      value: formatAmount(
+        item.observed_funding.fallback_original_amount,
+        item.observed_funding.fallback_original_currency,
+      ),
+      note: "Original amount · EUR conversion unavailable",
+    };
+  }
+
+  if (item.observed_funding.excluded_multi_country_grant_count > 0) {
+    return {
+      value: formatAmount(
+        item.observed_funding.excluded_multi_country_amount,
+        displayedCurrency,
+      ),
+      note: "Total award · multi-country",
+    };
+  }
+
+  return { value: "Not available", note: null };
+}
+
+function charityCommissionNumber(item: DonorResult): number | null {
+  const sourceId = item.identity.source_organization_id || "";
+  const match = sourceId.match(/^GB-CHC-(\d+)$/i);
+  if (!match) return null;
+  const number = Number.parseInt(match[1], 10);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+const LOCAL_PROFILE_LINK_DURATION_MS = 7_000;
+
+function enrichmentIsActive(run: EnrichmentRun | null): boolean {
+  return run?.status === "running";
 }
 
 function profileStatusLabel(profile: ProfileLink): string {
@@ -272,6 +370,10 @@ export default function DonorDirectoryPage({
   const [evidenceSettingsOpen, setEvidenceSettingsOpen] = useState(false);
   const [evidenceRoleVisibility, setEvidenceRoleVisibility] = useState({ funder: true, recipient: true, publisher: true });
   const [evidenceTypeVisibility, setEvidenceTypeVisibility] = useState({ website: true, json: true });
+  const [enrichmentQueue, setEnrichmentQueue] = useState<EnrichmentQueueItem[]>([]);
+  const [enrichmentDialog, setEnrichmentDialog] = useState<EnrichmentDialogState | null>(null);
+  const [enrichmentRun, setEnrichmentRun] = useState<EnrichmentRun | null>(null);
+  const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
   const requestVersion = useRef(0);
   const detailVersion = useRef(0);
   const listScrollPosition = useRef(0);
@@ -459,6 +561,67 @@ export default function DonorDirectoryPage({
     return () => controller.abort();
   }, [apiBase, online, scope]);
 
+  const applyConfirmedProfileLinks = useCallback((profiles: EnrichmentRun["profiles"]) => {
+    // A confirmed GB-CHC identifier is the one safe immediate link we can
+    // render without making the user wait for a complete dashboard-index
+    // rebuild. Name-selected registry candidates remain deliberately
+    // unlinked until an explicit backend relationship exists.
+    const confirmed = new Map(
+      profiles
+        .filter(profile => profile.resolution === "confirmed_identifier")
+        .map(profile => [profile.donorKey, profile]),
+    );
+    if (!confirmed.size) return;
+
+    setDetail(current => {
+      if (!current) return current;
+      const profile = confirmed.get(current.funder.source_funder_key);
+      if (!profile) return current;
+      return {
+        ...current,
+        funder: {
+          ...current.funder,
+          profile_link: {
+            status: "single",
+            profile_id: profile.profileId,
+            profile_name: profile.profileName,
+          },
+        },
+      };
+    });
+
+    setResult(current => {
+      if (!current) return current;
+      let newlyLinked = 0;
+      const items = current.items.map(item => {
+        const profile = confirmed.get(item.source_funder_key);
+        if (!profile) return item;
+        if (item.profile_link.status !== "single") newlyLinked += 1;
+        return {
+          ...item,
+          profile_link: {
+            status: "single" as const,
+            profile_id: profile.profileId,
+            profile_name: profile.profileName,
+          },
+        };
+      });
+      if (!newlyLinked) return { ...current, items };
+      return {
+        ...current,
+        items,
+        summary: {
+          ...current.summary,
+          status_counts: {
+            ...current.summary.status_counts,
+            linked: current.summary.status_counts.linked + newlyLinked,
+            observed_only: Math.max(0, current.summary.status_counts.observed_only - newlyLinked),
+          },
+        },
+      };
+    });
+  }, []);
+
   useEffect(() => {
     if (!selectedKey) return;
     return fetchDetail(selectedKey, isFavoriteDetail);
@@ -500,6 +663,140 @@ export default function DonorDirectoryPage({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [detail, selectedKey]);
+
+  const addToEnrichmentQueue = (donor: DonorResult, charityNumber: number, officialName: string, resolution: EnrichmentQueueItem["resolution"]) => {
+    setEnrichmentError(null);
+    setEnrichmentQueue(current => {
+      if (current.some(item => item.charityNumber === charityNumber)) return current;
+      if (current.length >= 5) {
+        setEnrichmentError("You can enrich up to five organizations in one run. Start this batch or remove an organization first.");
+        return current;
+      }
+      return [...current, {
+        donorKey: donor.source_funder_key,
+        donorName: donor.display_name,
+        charityNumber,
+        officialName,
+        resolution,
+      }];
+    });
+    setEnrichmentDialog(null);
+  };
+
+  const removeFromEnrichmentQueue = (donorKey: string) => {
+    setEnrichmentQueue(current => current.filter(item => item.donorKey !== donorKey));
+    setEnrichmentError(null);
+  };
+
+  const beginEnrichmentSelection = async (donor: DonorResult) => {
+    if (!online || enrichmentIsActive(enrichmentRun)) return;
+    const existing = enrichmentQueue.find(item => item.donorKey === donor.source_funder_key);
+    if (existing) {
+      removeFromEnrichmentQueue(donor.source_funder_key);
+      return;
+    }
+    const confirmedNumber = charityCommissionNumber(donor);
+    if (confirmedNumber !== null) {
+      addToEnrichmentQueue(donor, confirmedNumber, donor.display_name, "confirmed_identifier");
+      return;
+    }
+
+    setEnrichmentDialog({ donor, candidates: [], loading: true, error: null });
+    try {
+      const params = new URLSearchParams({ query: donor.display_name, limit: "5", sort: "name" });
+      const response = await fetch(`${apiBase}/api/charities/directory/organizations?${params.toString()}`, {
+        credentials: "include",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || "Could not search the cached Charity Commission register.");
+      const candidates = (body.results || []) as RegistryCandidate[];
+      setEnrichmentDialog(current => current && current.donor.source_funder_key === donor.source_funder_key
+        ? { ...current, candidates, loading: false, error: null }
+        : current);
+    } catch (reason) {
+      setEnrichmentDialog(current => current && current.donor.source_funder_key === donor.source_funder_key
+        ? { ...current, loading: false, error: (reason as Error).message || "Could not search the cached Charity Commission register." }
+        : current);
+    }
+  };
+
+  const startEnrichmentRun = async () => {
+    if (!online || !enrichmentQueue.length || enrichmentIsActive(enrichmentRun)) return;
+    setEnrichmentError(null);
+    const queue = [...enrichmentQueue];
+    const total = queue.length;
+    const donorKeys = queue.map(item => item.donorKey);
+    const profiles = queue.map(item => ({
+      donorKey: item.donorKey,
+      profileId: item.charityNumber,
+      profileName: item.officialName,
+      resolution: item.resolution,
+    }));
+    const startedAt = Date.now();
+    setEnrichmentRun({
+      status: "running",
+      current: 0,
+      total,
+      progress: 6,
+      startedAt,
+      donorKeys,
+      profiles,
+      message: "Confirming the official record",
+    });
+    try {
+      const [response] = await Promise.all([
+        fetch(`${apiBase}/api/charities/grants/funders/enrich`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reg_numbers: queue.map(item => item.charityNumber) }),
+        }),
+        new Promise(resolve => window.setTimeout(resolve, LOCAL_PROFILE_LINK_DURATION_MS)),
+      ]);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || "Could not start organization enrichment.");
+      // Confirmed registry records are linked locally in one short transaction.
+      // Do not enter the global pipeline poll here: a source refresh must never
+      // delay the user from opening the newly linked profile.
+      if (body.status === "success") {
+        setEnrichmentRun({
+          status: "success",
+          current: total,
+          total,
+          progress: 100,
+          donorKeys,
+          profiles,
+          message: `${total} organization${total === 1 ? "" : "s"} added to Organization Research`,
+        });
+        setEnrichmentQueue([]);
+        applyConfirmedProfileLinks(profiles);
+      }
+    } catch (reason) {
+      const message = (reason as Error).message || "Could not start organization enrichment.";
+      setEnrichmentRun({ status: "failed", current: 0, total, donorKeys, profiles, message: "Enrichment could not start", error: message });
+      setEnrichmentError(message);
+    }
+  };
+
+  useEffect(() => {
+    if (enrichmentRun?.status !== "running") return;
+    const startedAt = enrichmentRun.startedAt || Date.now();
+    const updateProgress = () => {
+      const elapsed = Math.max(0, Date.now() - startedAt);
+      const progress = Math.min(94, Math.round(6 + (elapsed / LOCAL_PROFILE_LINK_DURATION_MS) * 88));
+      const message = progress < 35
+        ? "Confirming the official record"
+        : progress < 72
+          ? "Creating the Organization Research profile"
+          : "Linking already observed grants";
+      setEnrichmentRun(current => current?.status === "running" && current.startedAt === startedAt
+        ? { ...current, progress, message }
+        : current);
+    };
+    updateProgress();
+    const timer = window.setInterval(updateProgress, 180);
+    return () => window.clearInterval(timer);
+  }, [enrichmentRun?.startedAt, enrichmentRun?.status]);
 
   const applyFilters = () => {
     if (draft.dateFrom && draft.dateTo && draft.dateFrom > draft.dateTo) {
@@ -583,7 +880,7 @@ export default function DonorDirectoryPage({
     key: item.source_funder_key,
     name: item.display_name,
     route: window.location.search,
-    funding: formatAmount(item.observed_activity.observed_funding, item.observed_activity.displayed_currency),
+    funding: donorFundingDisplay(item).value,
     grantCount: item.observed_activity.grant_count,
     recipientCount: item.observed_activity.recipient_count,
     country,
@@ -612,6 +909,14 @@ export default function DonorDirectoryPage({
   };
   const currentFavoriteRequest = favoriteRequestPayload();
   const requestIsFavorite = favoriteDonorRequestKeys.includes(currentFavoriteRequest.key);
+  const queuedEnrichment = detail
+    ? enrichmentQueue.find(item => item.donorKey === detail.funder.source_funder_key)
+    : undefined;
+  const selectedProfileIsLinking = Boolean(
+    detail
+    && enrichmentIsActive(enrichmentRun)
+    && enrichmentRun?.donorKeys.includes(detail.funder.source_funder_key),
+  );
   const visibleEvidence = useMemo(() => (detail?.source_evidence || [])
     .filter(evidence => (
       evidenceRoleVisibility[evidenceRole(evidence)]
@@ -650,6 +955,19 @@ export default function DonorDirectoryPage({
               title={requestIsFavorite ? "Remove saved donor request" : "Save this donor request"}
             >
               <Star size={16} fill={requestIsFavorite ? "currentColor" : "none"} /> {requestIsFavorite ? "Saved request" : "Save request"}
+            </button>
+          )}
+          {!isFavoritePresentation && enrichmentQueue.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-primary donor-enrichment-start"
+              disabled={enrichmentIsActive(enrichmentRun) || !online}
+              onClick={() => void startEnrichmentRun()}
+            >
+              {enrichmentIsActive(enrichmentRun) ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}
+              {enrichmentIsActive(enrichmentRun)
+                ? `Adding ${enrichmentRun?.current ? `${enrichmentRun.current}/` : ""}${enrichmentRun?.total}`
+                : `Enrich ${enrichmentQueue.length} selected`}
             </button>
           )}
         </div>
@@ -709,6 +1027,7 @@ export default function DonorDirectoryPage({
           </div>}
 
           {error && <div className="data-notice data-notice-error" role="alert">{error}</div>}
+          {enrichmentError && <div className="data-notice data-notice-error" role="alert">{enrichmentError}</div>}
           {!online && <div className="data-notice data-notice-warning">The local backend is required for observed donor results.</div>}
           {loading && <div className="donor-directory-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /> Loading observed donors…</div>}
 
@@ -730,6 +1049,7 @@ export default function DonorDirectoryPage({
                 <ol className="donor-result-list">
                   {result.items.map(item => {
                     const isFavorite = favoriteDonorKeys.includes(item.source_funder_key);
+                    const fundingDisplay = donorFundingDisplay(item);
                     return <li className="donor-result-item" key={item.source_funder_key}>
                       <button
                         ref={selectedKey === item.source_funder_key ? selectedRowRef : undefined}
@@ -749,7 +1069,7 @@ export default function DonorDirectoryPage({
                           </small>
                         </span>
                         <span className="donor-row-value">
-                          <strong>{formatAmount(item.observed_activity.observed_funding, item.observed_activity.displayed_currency)}</strong>
+                          <span className="donor-row-amount"><strong>{fundingDisplay.value}</strong>{fundingDisplay.note && <small>{fundingDisplay.note}</small>}</span>
                           <ChevronRight size={18} aria-hidden="true" />
                         </span>
                       </button>
@@ -798,7 +1118,7 @@ export default function DonorDirectoryPage({
                       <section aria-labelledby="donor-observed-heading">
                         <h4 id="donor-observed-heading">Observed activity</h4>
                         <div className="donor-detail-metrics">
-                          <div><span>Observed funding</span><strong>{formatAmount(detail.funder.observed_funding.amount, detail.funder.observed_funding.currency)}</strong></div>
+                          <div><span>Observed funding</span><strong>{donorFundingDisplay(detail.funder).value}</strong>{donorFundingDisplay(detail.funder).note && <small className="donor-amount-note">{donorFundingDisplay(detail.funder).note}</small>}</div>
                           <div><span>Grants</span><strong>{detail.funder.activity.grant_count.toLocaleString("en-GB")}</strong></div>
                           <div><span>Recipients</span><strong>{detail.funder.activity.distinct_recipient_count.toLocaleString("en-GB")}</strong></div>
                           <div><span>Latest activity</span><strong>{detail.funder.activity.latest_award_date || "Unknown"}</strong></div>
@@ -827,30 +1147,88 @@ export default function DonorDirectoryPage({
                               </div>
                             )) : <p>No country-attributable recipient funding is available.</p>}
                             <h5>Latest observed grants</h5>
-                            {detail.grant_sample.slice(0, 12).map(grant => (
-                              <article className="donor-grant-row" key={grant.grant_id}>
+                            {detail.grant_sample.slice(0, 12).map(grant => {
+                              const hasDisplayedAmount = grant.amount !== null && Boolean(grant.currency);
+                              const grantAmount = hasDisplayedAmount
+                                ? formatAmount(grant.amount, grant.currency)
+                                : grant.original_amount !== null && grant.original_currency
+                                  ? `${formatAmount(grant.original_amount, grant.original_currency)} original`
+                                  : "Not available";
+                              return <article className="donor-grant-row" key={grant.grant_id}>
                                 <div><strong>{grant.recipient_name}</strong><small>{grant.award_date || "Date unavailable"} · {grant.grant_id}</small></div>
-                                <span>{formatAmount(grant.amount, grant.currency)}</span>
-                              </article>
-                            ))}
+                                <span>{grantAmount}</span>
+                              </article>;
+                            })}
                           </div>
                         )}
                       </details>
 
                       <section className="donor-detail-section linked-profile-section">
                         <h4>Linked organization profile</h4>
-                        {detail.funder.profile_link.status === "single" ? (
+                        {selectedProfileIsLinking ? (
+                          <div className="donor-profile-link-loading" role="status" aria-live="polite">
+                            <LoaderCircle className="spin" size={22} />
+                            <div>
+                              <strong>Creating Organization Research profile</strong>
+                              <p>{enrichmentRun?.message || "Linking the confirmed official record to stored observed grants."}</p>
+                              <div className="donor-profile-link-steps" aria-label="Organization enrichment progress">
+                                <span className="is-complete">Official record</span>
+                                <span className="is-current">Grant link</span>
+                                <span>Open profile</span>
+                              </div>
+                              <div className="donor-profile-link-progress" role="progressbar" aria-label="Profile creation progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={enrichmentRun?.progress || 0}>
+                                <i style={{ width: `${enrichmentRun?.progress || 0}%` }} />
+                              </div>
+                              <small className="donor-profile-link-progress-label">{enrichmentRun?.progress || 0}%</small>
+                            </div>
+                          </div>
+                        ) : detail.funder.profile_link.status === "single" ? (
                           <div>
                             <strong>{detail.funder.profile_link.profile_name}</strong>
                             <p>Profile information is linked explicitly and remains separate from observed grant facts.</p>
                             <button type="button" className="btn btn-secondary" onClick={() => {
                               const link = detail.funder.profile_link;
                               if (link.status === "single") onOpenProfile(link.profile_id, link.profile_name);
-                            }}><Building2 size={15} /> Open organization research</button>
+                            }}><Building2 size={15} /> Open organization profile</button>
                           </div>
                         ) : (
-                          <p>This funder appears in observed grant data. No linked organization profile is currently available.</p>
+                          <>
+                            <p>This funder appears in observed grant data. No linked organization profile is currently available.</p>
+                            {!isFavoritePresentation && <div className="donor-enrichment-panel">
+                              <div>
+                                <strong>Add to Organization Research</strong>
+                                <small>{queuedEnrichment
+                                  ? `Ready: ${queuedEnrichment.officialName} · Charity Commission #${queuedEnrichment.charityNumber}`
+                                  : charityCommissionNumber(detail.funder) !== null
+                                    ? `Confirmed Charity Commission ID #${charityCommissionNumber(detail.funder)}`
+                                    : "Choose a matching official record from the cached Charity Commission register."}</small>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                disabled={!online || enrichmentIsActive(enrichmentRun)}
+                                onClick={() => void beginEnrichmentSelection(detail.funder)}
+                              >
+                                {queuedEnrichment ? <X size={15} /> : <Plus size={15} />}
+                                {queuedEnrichment ? "Remove" : "Add organization"}
+                              </button>
+                            </div>}
+                            {!isFavoritePresentation && queuedEnrichment && <button
+                              type="button"
+                              className="btn btn-primary donor-enrichment-start-inline"
+                              disabled={!online || enrichmentIsActive(enrichmentRun)}
+                              onClick={() => void startEnrichmentRun()}
+                            >
+                              {enrichmentIsActive(enrichmentRun) ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}
+                              {enrichmentIsActive(enrichmentRun)
+                                ? `Adding ${enrichmentRun?.current || 1} of ${enrichmentRun?.total}`
+                                : `Add profile · ${enrichmentQueue.length} selected`}
+                            </button>}
+                          </>
                         )}
+                        {!isFavoritePresentation && enrichmentRun?.status === "failed" && enrichmentRun.donorKeys.includes(detail.funder.source_funder_key) && <div className="donor-enrichment-progress failed" role="status" aria-live="polite">
+                          <span><strong>Needs attention</strong><small>{enrichmentRun.error || enrichmentRun.message}</small></span>
+                        </div>}
                       </section>
 
                       <details className="donor-detail-section source-evidence-section" onToggle={event => {
@@ -920,6 +1298,41 @@ export default function DonorDirectoryPage({
             </div>
             <div className="filter-drawer-footer"><button type="button" className="btn btn-secondary" onClick={() => setDraft(scope)}>Reset edits</button><button type="button" className="btn btn-primary" onClick={applyFilters}>Apply filters</button></div>
           </aside>
+        </div>
+      )}
+
+      {enrichmentDialog && (
+        <div className="registry-detail-backdrop donor-enrichment-backdrop" onMouseDown={event => {
+          if (event.currentTarget === event.target) setEnrichmentDialog(null);
+        }}>
+          <section className="glass-card donor-enrichment-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichment-dialog-title">
+            <button type="button" className="registry-detail-close" onClick={() => setEnrichmentDialog(null)} aria-label="Close official profile selection"><X size={18} /></button>
+            <span className="page-eyebrow">Cached official register</span>
+            <h3 id="enrichment-dialog-title">Choose {enrichmentDialog.donor.display_name}</h3>
+            <p>Only an explicitly selected Charity Commission record will be added. No external lookup is performed while choosing.</p>
+            {enrichmentDialog.loading && <div className="donor-section-loading"><LoaderCircle className="spin" size={18} /> Searching cached records…</div>}
+            {enrichmentDialog.error && <div className="data-notice data-notice-error" role="alert">{enrichmentDialog.error}</div>}
+            {!enrichmentDialog.loading && !enrichmentDialog.error && (
+              enrichmentDialog.candidates.length ? <div className="donor-enrichment-candidates">
+                {enrichmentDialog.candidates.map(candidate => (
+                  <button
+                    type="button"
+                    key={candidate.registry_id}
+                    onClick={() => addToEnrichmentQueue(
+                      enrichmentDialog.donor,
+                      Number.parseInt(candidate.charity_number, 10),
+                      candidate.registered_name,
+                      "cached_registry_candidate",
+                    )}
+                  >
+                    <span><strong>{candidate.registered_name}</strong><small>Charity Commission #{candidate.charity_number}{candidate.city ? ` · ${candidate.city}` : ""}</small></span>
+                    <Plus size={16} aria-hidden="true" />
+                  </button>
+                ))}
+              </div> : <div className="directory-empty-state donor-enrichment-empty"><h4>No cached official match found</h4><p>Use Advanced Charity Commission Search to find an official record first. The observed grant data remains unchanged.</p><button type="button" className="btn btn-secondary" onClick={() => { setEnrichmentDialog(null); onOpenRegistrySearch(); }}>Open advanced search <ArrowRight size={15} /></button></div>
+            )}
+            <p className="donor-enrichment-limit">Up to five organizations can be enriched in one run.</p>
+          </section>
         </div>
       )}
     </section>

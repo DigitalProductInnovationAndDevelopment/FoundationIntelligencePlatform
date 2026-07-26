@@ -96,6 +96,7 @@ interface GrantWorldMapProps {
   onCountrySelectionChange?: (selection: MapCountrySelection | null) => void;
   refreshing?: boolean;
   onConnectionsVisibilityChange?: (visible: boolean) => void;
+  onResetScope?: () => void;
 }
 
 type MapMetric = "count" | "funding";
@@ -226,6 +227,7 @@ export default function GrantWorldMap({
   onCountrySelectionChange,
   refreshing = false,
   onConnectionsVisibilityChange,
+  onResetScope,
 }: GrantWorldMapProps) {
   const [metric, setMetric] = useState<MapMetric>("count");
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
@@ -439,9 +441,18 @@ export default function GrantWorldMap({
         <>
           {!isMapAvailable && (
             <div className="data-notice data-notice-warning map-inline-notice" role="status">
-              {data.status === "no_geography"
-                  ? "The current grants contain no beneficiary geography that can be resolved to a country."
-                  : "Beneficiary-country data is unavailable for the current grant scope."}
+              {data.status === "no_geography" ? (
+                "The current grants contain no beneficiary geography that can be resolved to a country."
+              ) : (
+                <>
+                  <span>No observed grants match the current scope. Check Data sources or reset the grant filters.</span>
+                  {onResetScope && (
+                    <button type="button" className="map-inline-reset" onClick={onResetScope}>
+                      Reset grant filters
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           )}
 
