@@ -4,7 +4,7 @@ import os
 import sqlite3
 from datetime import date
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from starlette.concurrency import run_in_threadpool
 from typing import Any, Dict, List, Optional
 from bff.auth import get_current_user_token
@@ -27,6 +27,7 @@ from bff.schemas import (
     ScoreResponse,
     PipelineStatus,
     SourceFunderEnrichmentRequest,
+    SourceFunderRelinkRequest,
 )
 from bff.repositories import CharityRepository, get_charity_repository
 from data.registry import REGISTRY_LINK_TABLE, REGISTRY_TABLE, normalize_organization_name
@@ -542,6 +543,16 @@ def _fast_link_confirmed_profiles(reg_numbers: List[int]) -> List[Dict[str, Any]
                 )
 
             source_identifier = f"GB-CHC-{charity_number}"
+            # A confirmed selection is an explicit user action to link this
+            # profile again. It intentionally supersedes a prior NL reset,
+            # while ordinary imports remain blocked by the persisted override.
+            conn.execute(
+                """
+                DELETE FROM source_funder_link_overrides
+                WHERE source_namespace = '360Giving' AND source_organization_id = ?
+                """,
+                (source_identifier,),
+            )
             linked_grants = conn.execute(
                 """
                 UPDATE grants
@@ -695,6 +706,88 @@ async def enrich_registry_organization(
         payload,
         run_source="registry_enrichment",
     )
+
+
+@router.post("/grants/funders/{source_funder_key}/reset-to-observed")
+async def reset_source_funder_to_observed(
+    source_funder_key: str,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Remove one source funder's directory link while retaining observed data."""
+    try:
+        reset = await repo.reset_source_funder_to_observed(source_funder_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    if not reset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source-funder entry not found.")
+    return {"status": "observed_only", **reset}
+
+
+@router.post("/grants/funders/{source_funder_key}/relink")
+async def relink_source_funder_profile(
+    source_funder_key: str,
+    payload: SourceFunderRelinkRequest,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Apply an explicit, verified profile relink after observed-only mode."""
+    try:
+        relinked = await repo.relink_source_funder_profile(source_funder_key, payload.profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    if not relinked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source-funder entry not found.")
+    return {"status": "linked", **relinked}
+
+
+@router.post("/grants/funders/{source_funder_key}/profile-cache")
+async def queue_source_funder_profile_cache(
+    source_funder_key: str,
+    background_tasks: BackgroundTasks,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Start local profile hydration without blocking the observed-donor view."""
+    try:
+        queued = repo.queue_source_funder_profile_hydration(source_funder_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    if not queued:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This observed source funder has no active organization profile to hydrate.",
+        )
+    if queued["status"] == "pending":
+        background_tasks.add_task(repo.hydrate_source_funder_profile, source_funder_key)
+    return queued
+
+
+@router.get("/grants/funders/{source_funder_key}/profile-cache")
+async def get_source_funder_profile_cache(
+    source_funder_key: str,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return the state of independently hydrated source-profile data."""
+    try:
+        cached = repo.get_source_funder_profile_cache(source_funder_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not cached:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No source-profile cache is available.")
+    return cached
 
 
 @router.get("/grants/funders", response_model=SourceFunderListResponse)

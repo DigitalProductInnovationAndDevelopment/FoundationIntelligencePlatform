@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import bisect
+import calendar
 import csv
 import io
 import json
@@ -24,7 +24,7 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -131,6 +131,15 @@ def _grant_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def _award_month_bounds(award_date: str) -> tuple[str, str]:
+    parsed = date.fromisoformat(award_date)
+    last_day = calendar.monthrange(parsed.year, parsed.month)[1]
+    return (
+        parsed.replace(day=1).isoformat(),
+        parsed.replace(day=last_day).isoformat(),
+    )
+
+
 def _foreign_rate_windows(rows: Iterable[Mapping[str, Any]], as_of: str) -> dict[str, tuple[str, str]]:
     windows: dict[str, list[str]] = {}
     for row in rows:
@@ -141,12 +150,16 @@ def _foreign_rate_windows(rows: Iterable[Mapping[str, Any]], as_of: str) -> dict
             continue
         if amount is None:
             continue
-        windows.setdefault(currency, []).append(award_date)
+        month_start, month_end = _award_month_bounds(award_date)
+        # A monthly average cannot be calculated from a month that has not
+        # completed at the chosen reproducibility boundary.
+        if month_end <= as_of:
+            windows.setdefault(currency, []).append(month_start)
     return {
-        # ECB does not publish on weekends and market holidays. Fetch a short
-        # preceding window so the policy can select the last published business
-        # day without ever reaching forward in time.
-        currency: ((date.fromisoformat(min(dates)) - timedelta(days=10)).isoformat(), max(dates))
+        currency: (
+            min(dates),
+            _award_month_bounds(max(dates))[1],
+        )
         for currency, dates in windows.items()
     }
 
@@ -172,11 +185,10 @@ def _missing_ecb_fetch_windows(
     stored_rates: Mapping[str, Mapping[str, Decimal]],
     as_of: str,
 ) -> dict[str, list[tuple[str, str]]]:
-    """Fetch only source-date ranges not covered by locally stored ECB rates.
+    """Fetch award months with no locally cached ECB observations.
 
-    A rate from the preceding business day remains valid for a short trailing
-    holiday/weekend window. Older historical gaps and clearly newer dates are
-    requested as separate compact windows instead of redownloading each series.
+    Conversion uses the ECB average of all available daily reference rates in
+    the award month, never the nearest individual business-day rate.
     """
     award_dates: dict[str, set[str]] = {}
     for row in rows:
@@ -189,29 +201,19 @@ def _missing_ecb_fetch_windows(
         ):
             award_dates.setdefault(currency, set()).add(award_date)
 
-    earliest_ecb_date = date.fromisoformat(ECB_FIRST_RATE_DATE)
     fetch_windows: dict[str, list[tuple[str, str]]] = {}
-    for currency, (window_start, window_end) in base_windows.items():
+    for currency in base_windows:
         rates = stored_rates.get(currency, {})
-        if not rates:
-            start = max(date.fromisoformat(window_start), earliest_ecb_date).isoformat()
-            if start <= window_end:
-                fetch_windows[currency] = [(start, window_end)]
+        cached_months = {rate_date[:7] for rate_date in rates}
+        months = sorted({award_date[:7] for award_date in award_dates.get(currency, set())})
+        missing_months = [month for month in months if month not in cached_months]
+        if not missing_months:
             continue
-
-        rate_dates = sorted(rates)
-        first_rate = date.fromisoformat(rate_dates[0])
-        last_rate = date.fromisoformat(rate_dates[-1])
-        relevant_dates = sorted(date.fromisoformat(value) for value in award_dates.get(currency, set()))
-        early_dates = [value for value in relevant_dates if earliest_ecb_date <= value < first_rate]
-        late_dates = [value for value in relevant_dates if value > last_rate + timedelta(days=10)]
         windows: list[tuple[str, str]] = []
-        if early_dates:
-            start = max(early_dates[0] - timedelta(days=10), earliest_ecb_date)
-            windows.append((start.isoformat(), (first_rate - timedelta(days=1)).isoformat()))
-        if late_dates:
-            start = max(last_rate - timedelta(days=10), late_dates[0] - timedelta(days=10))
-            windows.append((start.isoformat(), late_dates[-1].isoformat()))
+        for month in missing_months:
+            start, end = _award_month_bounds(f"{month}-01")
+            if end >= ECB_FIRST_RATE_DATE:
+                windows.append((max(start, ECB_FIRST_RATE_DATE), end))
         if windows:
             fetch_windows[currency] = windows
     return fetch_windows
@@ -230,10 +232,10 @@ def _resolve_conversion(
     award_date = _parse_award_date(row.get("date"))
     if amount is None:
         return {"amount_eur": None, "exchange_rate": None, "exchange_rate_date": None,
-                "exchange_rate_source": None, "conversion_status": "invalid_source_amount"}
+                "exchange_rate_source": None, "conversion_status": "unavailable_invalid_amount"}
     if len(currency) != 3 or not currency.isalpha():
         return {"amount_eur": None, "exchange_rate": None, "exchange_rate_date": None,
-                "exchange_rate_source": None, "conversion_status": "unsupported_source_currency"}
+                "exchange_rate_source": None, "conversion_status": "unavailable_unsupported_currency"}
     if currency == "EUR":
         return {
             "amount_eur": float(amount.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)),
@@ -244,24 +246,26 @@ def _resolve_conversion(
         }
     if not award_date:
         return {"amount_eur": None, "exchange_rate": None, "exchange_rate_date": None,
-                "exchange_rate_source": None, "conversion_status": "missing_award_date"}
+                "exchange_rate_source": None, "conversion_status": "unavailable_missing_date"}
     if award_date > as_of:
         return {"amount_eur": None, "exchange_rate": None, "exchange_rate_date": None,
-                "exchange_rate_source": None, "conversion_status": "award_date_in_future"}
-    dates = rate_dates_by_currency.get(currency, [])
-    position = bisect.bisect_right(dates, award_date) - 1
-    if position < 0:
+                "exchange_rate_source": None, "conversion_status": "unavailable_missing_rate"}
+    month = award_date[:7]
+    monthly_rates = [
+        rates_by_currency[currency][rate_date]
+        for rate_date in rate_dates_by_currency.get(currency, [])
+        if rate_date.startswith(month)
+    ]
+    if not monthly_rates:
         return {"amount_eur": None, "exchange_rate": None, "exchange_rate_date": None,
-                "exchange_rate_source": None, "conversion_status": "ecb_rate_unavailable"}
-    rate_date = dates[position]
-    rate = rates_by_currency[currency][rate_date]
-    status = "ecb_award_date" if rate_date == award_date else "ecb_previous_business_day"
+                "exchange_rate_source": None, "conversion_status": "unavailable_missing_rate"}
+    rate = sum(monthly_rates, Decimal("0")) / Decimal(len(monthly_rates))
     return {
         "amount_eur": float((amount / rate).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)),
         "exchange_rate": float(rate),
-        "exchange_rate_date": rate_date,
-        "exchange_rate_source": f"{ECB_RATE_SOURCE} ({_series_key(currency)})",
-        "conversion_status": status,
+        "exchange_rate_date": month,
+        "exchange_rate_source": f"{ECB_RATE_SOURCE} monthly average ({_series_key(currency)}; {len(monthly_rates)} observations)",
+        "conversion_status": "ecb_monthly_average",
     }
 
 
@@ -305,6 +309,7 @@ def backfill_database(
     timeout: int = 90,
     opener: Callable[..., Any] = urllib.request.urlopen,
     rate_cache_directory: Path | None = None,
+    fetch_missing_rates: bool = True,
 ) -> dict[str, Any]:
     """Fetch needed ECB rates, backfill a staging DB, then publish atomically."""
     if not database_path.exists():
@@ -336,18 +341,24 @@ def backfill_database(
         fetch_windows = _missing_ecb_fetch_windows(
             source_rows, windows, rates_by_currency, resolved_as_of
         )
-        for currency, intervals in fetch_windows.items():
-            for start_date, end_date in intervals:
-                try:
-                    rates_by_currency[currency].update(
-                        fetch_ecb_daily_rates(
-                            currency, start_date, end_date, timeout=timeout, opener=opener
+        if fetch_missing_rates:
+            for currency, intervals in fetch_windows.items():
+                for start_date, end_date in intervals:
+                    try:
+                        rates_by_currency[currency].update(
+                            fetch_ecb_daily_rates(
+                                currency, start_date, end_date, timeout=timeout, opener=opener
+                            )
                         )
-                    )
-                except (OSError, ValueError, urllib.error.URLError) as exc:
-                    # ECB does not publish a reference series for every valid
-                    # ISO currency. Leave those grants explicitly unconverted.
-                    fetch_errors[currency] = str(exc)
+                    except (OSError, ValueError, urllib.error.URLError) as exc:
+                        # ECB does not publish a reference series for every valid
+                        # ISO currency. Leave those grants explicitly unconverted.
+                        fetch_errors[currency] = str(exc)
+        elif fetch_windows:
+            fetch_errors = {
+                currency: "No network fetch requested; no cached ECB rate exists for one or more award months."
+                for currency in fetch_windows
+            }
     rate_dates_by_currency = {
         currency: sorted(rates)
         for currency, rates in rates_by_currency.items()
@@ -422,6 +433,7 @@ def backfill_database(
             for currency, intervals in fetch_windows.items()
         },
         "rate_fetch_errors": fetch_errors,
+        "network_rate_fetch_enabled": fetch_missing_rates,
         "rate_rows_stored": sum(len(rates) for rates in rates_by_currency.values()),
         "grants_total": total_grants,
         "grants_with_eur_amount": converted_grants,

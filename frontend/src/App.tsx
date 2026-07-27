@@ -128,6 +128,11 @@ type FavoriteDonorWorkspace =
   | { kind: "donor"; item: FavoriteDonorPayload }
   | { kind: "request"; item: FavoriteDonorRequestPayload };
 
+type ActiveSourceFunder = {
+  sourceFunderKey: string;
+  displayName: string;
+};
+
 type NewsSourceItem = {
   title: string;
   link: string;
@@ -475,6 +480,75 @@ interface ScoreResponse {
   not_a_prediction: boolean;
 }
 
+type ProfileLoadingKey = "detail" | "grants" | "relationships" | "score" | "source_record";
+
+type ProfileSectionStatus = "idle" | "loading" | "ready" | "empty" | "partial" | "error";
+
+type ProfileSectionState = {
+  status: ProfileSectionStatus;
+  error: string | null;
+};
+
+type ProfileLoadingState = Record<ProfileLoadingKey, ProfileSectionState>;
+
+const profileSectionState = (status: ProfileSectionStatus, error: string | null = null): ProfileSectionState => ({
+  status,
+  error,
+});
+
+const IDLE_PROFILE_LOADING: ProfileLoadingState = {
+  detail: profileSectionState("idle"),
+  grants: profileSectionState("idle"),
+  relationships: profileSectionState("idle"),
+  score: profileSectionState("idle"),
+  source_record: profileSectionState("idle"),
+};
+
+const INITIAL_PROFILE_LOADING: ProfileLoadingState = {
+  detail: profileSectionState("loading"),
+  grants: profileSectionState("loading"),
+  relationships: profileSectionState("loading"),
+  score: profileSectionState("loading"),
+  source_record: profileSectionState("idle"),
+};
+
+type GlobalApiErrorKey = "health" | "statistics" | "directory" | "source_reset";
+type GlobalApiErrors = Partial<Record<GlobalApiErrorKey, string>>;
+
+function abortableDelay(
+  durationMs: number,
+  signal: AbortSignal,
+  timerRef?: { current: number | null },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      const error = new Error("Aborted");
+      error.name = "AbortError";
+      reject(error);
+      return;
+    }
+
+    let timer = 0;
+    const cleanup = () => {
+      signal.removeEventListener("abort", handleAbort);
+      if (timerRef?.current === timer) timerRef.current = null;
+    };
+    const handleAbort = () => {
+      window.clearTimeout(timer);
+      cleanup();
+      const error = new Error("Aborted");
+      error.name = "AbortError";
+      reject(error);
+    };
+    timer = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, durationMs);
+    if (timerRef) timerRef.current = timer;
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
 interface PipelineStatus {
   status: string;
   started_at: string | null;
@@ -725,10 +799,22 @@ export default function App() {
   const [grantAnalyticsCurrency, setGrantAnalyticsCurrency] = useState("");
   const [selectedCharity, setSelectedCharity] = useState<Charity | null>(null);
   const [selectedCharityDetail, setSelectedCharityDetail] = useState<any>(null);
+  const [selectedSourceFunderProfileKey, setSelectedSourceFunderProfileKey] = useState<string | null>(null);
+  const [selectedNewsAliases, setSelectedNewsAliases] = useState<string[]>([]);
   const [charityGrants, setCharityGrants] = useState<GrantDetail[]>([]);
   const [grantStatus, setGrantStatus] = useState("data_unavailable");
   const [sankeyData, setSankeyData] = useState<SankeyData | null>(null);
   const [scoreData, setScoreData] = useState<ScoreResponse | null>(null);
+  const [profileLoading, setProfileLoading] = useState<ProfileLoadingState>(IDLE_PROFILE_LOADING);
+  const profileRequestSequenceRef = useRef(0);
+  const profileAbortControllerRef = useRef<AbortController | null>(null);
+  const profileModalRef = useRef<HTMLDivElement | null>(null);
+  const profilePreviousFocusRef = useRef<HTMLElement | null>(null);
+  const sourceHydrationTimerRef = useRef<number | null>(null);
+  const selectedSourceFunderProfileKeyRef = useRef<string | null>(null);
+  const sourceFunderProfilePayloadsRef = useRef(new Map<string, Record<string, any>>());
+  const [activeSourceFunder, setActiveSourceFunder] = useState<ActiveSourceFunder | null>(null);
+  const [sourceFunderResetPending, setSourceFunderResetPending] = useState(false);
 
   // News summarizer states
   const [newsLoading, setNewsLoading] = useState(false);
@@ -737,6 +823,9 @@ export default function App() {
   const [newsProgressStep, setNewsProgressStep] = useState<NewsProgressStep | null>(null);
   const [newsRunMode, setNewsRunMode] = useState<"live" | "illustrative" | null>(null);
   const [newsRuns, setNewsRuns] = useState<SavedNewsRun[]>(loadNewsRuns);
+  const newsAbortControllerRef = useRef<AbortController | null>(null);
+  const newsRequestSequenceRef = useRef(0);
+  const selectedNewsOrganizationKeyRef = useRef<string | null>(null);
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -755,8 +844,41 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isBffOnline, setIsBffOnline] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrors, setApiErrors] = useState<GlobalApiErrors>({});
   const [authError, setAuthError] = useState<string | null>(null);
+
+  const setApiError = (key: GlobalApiErrorKey, message: string | null) => {
+    setApiErrors(current => {
+      if (!message) {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      if (current[key] === message) return current;
+      return { ...current, [key]: message };
+    });
+  };
+
+  const isCurrentProfileRequest = (requestId: number) =>
+    profileRequestSequenceRef.current === requestId;
+
+  const setProfileSection = (
+    requestId: number,
+    key: ProfileLoadingKey,
+    status: ProfileSectionStatus,
+    error: string | null = null,
+  ) => {
+    if (!isCurrentProfileRequest(requestId)) return;
+    setProfileLoading(current => ({ ...current, [key]: profileSectionState(status, error) }));
+  };
+
+  const finishProfileSection = (requestId: number, key: ProfileLoadingKey) => {
+    if (!isCurrentProfileRequest(requestId)) return;
+    setProfileLoading(current => current[key].status === "loading"
+      ? { ...current, [key]: profileSectionState("ready") }
+      : current);
+  };
 
   useEffect(() => {
     if (activeTab !== "directory" || directoryMode !== "profiles") setProfileFiltersOpen(false);
@@ -831,6 +953,14 @@ export default function App() {
     return () => window.removeEventListener("popstate", syncSourcesFromRoute);
   }, [dataSourceNames]);
   const selectedCharityId = selectedCharity?.registered_charity_number ?? null;
+  const selectedNewsOrganizationKey = selectedCharity ? newsOrganizationKey(selectedCharity) : null;
+  selectedNewsOrganizationKeyRef.current = selectedNewsOrganizationKey;
+  const profileIsLoading = selectedCharity !== null
+    && Object.values(profileLoading).some(section => section.status === "loading");
+  const profileSectionErrors = (Object.entries(profileLoading) as Array<[ProfileLoadingKey, ProfileSectionState]>)
+    .filter(([, section]) => section.status === "error" && section.error);
+  const apiErrorMessages = Object.values(apiErrors).filter((message): message is string => Boolean(message));
+  const visibleApiErrors = [authError, ...apiErrorMessages].filter((message): message is string => Boolean(message));
   const savedNewsRun = useMemo(() => {
     if (!selectedCharity) return null;
     return newsRuns.find(run => run.organizationKey === newsOrganizationKey(selectedCharity)) || null;
@@ -852,8 +982,8 @@ export default function App() {
         year: item.financial_period_end_date
           ? new Date(item.financial_period_end_date).getFullYear().toString()
           : "N/A",
-        Income: item.income || 0,
-        Expenditure: item.expenditure || 0,
+        Income: typeof item.income === "number" && Number.isFinite(item.income) ? item.income : null,
+        Expenditure: typeof item.expenditure === "number" && Number.isFinite(item.expenditure) ? item.expenditure : null,
       }));
   }, [selectedCharityDetail?.financial_history]);
   const selectedCharityFlowRows = useMemo(() => {
@@ -998,27 +1128,74 @@ export default function App() {
   }, [isBffOnline, searchTerm, selectedDataSources]);
 
   useEffect(() => {
-    if (selectedCharityId !== null) {
-      setSelectedCharityDetail(null);
-      setNewsSummary(null);
-      setNewsError(null);
-      setNewsLoading(false);
-      setNewsProgressStep(null);
-      setNewsRunMode(null);
-      fetchCharityDetail(selectedCharityId);
-      fetchCharityGrants(selectedCharityId);
-      fetchSankeyData(selectedCharityId);
-      fetchScoreData(selectedCharityId);
-    } else {
-      setSelectedCharityDetail(null);
-      setNewsSummary(null);
-      setNewsError(null);
-      setNewsLoading(false);
-      setNewsProgressStep(null);
-      setNewsRunMode(null);
-      setScoreData(null);
+    newsAbortControllerRef.current?.abort();
+    newsAbortControllerRef.current = null;
+    newsRequestSequenceRef.current += 1;
+    setNewsSummary(null);
+    setNewsError(null);
+    setNewsLoading(false);
+    setNewsProgressStep(null);
+    setNewsRunMode(null);
+    return () => newsAbortControllerRef.current?.abort();
+  }, [selectedNewsOrganizationKey]);
+
+  useEffect(() => {
+    // Every profile data source starts at once. A single cancellation scope and
+    // sequence number prevent a slow response for (for example) Foothold from
+    // overwriting the next profile or a reset view.
+    profileAbortControllerRef.current?.abort();
+    if (sourceHydrationTimerRef.current !== null) {
+      window.clearTimeout(sourceHydrationTimerRef.current);
+      sourceHydrationTimerRef.current = null;
     }
-  }, [selectedCharityId]);
+    const requestId = ++profileRequestSequenceRef.current;
+
+    if (selectedCharityId === null) {
+      profileAbortControllerRef.current = null;
+      setSelectedCharityDetail(null);
+      setCharityGrants([]);
+      setGrantStatus("data_unavailable");
+      setSankeyData(null);
+      setScoreData(null);
+      setProfileLoading(IDLE_PROFILE_LOADING);
+      return;
+    }
+
+    const controller = new AbortController();
+    profileAbortControllerRef.current = controller;
+    setSelectedCharityDetail(null);
+    setCharityGrants([]);
+    setGrantStatus("data_unavailable");
+    setSankeyData(null);
+    setScoreData(null);
+    setProfileLoading({
+      ...INITIAL_PROFILE_LOADING,
+      source_record: selectedSourceFunderProfileKey && isBffOnline
+        ? profileSectionState("loading")
+        : profileSectionState("idle"),
+    });
+
+    void fetchCharityDetail(selectedCharityId, requestId, controller.signal);
+    void fetchCharityGrants(selectedCharityId, requestId, controller.signal);
+    void fetchSankeyData(selectedCharityId, requestId, controller.signal);
+    void fetchScoreData(selectedCharityId, requestId, controller.signal);
+    if (selectedSourceFunderProfileKey) {
+      void hydrateSourceFunderProfile(
+        selectedSourceFunderProfileKey,
+        selectedCharityId,
+        requestId,
+        controller.signal,
+      );
+    }
+
+    return () => {
+      controller.abort();
+      if (sourceHydrationTimerRef.current !== null) {
+        window.clearTimeout(sourceHydrationTimerRef.current);
+        sourceHydrationTimerRef.current = null;
+      }
+    };
+  }, [selectedCharityId, selectedSourceFunderProfileKey, isBffOnline]);
 
   useEffect(() => {
     if (activeTab === "admin") {
@@ -1078,6 +1255,22 @@ export default function App() {
     return () => window.removeEventListener("registry-header-state", receiveRegistryHeaderState);
   }, []);
 
+  useEffect(() => {
+    const receiveActiveSourceFunder = (event: Event) => {
+      const detail = (event as CustomEvent<ActiveSourceFunder | null>).detail;
+      if (!detail?.sourceFunderKey) {
+        setActiveSourceFunder(null);
+        return;
+      }
+      setActiveSourceFunder({
+        sourceFunderKey: detail.sourceFunderKey,
+        displayName: detail.displayName || "Source funder",
+      });
+    };
+    window.addEventListener("active-source-funder-change", receiveActiveSourceFunder);
+    return () => window.removeEventListener("active-source-funder-change", receiveActiveSourceFunder);
+  }, []);
+
   const autoLogin = async () => {
     try {
       const resp = await fetch(`${API_BASE}/api/auth/login`, {
@@ -1109,18 +1302,18 @@ export default function App() {
         const loggedIn = await autoLogin();
         if (loggedIn) {
           setIsBffOnline(true);
-          setApiError(null);
+          setApiError("health", null);
           // The online-state effects load the live dataset once. Calling the
           // same fetches here as well used to race the first directory render.
           return;
         }
       }
       setIsBffOnline(false);
-      setApiError("Backend unavailable. Values marked as illustrative are local prototype data.");
+      setApiError("health", "Backend unavailable. Values marked as illustrative are local prototype data.");
       console.warn("BFF offline. Falling back to mock dataset.");
     } catch {
       setIsBffOnline(false);
-      setApiError("Backend unavailable. Values marked as illustrative are local prototype data.");
+      setApiError("health", "Backend unavailable. Values marked as illustrative are local prototype data.");
       console.warn("BFF offline. Falling back to mock dataset.");
     } finally {
       setInitialLoading(false);
@@ -1135,12 +1328,13 @@ export default function App() {
       if (resp.ok) {
         const data = await resp.json();
         setStats(data);
+        setApiError("statistics", null);
       } else {
-        setApiError(`Statistics request failed (${resp.status}).`);
+        setApiError("statistics", `Statistics request failed (${resp.status}).`);
       }
     } catch (e) {
       console.error("Failed to fetch stats", e);
-      setApiError("Statistics are temporarily unavailable.");
+      setApiError("statistics", "Statistics are temporarily unavailable.");
     }
   };
 
@@ -1197,6 +1391,7 @@ export default function App() {
         setLoading(false);
         setLoadingMoreProfiles(false);
         directoryRequestRef.current = null;
+        setApiError("directory", null);
       }
       return;
     }
@@ -1239,15 +1434,15 @@ export default function App() {
         setCharities(current => append ? [...current, ...nextPage] : nextPage);
         setProfileOffset(offset + nextPage.length);
         setProfilesHaveMore(data.length > pageSize);
-        setApiError(null);
+        setApiError("directory", null);
       } else {
-        setApiError(`Directory request failed (${resp.status}).`);
+        setApiError("directory", `Directory request failed (${resp.status}).`);
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
       console.error("Failed to fetch charities", e);
       if (requestSequence === directoryRequestSequenceRef.current) {
-        setApiError("The organization directory is temporarily unavailable.");
+        setApiError("directory", "The organization directory is temporarily unavailable.");
       }
     } finally {
       if (requestSequence === directoryRequestSequenceRef.current) {
@@ -1262,46 +1457,162 @@ export default function App() {
     }
   };
 
-  const fetchCharityDetail = async (id: number) => {
-    if (!isBffOnline) {
-      // Mock fallback
-      const mock = MOCK_CHARITIES.find(c => c.registered_charity_number === id);
-      setSelectedCharityDetail(mock ? {
-        registered_charity_number: id,
-        suffix: 0,
-        all_details: {
-          charity_name: mock.charity_name,
-          email: "info@netlight-charity.org.uk",
-          phone: "+44 20 7946 0192",
-          web: "https://www.netlight-charity.org.uk",
-          address_line_one: "Netlight Amplify HQ",
-          address_line_two: "123 Ash Avenue",
-          address_line_three: "London",
-          address_post_code: "EC1A 1BB",
-          reg_status: "R"
-        },
-        financial_history: [
-          { financial_period_end_date: "2024-12-31", income: mock.latest_income, expenditure: mock.latest_expenditure },
-          { financial_period_end_date: "2023-12-31", income: (mock.latest_income || 0) * 0.95, expenditure: (mock.latest_expenditure || 0) * 0.92 },
-          { financial_period_end_date: "2022-12-31", income: (mock.latest_income || 0) * 0.90, expenditure: (mock.latest_expenditure || 0) * 0.88 }
-        ]
-      } : null);
-      return;
-    }
+  const fetchCharityDetail = async (id: number, requestId: number, signal: AbortSignal) => {
     try {
-      const resp = await fetch(`${API_BASE}/api/charities/${id}`, { credentials: "include" });
+      if (!isBffOnline) {
+        // Mock fallback
+        const mock = MOCK_CHARITIES.find(c => c.registered_charity_number === id);
+        if (isCurrentProfileRequest(requestId)) {
+          setSelectedCharityDetail(mock ? {
+            registered_charity_number: id,
+            suffix: 0,
+            all_details: {
+              charity_name: mock.charity_name,
+              email: "info@netlight-charity.org.uk",
+              phone: "+44 20 7946 0192",
+              web: "https://www.netlight-charity.org.uk",
+              address_line_one: "Netlight Amplify HQ",
+              address_line_two: "123 Ash Avenue",
+              address_line_three: "London",
+              address_post_code: "EC1A 1BB",
+              reg_status: "R"
+            },
+            financial_history: [
+              { financial_period_end_date: "2024-12-31", income: mock?.latest_income, expenditure: mock?.latest_expenditure },
+              { financial_period_end_date: "2023-12-31", income: mock?.latest_income == null ? null : mock.latest_income * 0.95, expenditure: mock?.latest_expenditure == null ? null : mock.latest_expenditure * 0.92 },
+              { financial_period_end_date: "2022-12-31", income: mock?.latest_income == null ? null : mock.latest_income * 0.90, expenditure: mock?.latest_expenditure == null ? null : mock.latest_expenditure * 0.88 }
+            ]
+          } : null);
+        }
+        return;
+      }
+      const resp = await fetch(`${API_BASE}/api/charities/${id}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!isCurrentProfileRequest(requestId)) return;
       if (resp.ok) {
         const data = await resp.json();
-        setSelectedCharityDetail(data);
-        setApiError(null);
+        if (!isCurrentProfileRequest(requestId)) return;
+        const cachedSourceRecord = selectedSourceFunderProfileKeyRef.current
+          ? sourceFunderProfilePayloadsRef.current.get(selectedSourceFunderProfileKeyRef.current)
+          : undefined;
+        const detail = cachedSourceRecord ? {
+          ...data,
+          ...cachedSourceRecord,
+          all_details: { ...data.all_details, ...cachedSourceRecord.all_details },
+        } : data;
+        setSelectedCharityDetail(detail);
+        setSelectedCharity(current => current?.registered_charity_number === id ? {
+          ...current,
+          charity_name: detail.all_details?.charity_name || current.charity_name,
+          reg_status: detail.all_details?.reg_status || current.reg_status,
+          reporting_status: detail.all_details?.reporting_status || current.reporting_status,
+          latest_income: detail.all_details?.latest_income ?? current.latest_income,
+          latest_expenditure: detail.all_details?.latest_expenditure ?? current.latest_expenditure,
+        } : current);
       } else {
+        const message = `Organization detail request failed (${resp.status}).`;
         setSelectedCharityDetail(null);
-        setApiError(`Organization detail request failed (${resp.status}).`);
+        setProfileSection(requestId, "detail", "error", message);
       }
     } catch (e) {
+      if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
       console.error("Failed to fetch charity details", e);
+      const message = "Organization details are temporarily unavailable.";
       setSelectedCharityDetail(null);
-      setApiError("Organization details are temporarily unavailable.");
+      setProfileSection(requestId, "detail", "error", message);
+    } finally {
+      finishProfileSection(requestId, "detail");
+    }
+  };
+
+  const hydrateSourceFunderProfile = async (
+    sourceFunderKey: string,
+    profileId: number,
+    requestId: number,
+    signal: AbortSignal,
+  ) => {
+    if (!isBffOnline) return;
+    const requestIsCurrent = () => (
+      !signal.aborted
+      && isCurrentProfileRequest(requestId)
+      && selectedSourceFunderProfileKeyRef.current === sourceFunderKey
+    );
+    setProfileSection(requestId, "source_record", "loading");
+    try {
+      const queued = await fetch(
+        `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(sourceFunderKey)}/profile-cache`,
+        { method: "POST", credentials: "include", signal },
+      );
+      if (!requestIsCurrent()) return;
+      if (!queued.ok && queued.status !== 409) {
+        const body = await queued.json().catch(() => ({}));
+        throw new Error(body.detail || `Could not start profile hydration (${queued.status}).`);
+      }
+
+      for (let attempt = 0; attempt <= 20; attempt += 1) {
+        const response = await fetch(
+          `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(sourceFunderKey)}/profile-cache`,
+          { credentials: "include", signal },
+        );
+        if (!requestIsCurrent()) return;
+
+        if (response.status === 404) {
+          if (attempt === 20) throw new Error("Profile hydration did not become available in time.");
+          await abortableDelay(450, signal, sourceHydrationTimerRef);
+          continue;
+        }
+
+        const cache = await response.json();
+        if (!requestIsCurrent()) return;
+        if (!response.ok) throw new Error(cache.detail || `Profile hydration failed (${response.status}).`);
+        if (cache.status === "pending") {
+          if (attempt === 20) throw new Error("Profile hydration did not complete in time.");
+          await abortableDelay(450, signal, sourceHydrationTimerRef);
+          continue;
+        }
+
+        if (cache.status === "failed") {
+          throw new Error(cache.error || "The local profile scraper record could not be loaded.");
+        }
+        if (cache.status !== "ready" || !cache.payload) {
+          throw new Error("Profile hydration returned an unexpected state.");
+        }
+
+        const payload = cache.payload as Record<string, any>;
+        sourceFunderProfilePayloadsRef.current.set(sourceFunderKey, payload);
+        if (!requestIsCurrent()) return;
+        setSelectedCharityDetail((current: any) => ({
+          ...(current || {}),
+          ...payload,
+          all_details: { ...(current?.all_details || {}), ...(payload.all_details || {}) },
+        }));
+        setSelectedCharity((current: Charity | null) => current?.registered_charity_number === profileId ? {
+          ...current,
+          charity_name: payload.all_details?.charity_name || current.charity_name,
+          reg_status: payload.all_details?.reg_status || current.reg_status,
+          reporting_status: payload.all_details?.reporting_status || current.reporting_status,
+          latest_income: payload.all_details?.latest_income ?? current.latest_income,
+          latest_expenditure: payload.all_details?.latest_expenditure ?? current.latest_expenditure,
+        } : current);
+        finishProfileSection(requestId, "source_record");
+        return;
+      }
+    } catch (error) {
+      if ((error as Error).name === "AbortError" || !requestIsCurrent()) return;
+      console.error("Could not hydrate source-funder profile", error);
+      setProfileSection(
+        requestId,
+        "source_record",
+        "error",
+        (error as Error).message || "Profile data is temporarily unavailable.",
+      );
+    } finally {
+      if (sourceHydrationTimerRef.current !== null && signal.aborted) {
+        window.clearTimeout(sourceHydrationTimerRef.current);
+        sourceHydrationTimerRef.current = null;
+      }
     }
   };
 
@@ -1346,8 +1657,32 @@ export default function App() {
     openSavedNewsRun(run);
   };
 
+  const cancelNewsResearch = (organizationKey: string | null, removeSavedRun = false) => {
+    newsRequestSequenceRef.current += 1;
+    newsAbortControllerRef.current?.abort();
+    newsAbortControllerRef.current = null;
+    setNewsSummary(null);
+    setNewsError(null);
+    setNewsLoading(false);
+    setNewsProgressStep(null);
+    setNewsRunMode(null);
+    if (removeSavedRun && organizationKey) {
+      setNewsRuns(current => current.filter(run => run.organizationKey !== organizationKey));
+    }
+  };
+
   const fetchFoundationNews = async (organization: Charity) => {
     const name = organization.charity_name;
+    const organizationKey = newsOrganizationKey(organization);
+    newsAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    newsAbortControllerRef.current = controller;
+    const requestSequence = ++newsRequestSequenceRef.current;
+    const isCurrentNewsRequest = () => (
+      newsRequestSequenceRef.current === requestSequence
+      && selectedNewsOrganizationKeyRef.current === organizationKey
+      && !controller.signal.aborted
+    );
     setNewsLoading(true);
     setNewsError(null);
     setNewsSummary(null);
@@ -1355,13 +1690,17 @@ export default function App() {
     setNewsRunMode(null);
 
     if (!isBffOnline) {
-      // Keep illustrative mode legible while preserving the same visible stages.
-      await new Promise(resolve => window.setTimeout(resolve, 350));
-      setNewsProgressStep("reading");
-      await new Promise(resolve => window.setTimeout(resolve, 500));
-      setNewsProgressStep("summarizing");
-      await new Promise(resolve => window.setTimeout(resolve, 550));
-      const briefing: NewsSummaryPayload = {
+      try {
+        // Keep illustrative mode legible while preserving the same visible stages.
+        await abortableDelay(350, controller.signal);
+        if (!isCurrentNewsRequest()) return;
+        setNewsProgressStep("reading");
+        await abortableDelay(500, controller.signal);
+        if (!isCurrentNewsRequest()) return;
+        setNewsProgressStep("summarizing");
+        await abortableDelay(550, controller.signal);
+        if (!isCurrentNewsRequest()) return;
+        const briefing: NewsSummaryPayload = {
           foundation: name,
           summary: `Here is a mock summary of recent news for "${name}". The foundation has been actively expanding its socio-economic support programs in the UK. They announced a new partnership with local food banks to address food insecurity. Furthermore, they are investing in digital transformation initiatives to streamline grant-making processes for small charities.`,
           sources: [
@@ -1370,19 +1709,40 @@ export default function App() {
           ],
           searched_weeks: 4,
           generated_at: new Date().toISOString(),
-      };
-      setNewsSummary(briefing);
-      setNewsRunMode("illustrative");
-      saveNewsRun(organization, briefing, "illustrative");
-      setNewsProgressStep(null);
-      setNewsLoading(false);
+        };
+        setNewsSummary(briefing);
+        setNewsRunMode("illustrative");
+        saveNewsRun(organization, briefing, "illustrative");
+      } catch (error) {
+        if ((error as Error).name !== "AbortError" && isCurrentNewsRequest()) {
+          setNewsError("News research could not be completed.");
+        }
+      } finally {
+        if (isCurrentNewsRequest()) {
+          setNewsProgressStep(null);
+          setNewsLoading(false);
+          if (newsAbortControllerRef.current === controller) newsAbortControllerRef.current = null;
+        }
+      }
       return;
     }
 
     try {
-      const resp = await fetch(`${API_BASE}/api/news/${encodeURIComponent(name)}/summary/stream`, {
+      const aliases = Array.from(new Set(selectedNewsAliases
+        .map(alias => alias.trim())
+        .filter(alias => alias && alias.localeCompare(name, undefined, { sensitivity: "accent" }) !== 0)));
+      const query = new URLSearchParams();
+      if (aliases.length) {
+        query.set("aliases", aliases.join("|"));
+        // A trading name can have sparse recent coverage. Search its full
+        // published history, clearly retaining source dates in the briefing.
+        query.set("lookback", "all");
+      }
+      const suffix = query.size ? `?${query.toString()}` : "";
+      const resp = await fetch(`${API_BASE}/api/news/${encodeURIComponent(name)}/summary/stream${suffix}`, {
         credentials: "include",
         headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
       });
       if (!resp.ok || !resp.body) {
         const errorDetail = await resp.json().catch(() => null);
@@ -1399,7 +1759,7 @@ export default function App() {
         const payload = JSON.parse(serialized) as Record<string, unknown>;
         if (event === "progress") {
           const step = payload.step;
-          if (step === "discovering" || step === "reading" || step === "summarizing") setNewsProgressStep(step);
+          if (isCurrentNewsRequest() && (step === "discovering" || step === "reading" || step === "summarizing")) setNewsProgressStep(step);
           return;
         }
         if (event === "error") throw new Error(typeof payload.detail === "string" ? payload.detail : "News research could not be completed.");
@@ -1414,6 +1774,7 @@ export default function App() {
             searched_weeks: typeof payload.searched_weeks === "number" ? payload.searched_weeks : 4,
             generated_at: typeof payload.generated_at === "string" ? payload.generated_at : new Date().toISOString(),
           };
+          if (!isCurrentNewsRequest()) return;
           setNewsSummary(briefing);
           setNewsRunMode("live");
           saveNewsRun(organization, briefing, "live");
@@ -1431,11 +1792,15 @@ export default function App() {
       if (buffer.trim()) handleEvent(buffer);
       if (!completed) throw new Error("News research ended before a briefing was returned.");
     } catch (e: any) {
+      if ((e as Error).name === "AbortError" || !isCurrentNewsRequest()) return;
       console.error("Failed to fetch news summary", e);
       setNewsError(e?.message || "An error occurred while connecting to the news service.");
     } finally {
-      setNewsLoading(false);
-      setNewsProgressStep(null);
+      if (isCurrentNewsRequest()) {
+        setNewsLoading(false);
+        setNewsProgressStep(null);
+        if (newsAbortControllerRef.current === controller) newsAbortControllerRef.current = null;
+      }
     }
   };
 
@@ -1569,7 +1934,19 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const openLinkedDirectoryProfile = (profile: { charity_id: number; name: string | null }) => {
+  const openLinkedDirectoryProfile = (profile: {
+    charity_id: number;
+    name: string | null;
+    sourceFunderKey?: string | null;
+    sourceFunderName?: string | null;
+  }) => {
+    profilePreviousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const sourceFunderKey = profile.sourceFunderKey || null;
+    selectedSourceFunderProfileKeyRef.current = sourceFunderKey;
+    setSelectedSourceFunderProfileKey(sourceFunderKey);
+    setSelectedNewsAliases(profile.sourceFunderName?.trim() ? [profile.sourceFunderName.trim()] : []);
     setSelectedCharity({
       registered_charity_number: profile.charity_id,
       suffix: 0,
@@ -1662,6 +2039,9 @@ export default function App() {
   };
 
   const openFavoriteProfile = (favorite: FavoriteProfile) => {
+    profilePreviousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setSelectedCharity(favorite.profile);
   };
 
@@ -1803,50 +2183,68 @@ export default function App() {
     }
   };
 
-  const fetchCharityGrants = async (id: number) => {
-    if (!isBffOnline) {
-      setCharityGrants([]);
-      setGrantStatus("transaction_data_unavailable");
-      return;
-    }
+  const fetchCharityGrants = async (id: number, requestId: number, signal: AbortSignal) => {
     try {
-      const resp = await fetch(`${API_BASE}/api/charities/${id}/grants`, { credentials: "include" });
+      if (!isBffOnline) {
+        if (isCurrentProfileRequest(requestId)) {
+          setCharityGrants([]);
+          setGrantStatus("transaction_data_unavailable");
+        }
+        return;
+      }
+      const resp = await fetch(`${API_BASE}/api/charities/${id}/grants`, {
+        credentials: "include",
+        signal,
+      });
+      if (!isCurrentProfileRequest(requestId)) return;
       if (resp.ok) {
         const data = await resp.json();
+        if (!isCurrentProfileRequest(requestId)) return;
         setCharityGrants(data.grants || []);
         setGrantStatus(data.status || "data_unavailable");
       } else {
+        const message = `Grant transaction request failed (${resp.status}).`;
         setCharityGrants([]);
         setGrantStatus("request_failed");
-        setApiError(`Grant transaction request failed (${resp.status}).`);
+        setProfileSection(requestId, "grants", "error", message);
       }
     } catch (e) {
+      if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
       console.error("Failed to fetch grants", e);
+      const message = "Grant transactions are temporarily unavailable.";
       setCharityGrants([]);
       setGrantStatus("request_failed");
-      setApiError("Grant transactions are temporarily unavailable.");
+      setProfileSection(requestId, "grants", "error", message);
+    } finally {
+      finishProfileSection(requestId, "grants");
     }
   };
 
-  const fetchSankeyData = async (id: number) => {
-    if (!isBffOnline) {
-      setSankeyData({
-        status: "transaction_data_unavailable",
-        nodes: [],
-        links: [],
-        currency: null,
-        excludedCount: 0,
-      });
-      return;
-    }
+  const fetchSankeyData = async (id: number, requestId: number, signal: AbortSignal) => {
     try {
-      const resp = await fetch(`${API_BASE}/api/charities/${id}/sankey`, { credentials: "include" });
+      if (!isBffOnline) {
+        if (isCurrentProfileRequest(requestId)) {
+          setSankeyData({
+            status: "transaction_data_unavailable",
+            nodes: [],
+            links: [],
+            currency: null,
+            excludedCount: 0,
+          });
+        }
+        return;
+      }
+      const resp = await fetch(`${API_BASE}/api/charities/${id}/sankey`, {
+        credentials: "include",
+        signal,
+      });
+      if (!isCurrentProfileRequest(requestId)) return;
       if (resp.ok) {
         const data = await resp.json();
-        // Parse names directly to index integers for Recharts Sankey
+        if (!isCurrentProfileRequest(requestId)) return;
+        // Parse names directly to index integers for Recharts Sankey.
         const nodeMap = new Map();
         data.nodes.forEach((n: any, idx: number) => nodeMap.set(n.id, idx));
-
         const formattedLinks = data.links.map((l: any) => ({
           source: nodeMap.get(l.source),
           target: nodeMap.get(l.target),
@@ -1862,38 +2260,133 @@ export default function App() {
           excludedCount: data.metadata?.excluded_grant_count || 0,
         });
       } else {
+        const message = `Funding relationship request failed (${resp.status}).`;
         setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
-        setApiError(`Sankey request failed (${resp.status}).`);
+        setProfileSection(requestId, "relationships", "error", message);
       }
     } catch (e) {
+      if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
       console.error("Failed to fetch sankey metrics", e);
+      const message = "Grant-flow data is temporarily unavailable.";
       setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
-      setApiError("Grant-flow data is temporarily unavailable.");
+      setProfileSection(requestId, "relationships", "error", message);
+    } finally {
+      finishProfileSection(requestId, "relationships");
     }
   };
 
-  const fetchScoreData = async (id: number) => {
-    if (!isBffOnline) {
-      setScoreData(null);
-      return;
-    }
+  const fetchScoreData = async (id: number, requestId: number, signal: AbortSignal) => {
     try {
+      if (!isBffOnline) {
+        if (isCurrentProfileRequest(requestId)) setScoreData(null);
+        return;
+      }
       const resp = await fetch(`${API_BASE}/api/charities/${id}/score`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({}),
+        signal,
       });
+      if (!isCurrentProfileRequest(requestId)) return;
       if (resp.ok) {
-        setScoreData(await resp.json());
+        const data = await resp.json();
+        if (!isCurrentProfileRequest(requestId)) return;
+        setScoreData(data);
       } else {
+        const message = `Experimental score request failed (${resp.status}).`;
         setScoreData(null);
-        setApiError(`Experimental score request failed (${resp.status}).`);
+        setProfileSection(requestId, "score", "error", message);
       }
     } catch (e) {
+      if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
       console.error("Failed to fetch experimental relevance score", e);
+      const message = "The experimental relevance score is temporarily unavailable.";
       setScoreData(null);
-      setApiError("The experimental relevance score is temporarily unavailable.");
+      setProfileSection(requestId, "score", "error", message);
+    } finally {
+      finishProfileSection(requestId, "score");
+    }
+  };
+
+  const clearActiveProfileSafely = () => {
+    // Invalidate first so no late response can re-open or repopulate the
+    // profile after the user has returned to the stable directory view.
+    profileRequestSequenceRef.current += 1;
+    profileAbortControllerRef.current?.abort();
+    profileAbortControllerRef.current = null;
+    cancelNewsResearch(selectedNewsOrganizationKeyRef.current);
+    selectedSourceFunderProfileKeyRef.current = null;
+    setSelectedSourceFunderProfileKey(null);
+    setSelectedNewsAliases([]);
+    setSelectedCharity(null);
+    setSelectedCharityDetail(null);
+    setCharityGrants([]);
+    setGrantStatus("data_unavailable");
+    setSankeyData(null);
+    setScoreData(null);
+    setProfileLoading(IDLE_PROFILE_LOADING);
+    setNewsSummary(null);
+    setNewsError(null);
+    setNewsLoading(false);
+    setNewsProgressStep(null);
+    setNewsRunMode(null);
+    setApiError("source_reset", null);
+    const previousFocus = profilePreviousFocusRef.current;
+    profilePreviousFocusRef.current = null;
+    window.requestAnimationFrame(() => previousFocus?.focus());
+  };
+
+  useEffect(() => {
+    if (!selectedCharity) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        clearActiveProfileSafely();
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    window.requestAnimationFrame(() => profileModalRef.current?.focus());
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [selectedCharity]);
+
+  const resetActiveSourceFunderToObserved = async () => {
+    const target = activeSourceFunder;
+    if (!target || !isBffOnline) {
+      // The NL control is also available while viewing an ordinary profile.
+      // In that case there is no source link to mutate, but its latest local
+      // news research still belongs to the profile being safely cleared.
+      cancelNewsResearch(selectedNewsOrganizationKeyRef.current, true);
+      clearActiveProfileSafely();
+      return;
+    }
+
+    setSourceFunderResetPending(true);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(target.sourceFunderKey)}/reset-to-observed`,
+        { method: "POST", credentials: "include" },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || `Could not reset ${target.displayName} to observed-only (${response.status}).`);
+      }
+      window.dispatchEvent(new CustomEvent("source-funder-reset-to-observed", {
+        detail: { sourceFunderKey: target.sourceFunderKey },
+      }));
+      sourceFunderProfilePayloadsRef.current.delete(target.sourceFunderKey);
+      // News briefings are derived from this profile link and are stored only
+      // in this browser.  Reset removes the matching latest briefing as well
+      // as cancelling a search that could otherwise finish after the reset.
+      cancelNewsResearch(selectedNewsOrganizationKeyRef.current, true);
+      setApiError("source_reset", null);
+      setActiveSourceFunder(null);
+      clearActiveProfileSafely();
+    } catch (error) {
+      console.error("Could not reset source-funder profile link", error);
+      setApiError("source_reset", (error as Error).message || `Could not reset ${target.displayName} to observed-only.`);
+    } finally {
+      setSourceFunderResetPending(false);
     }
   };
 
@@ -2046,7 +2539,7 @@ export default function App() {
       window.dispatchEvent(new Event("donor-directory-reset"));
     } else if (activeTab === "directory" && directoryMode === "profiles") {
       resetDirectoryFilters();
-      setSelectedCharity(null);
+      clearActiveProfileSafely();
     } else if (activeTab === "directory" && directoryMode === "registry") {
       window.dispatchEvent(new Event("registry-reset-filters"));
     }
@@ -2177,7 +2670,14 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="user-profile">
-            <div className="user-avatar">NL</div>
+            <button
+              type="button"
+              className="user-avatar user-avatar-reset"
+              onClick={() => void resetActiveSourceFunderToObserved()}
+              disabled={sourceFunderResetPending}
+              title={activeSourceFunder ? `Reset ${activeSourceFunder.displayName} to observed-only` : "Safely clear the active organization profile"}
+              aria-label={activeSourceFunder ? `Remove the linked profile for ${activeSourceFunder.displayName} while retaining its observed grants` : "Safely clear the active organization profile and cancel its background loading"}
+            >{sourceFunderResetPending ? <LoaderCircle className="user-avatar-reset-spinner" size={17} aria-hidden="true" /> : "NL"}</button>
             <div className="user-info">
               <span className="user-name">Netlight Guest</span>
               <span className="user-role">Administrator</span>
@@ -2209,9 +2709,9 @@ export default function App() {
 
         {/* Dynamic Pages */}
         <div className="page-container">
-          {(authError || apiError) && (
+          {visibleApiErrors.length > 0 && (
             <div className="data-notice data-notice-error" role="status">
-              {authError || apiError}
+              {visibleApiErrors.join(" ")}
             </div>
           )}
           {!isBffOnline && (
@@ -2262,7 +2762,12 @@ export default function App() {
                   onBackToLandscape={() => closeFavoriteDonorWorkspace()}
                   onOpenOrganizationResearch={() => navigateApplication("research")}
                   onOpenRegistrySearch={() => navigateApplication("registry")}
-                  onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
+                  onOpenProfile={(profileId, profileName, sourceFunderKey, sourceFunderName) => openLinkedDirectoryProfile({
+                    charity_id: profileId,
+                    name: profileName,
+                    sourceFunderKey,
+                    sourceFunderName,
+                  })}
                   favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
                   onToggleFavoriteDonor={toggleFavoriteDonor}
                   favoriteDonorRequestKeys={favorites.donorRequests.map(request => request.key)}
@@ -2619,9 +3124,11 @@ export default function App() {
                   navigateApplication("registry");
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
-                onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({
+                onOpenProfile={(profileId, profileName, sourceFunderKey, sourceFunderName) => openLinkedDirectoryProfile({
                   charity_id: profileId,
                   name: profileName,
+                  sourceFunderKey,
+                  sourceFunderName,
                 })}
                 favoriteDonorKeys={favorites.donors.map(donor => donor.key)}
                 onToggleFavoriteDonor={toggleFavoriteDonor}
@@ -3206,7 +3713,7 @@ export default function App() {
           zIndex: 100,
           padding: "24px"
         }}>
-          <div className="glass-card" style={{
+          <div ref={profileModalRef} tabIndex={-1} className="glass-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" style={{
             width: "100%",
             maxWidth: "960px",
             maxHeight: "90vh",
@@ -3223,7 +3730,7 @@ export default function App() {
                 <span className="charity-card-id">
                   {selectedCharity.primary_source === "Philea" ? `Philea #${selectedCharity.source_record_id}` : `#${selectedCharity.registered_charity_number}`}
                 </span>
-                <h2 style={{ fontSize: "22px", fontWeight: "700", marginTop: "4px" }}>{selectedCharity.charity_name}</h2>
+                <h2 id="profile-modal-title" style={{ fontSize: "22px", fontWeight: "700", marginTop: "4px" }}>{selectedCharity.charity_name}</h2>
                 {isBffOnline && <div className="profile-fit-summary" aria-label="Target-profile relevance score">
                   <span>Profile fit</span>
                   <strong>{scoreData?.score === null ? "—" : scoreData ? `${Math.round(scoreData.score)}/100` : "Loading…"}</strong>
@@ -3241,19 +3748,45 @@ export default function App() {
                 <button
                   className="btn btn-secondary"
                   style={{ padding: "6px 12px" }}
-                  onClick={() => { setSelectedCharity(null); setSankeyData(null); }}
+                  aria-label="Close profile"
+                  onClick={clearActiveProfileSafely}
                 >
                   Close Profile
                 </button>
               </div>
             </div>
 
+            {profileIsLoading && (
+              <div className="profile-background-loading" role="status" aria-live="polite">
+                <LoaderCircle className="profile-background-loading-spinner" size={22} aria-hidden="true" />
+                <div className="profile-background-loading-copy">
+                  <strong>Loading profile data in the background</strong>
+                  <span>Core profile, source history, grant activity, relationships, and relevance are requested in parallel.</span>
+                </div>
+                <ul className="profile-background-loading-tasks" aria-label="Profile data loading status">
+                  <li className={profileLoading.detail.status === "loading" ? "is-loading" : "is-ready"}>Profile</li>
+                  {selectedSourceFunderProfileKey && <li className={profileLoading.source_record.status === "loading" ? "is-loading" : "is-ready"}>Source history</li>}
+                  <li className={profileLoading.grants.status === "loading" ? "is-loading" : "is-ready"}>Grants</li>
+                  <li className={profileLoading.relationships.status === "loading" ? "is-loading" : "is-ready"}>Relationships</li>
+                  <li className={profileLoading.score.status === "loading" ? "is-loading" : "is-ready"}>Fit</li>
+                </ul>
+              </div>
+            )}
+
+            {profileSectionErrors.length > 0 && (
+              <div className="data-notice data-notice-error" role="status" aria-live="polite">
+                {profileSectionErrors.map(([key, section]) => (
+                  <div key={key}><strong>{key.replaceAll("_", " ")}:</strong> {section.error}</div>
+                ))}
+              </div>
+            )}
+
             <section className="news-briefing-card" aria-labelledby="ai-news-briefing-title">
               <div className="news-briefing-heading">
                 <div>
                   <span>AI research</span>
                   <h3 id="ai-news-briefing-title">News briefing</h3>
-                  <p>Recent external coverage, summarized from cited source articles.</p>
+                  <p>Recent external coverage, summarized from cited source articles.{selectedNewsAliases.length ? ` Also searching linked names: ${selectedNewsAliases.join(", ")}.` : ""}</p>
                 </div>
                 <div className="news-briefing-actions">
                   {savedNewsRun && !newsLoading && (
@@ -3334,6 +3867,12 @@ export default function App() {
             </section>
 
             {/* Contact details & Address */}
+            {profileLoading.detail.status === "loading" && !selectedCharityDetail && (
+              <div className="profile-section-loading" role="status">
+                <LoaderCircle size={18} aria-hidden="true" />
+                <span>Loading core profile information…</span>
+              </div>
+            )}
             {selectedCharityDetail && selectedCharityDetail.all_details && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", backgroundColor: "rgba(0,0,0,0.02)", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
                 <div>
@@ -3431,7 +3970,12 @@ export default function App() {
                   </div>
                   <span className="status-badge profile-score-status">Experimental score</span>
                 </div>
-                {scoreData ? (
+                {profileLoading.score.status === "loading" ? (
+                  <div className="profile-section-loading" role="status">
+                    <LoaderCircle size={18} aria-hidden="true" />
+                    <span>Calculating target-profile relevance…</span>
+                  </div>
+                ) : scoreData ? (
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px", marginBottom: "16px" }}>
                       <div><span className="kpi-label">Relevance</span><div className="kpi-value" style={{ fontSize: "22px" }}>{scoreData.score === null ? "Unavailable" : `${scoreData.score.toFixed(1)}/100`}</div></div>
@@ -3440,14 +3984,28 @@ export default function App() {
                     <details className="profile-score-breakdown">
                       <summary>Why this score?</summary>
                       <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
-                        {Object.entries(scoreData.components).map(([name, component]) => (
-                          <div key={name} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "12px", fontSize: "12px", padding: "8px 10px", border: "1px solid var(--border-glass)", borderRadius: "6px" }}>
-                            <span style={{ color: "var(--text-secondary)" }}>{name.replaceAll("_", " ")} · weight {Math.round(component.weight * 100)}%</span>
-                            <span style={{ fontWeight: 600, color: component.available ? "var(--text-primary)" : "var(--text-muted)" }}>
-                              {component.available ? `${component.score?.toFixed(1)}/100` : component.missing_reason || "Unavailable"}
-                            </span>
-                          </div>
-                        ))}
+                        {Object.entries(scoreData.components).map(([name, component]) => {
+                          const historicalEvidence = name === "historical_grant_size_fit" ? component.evidence[0] : null;
+                          const observedAverage = historicalEvidence?.observed_average_grant;
+                          const targetAverage = historicalEvidence?.target_average_grant;
+                          const evidenceCurrency = historicalEvidence?.currency;
+                          const hasGrantComparison = (
+                            typeof observedAverage === "number"
+                            && typeof targetAverage === "number"
+                            && typeof evidenceCurrency === "string"
+                          );
+                          return (
+                            <div key={name} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "12px", fontSize: "12px", padding: "8px 10px", border: "1px solid var(--border-glass)", borderRadius: "6px" }}>
+                              <span style={{ color: "var(--text-secondary)" }}>{name.replaceAll("_", " ")} · weight {Math.round(component.weight * 100)}%</span>
+                              <span style={{ fontWeight: 600, color: component.available ? "var(--text-primary)" : "var(--text-muted)", textAlign: "right" }}>
+                                {component.available ? `${component.score?.toFixed(1)}/100` : component.missing_reason || "Unavailable"}
+                                {hasGrantComparison && <small style={{ display: "block", marginTop: "2px", color: "var(--text-muted)", fontWeight: 500 }}>
+                                  {formatCurrency(observedAverage, evidenceCurrency)} observed vs {formatCurrency(targetAverage, evidenceCurrency)} target
+                                </small>}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                       <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px" }}>
                         Version {scoreData.score_version}. The score is the weighted sum of all criteria; missing criteria contribute zero and are reflected in completeness.
@@ -3470,7 +4028,12 @@ export default function App() {
                 </div>
                 {sankeyData?.currency && <strong>{sankeyData.currency === "EUR" ? "EUR · ECB converted" : `${sankeyData.currency} · original amounts`}</strong>}
               </div>
-              {selectedCharityFlowRows.length ? (
+              {profileLoading.relationships.status === "loading" ? (
+                <div className="profile-section-loading" role="status">
+                  <LoaderCircle size={18} aria-hidden="true" />
+                  <span>Loading observed funding relationships…</span>
+                </div>
+              ) : selectedCharityFlowRows.length ? (
                 <div className="grant-relationship-layout">
                   <div className="grant-relationship-list">
                     {selectedCharityFlowRows.map(row => (
@@ -3556,7 +4119,7 @@ export default function App() {
             {/* Individual Grants Transaction Table */}
             <div>
               <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "4px", color: "var(--text-secondary)" }}>Observed Grant Transactions</h3>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>Cached 360Giving records · EUR values use the historical ECB award-date reference rate; original source amounts are retained.</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>Cached 360Giving records · EUR values use the historical ECB average for the award month; original source amounts are retained.</div>
               <div className="table-container" style={{ maxHeight: "250px", overflowY: "auto" }}>
                 <table className="custom-table">
                   <thead>
@@ -3569,7 +4132,13 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {charityGrants.map((gr, idx) => (
+                    {profileLoading.grants.status === "loading" ? (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                          <span className="profile-table-loading"><LoaderCircle size={16} aria-hidden="true" /> Loading observed grant transactions…</span>
+                        </td>
+                      </tr>
+                    ) : charityGrants.map((gr, idx) => (
                       <tr key={idx}>
                         <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{gr.grant_id}</td>
                         <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : (gr.funding_name || "Unknown funder")}</td>
@@ -3583,7 +4152,7 @@ export default function App() {
                         <td style={{ whiteSpace: "nowrap" }}>{gr.date}</td>
                       </tr>
                     ))}
-                    {charityGrants.length === 0 && (
+                    {profileLoading.grants.status !== "loading" && charityGrants.length === 0 && (
                       <tr>
                         <td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                           {grantStatus === "transaction_data_unavailable"

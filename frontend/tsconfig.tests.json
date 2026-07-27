@@ -11,5 +11,5 @@
     "outDir": ".test-dist",
     "noEmit": false
   },
-  "include": ["src/lib/grantScope.ts", "tests/grantScope.test.ts"]
+  "include": ["src/lib/*.ts", "tests/*.test.ts"]
 }

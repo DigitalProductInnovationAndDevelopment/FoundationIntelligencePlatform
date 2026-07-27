@@ -135,6 +135,25 @@ class TestRelevanceScore(unittest.TestCase):
             ["scotland", "united kingdom"],
         )
 
+    def test_observed_grant_history_can_complete_thematic_and_geographic_fit(self):
+        organization = {
+            "programme_areas_source": [],
+            "programme_areas_inferred": ["tech-enablement"],
+            "observed_grant_programme_areas": ["Education", "Health"],
+            "geographic_focus_source": [],
+            "geographic_focus_inferred": [],
+            "observed_beneficiary_geographies": ["United Kingdom", "Ghana"],
+        }
+
+        result = score_relevance(organization, target_profile(), {}, self.config)
+
+        self.assertEqual(result["components"]["thematic_fit"]["score"], 100.0)
+        self.assertEqual(result["components"]["geographic_fit"]["score"], 100.0)
+        self.assertEqual(
+            result["components"]["geographic_fit"]["evidence"][0]["matched_values"],
+            ["ghana", "united kingdom"],
+        )
+
     def test_missing_programme_and_geography_are_disclosed(self):
         organization = strong_organization()
         organization["programme_areas_source"] = []

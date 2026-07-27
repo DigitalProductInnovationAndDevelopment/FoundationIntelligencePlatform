@@ -17,7 +17,11 @@ import pycountry
 
 from bff.config import DATA_PATH, DB_PATH
 from bff.utils.logging import logger
-from data.db_loader import REQUIRED_SCHEMA, migrate_grant_overview_schema
+from data.db_loader import (
+    REQUIRED_SCHEMA,
+    migrate_grant_overview_schema,
+    migrate_source_funder_interaction_schema,
+)
 from data.registry import (
     REGISTRY_FTS_TABLE,
     REGISTRY_LINK_TABLE,
@@ -544,6 +548,7 @@ def _beneficiary_index_terms(normalized_raw: Any, source_raw: Any) -> set[str]:
 def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, int]:
     """Rebuild derived filter indexes from grant facts in one transaction."""
     migrate_grant_overview_schema(connection)
+    migrate_source_funder_interaction_schema(connection)
     cursor = connection.cursor()
     cursor.execute("DELETE FROM grant_beneficiary_terms")
     cursor.execute("DELETE FROM grant_beneficiary_countries")
@@ -553,6 +558,23 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
     revision = _grant_overview_data_revision(connection)
     valid_profile_ids = {
         int(row[0]) for row in connection.execute("SELECT charity_id FROM charities")
+    }
+    observed_only_rows = list(connection.execute(
+            """
+            SELECT source_namespace, source_organization_id
+            FROM source_funder_link_overrides
+            WHERE link_mode = 'observed_only'
+            """
+        ))
+    observed_only_source_ids = {
+        (str(row[0] or "").strip(), str(row[1] or "").strip())
+        for row in observed_only_rows
+        if not str(row[1] or "").startswith("source-funder-key:")
+    }
+    observed_only_funder_keys = {
+        str(row[1])[len("source-funder-key:"):]
+        for row in observed_only_rows
+        if str(row[1] or "").startswith("source-funder-key:")
     }
     rows = connection.execute(
         """
@@ -664,12 +686,17 @@ def rebuild_grant_overview_indexes(connection: sqlite3.Connection) -> Dict[str, 
                 raw_profile_id = int(funder_profile_id) if funder_profile_id is not None else None
             except (TypeError, ValueError):
                 raw_profile_id = None
-            linked_profile_id = (
-                raw_profile_id if raw_profile_id in valid_profile_ids else None
-            )
             normalized_fallback = (
                 normalize_organization_name(funder_name)
                 if identity_method == "normalized_name_fallback" else None
+            )
+            source_identity = (source_name, str(funder_source_id or "").strip())
+            linked_profile_id = (
+                raw_profile_id
+                if raw_profile_id in valid_profile_ids
+                and source_identity not in observed_only_source_ids
+                and funder_key not in observed_only_funder_keys
+                else None
             )
             country_count = len(countries)
             for country in countries:
@@ -1156,6 +1183,36 @@ class CharityRepository(ABC):
         """Fallback for repositories without source-funder support."""
         return None
 
+    async def reset_source_funder_to_observed(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fallback for repositories without mutable source-funder storage."""
+        return None
+
+    async def relink_source_funder_profile(
+        self, source_funder_key: str, profile_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Fallback for an explicit, user-confirmed profile relink."""
+        return None
+
+    def queue_source_funder_profile_hydration(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fallback for repositories without a local profile-cache store."""
+        return None
+
+    def hydrate_source_funder_profile(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fallback for repositories without a local profile-cache store."""
+        return None
+
+    def get_source_funder_profile_cache(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fallback for repositories without a local profile-cache store."""
+        return None
+
     @staticmethod
     def _overview_award_date(value: Any) -> Optional[str]:
         """Return a strict ISO award date without accepting partial/invalid dates."""
@@ -1605,7 +1662,7 @@ class CharityRepository(ABC):
         if auto_converted_eur:
             monetary_minor = "f.eur_amount_minor"
             monetary_status = "f.eur_amount_status"
-            monetary_eligible = "(f.conversion_status IN ('native_eur','ecb_award_date','ecb_previous_business_day') AND f.eur_amount_status <> 'missing')"
+            monetary_eligible = "(f.conversion_status IN ('native_eur','ecb_monthly_average','ecb_award_date','ecb_previous_business_day') AND f.eur_amount_status <> 'missing')"
         else:
             monetary_minor = "f.original_amount_minor"
             monetary_status = "f.original_amount_status"
@@ -2233,7 +2290,7 @@ class CharityRepository(ABC):
             row["monetary_eligible"] = bool(
                 row["amount_eur"] is not None
                 and str(row.get("conversion_status") or "")
-                in {"native_eur", "ecb_award_date", "ecb_previous_business_day"}
+                in {"native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day"}
             ) if auto_converted_eur else True
         monetary_rows = [row for row in scoped_rows if row["monetary_eligible"]]
         conversion_excluded_count = len(scoped_rows) - len(monetary_rows) if auto_converted_eur else 0
@@ -2637,7 +2694,7 @@ class CharityRepository(ABC):
         auto_converted_eur = requested_currency in {None, "AUTO"}
         display_currency = "EUR" if auto_converted_eur else requested_currency
         valid_conversion_statuses = {
-            "native_eur", "ecb_award_date", "ecb_previous_business_day",
+            "native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day",
         }
         selected_rows: List[Dict[str, Any]] = []
         for row in rows:
@@ -2949,7 +3006,7 @@ class CharityRepository(ABC):
             row["monetary_eligible"] = bool(
                 row["amount_eur"] is not None
                 and str(row.get("conversion_status") or "")
-                in {"native_eur", "ecb_award_date", "ecb_previous_business_day"}
+                in {"native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day"}
             ) if auto_converted_eur else True
         monetary_rows = [row for row in scoped_rows if row["monetary_eligible"]]
         valid_dated_rows = [row for row in monetary_rows if row["award_date"]]
@@ -3155,7 +3212,7 @@ class CharityRepository(ABC):
             scoped_rows.append(row)
 
         groups: Dict[str, Dict[str, Any]] = {}
-        valid_auto_statuses = {"native_eur", "ecb_award_date", "ecb_previous_business_day"}
+        valid_auto_statuses = {"native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day"}
         for row in scoped_rows if availability_status == "available" else []:
             if not str(row.get("funding_name") or "").strip() and not str(row.get("funding_org_source_id") or "").strip():
                 # There is no transparent source-funder identity for this row;
@@ -3359,7 +3416,7 @@ class CharityRepository(ABC):
         """
 
         valid_auto_statuses = {
-            "native_eur", "ecb_award_date", "ecb_previous_business_day",
+            "native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day",
         }
         flow_currency = display_currency or ("EUR" if auto_converted_eur else None)
         donor_label = (
@@ -3659,7 +3716,7 @@ class CharityRepository(ABC):
         eligible = (
             "fact.eur_amount_status IN ('valid', 'zero') "
             "AND fact.conversion_status IN "
-            "('native_eur', 'ecb_award_date', 'ecb_previous_business_day')"
+            "('native_eur', 'ecb_monthly_average', 'ecb_award_date', 'ecb_previous_business_day')"
             if auto_converted_eur
             else "fact.original_amount_status IN ('valid', 'zero')"
         )
@@ -4235,7 +4292,7 @@ class CharityRepository(ABC):
         auto_converted_eur = requested_currency in {None, "AUTO"}
         display_currency = "EUR" if auto_converted_eur else requested_currency
         valid_conversion_statuses = {
-            "native_eur", "ecb_award_date", "ecb_previous_business_day",
+            "native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day",
         }
         conn = self._get_conn()
         conn.row_factory = sqlite3.Row
@@ -5206,6 +5263,7 @@ class SQLiteCharityRepository(CharityRepository):
                 # migration; avoiding repeated DDL keeps BFF startup quick.
                 if not {REGISTRY_TABLE, REGISTRY_LINK_TABLE, REGISTRY_FTS_TABLE}.issubset(tables):
                     migrate_registry_schema(conn, synchronize_fts=False)
+                migrate_source_funder_interaction_schema(conn)
                 conn.commit()
             finally:
                 conn.close()
@@ -5835,7 +5893,7 @@ class SQLiteCharityRepository(CharityRepository):
                 WHERE funding_charity_id IS NOT NULL
                   AND amount_eur IS NOT NULL
                   AND conversion_status IN (
-                    'native_eur', 'ecb_award_date', 'ecb_previous_business_day'
+                    'native_eur', 'ecb_monthly_average', 'ecb_award_date', 'ecb_previous_business_day'
                   )
                 GROUP BY funding_charity_id
                 HAVING {' AND '.join(average_grant_conditions)}
@@ -5867,17 +5925,30 @@ class SQLiteCharityRepository(CharityRepository):
             for start in range(0, len(charity_ids), 900):
                 id_batch = charity_ids[start : start + 900]
                 placeholders = ",".join("?" for _ in id_batch)
-                statistics_query = f"""
-                    SELECT funding_charity_id, UPPER(currency), AVG(amount), COUNT(*)
-                    FROM grants
-                    WHERE funding_charity_id IN ({placeholders})
-                      AND amount > 0 AND currency IS NOT NULL
-                """
                 statistics_params: List[Any] = list(id_batch)
-                if requested_currency:
-                    statistics_query += " AND UPPER(currency) = ?"
-                    statistics_params.append(requested_currency)
-                statistics_query += " GROUP BY funding_charity_id, UPPER(currency)"
+                if requested_currency == "EUR":
+                    statistics_query = f"""
+                        SELECT funding_charity_id, 'EUR', AVG(amount_eur), COUNT(*)
+                        FROM grants
+                        WHERE funding_charity_id IN ({placeholders})
+                          AND amount_eur > 0
+                          AND conversion_status IN (
+                              'native_eur', 'ecb_monthly_average', 'ecb_award_date',
+                              'ecb_previous_business_day'
+                          )
+                    """
+                    statistics_query += " GROUP BY funding_charity_id"
+                else:
+                    statistics_query = f"""
+                        SELECT funding_charity_id, UPPER(currency), AVG(amount), COUNT(*)
+                        FROM grants
+                        WHERE funding_charity_id IN ({placeholders})
+                          AND amount > 0 AND currency IS NOT NULL
+                    """
+                    if requested_currency:
+                        statistics_query += " AND UPPER(currency) = ?"
+                        statistics_params.append(requested_currency)
+                    statistics_query += " GROUP BY funding_charity_id, UPPER(currency)"
                 cursor.execute(statistics_query, statistics_params)
                 for charity_id, currency, average_amount, grant_count in cursor.fetchall():
                     grouped_statistics.setdefault(int(charity_id), []).append((currency, average_amount, grant_count))
@@ -7061,7 +7132,7 @@ class SQLiteCharityRepository(CharityRepository):
                 excluded_reasons["non_positive_amount"] = excluded_reasons.get("non_positive_amount", 0) + 1
                 continue
             if auto_converted_eur and str(conversion_status or "") not in {
-                "native_eur", "ecb_award_date", "ecb_previous_business_day"
+                "native_eur", "ecb_monthly_average", "ecb_award_date", "ecb_previous_business_day"
             }:
                 excluded_reasons["conversion_unavailable"] = excluded_reasons.get("conversion_unavailable", 0) + 1
                 continue
@@ -7149,23 +7220,69 @@ class SQLiteCharityRepository(CharityRepository):
         )
         row = cursor.fetchone()
         requested_currency = str(profile.get("currency") or "").upper()
-        cursor.execute("""
-            SELECT UPPER(currency), AVG(amount), COUNT(*)
-            FROM grants
-            WHERE funding_charity_id = ? AND amount > 0 AND currency IS NOT NULL
-            GROUP BY UPPER(currency)
-        """, (charity_id,))
+        if requested_currency == "EUR":
+            # Historical relevance must use the same ECB-converted EUR values
+            # shown in the funding-history and relationship views.  Mixing
+            # original GBP values into an EUR target silently distorts fit.
+            cursor.execute("""
+                SELECT 'EUR', AVG(amount_eur), COUNT(*)
+                FROM grants
+                WHERE funding_charity_id = ? AND amount_eur > 0
+                  AND conversion_status IN (
+                      'native_eur', 'ecb_monthly_average', 'ecb_award_date',
+                      'ecb_previous_business_day'
+                  )
+            """, (charity_id,))
+        else:
+            cursor.execute("""
+                SELECT UPPER(currency), AVG(amount), COUNT(*)
+                FROM grants
+                WHERE funding_charity_id = ? AND amount > 0 AND currency IS NOT NULL
+                GROUP BY UPPER(currency)
+            """, (charity_id,))
         grant_rows = cursor.fetchall()
+        observed_programme_areas: set[str] = set()
+        for column in ("programme_area_source", "programme_area_inferred"):
+            cursor.execute(f"""
+                SELECT DISTINCT json_each.value
+                FROM grants
+                JOIN json_each(
+                    CASE WHEN json_valid({column}) THEN {column} ELSE '[]' END
+                )
+                WHERE funding_charity_id = ?
+                  AND typeof(json_each.value) = 'text'
+            """, (charity_id,))
+            observed_programme_areas.update(
+                str(item[0]).strip() for item in cursor.fetchall() if str(item[0] or "").strip()
+            )
+        cursor.execute("""
+            SELECT DISTINCT json_extract(json_each.value, '$.name')
+            FROM grants
+            JOIN json_each(
+                CASE WHEN json_valid(beneficiary_geography_normalized)
+                     THEN beneficiary_geography_normalized ELSE '[]' END
+            )
+            WHERE funding_charity_id = ?
+              AND json_extract(json_each.value, '$.name') IS NOT NULL
+        """, (charity_id,))
+        observed_beneficiary_geographies = sorted({
+            str(item[0]).strip() for item in cursor.fetchall() if str(item[0] or "").strip()
+        })
         conn.close()
         selected = None
         if requested_currency:
-            selected = next((item for item in grant_rows if item[0] == requested_currency), None)
+            selected = next(
+                (item for item in grant_rows if item[0] == requested_currency and item[1] is not None),
+                None,
+            )
         elif len(grant_rows) == 1:
             selected = grant_rows[0]
         score_input = {
             **organization,
             "annual_expenditure": row[0] if row else None,
             "organization_type": row[1] if row else organization.get("organization_type"),
+            "observed_grant_programme_areas": sorted(observed_programme_areas),
+            "observed_beneficiary_geographies": observed_beneficiary_geographies,
         }
         grant_statistics = {
             "currency": selected[0],
@@ -7178,6 +7295,480 @@ class SQLiteCharityRepository(CharityRepository):
             grant_statistics=grant_statistics,
             configuration=config,
         )
+
+    async def reset_source_funder_to_observed(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Keep one source-funder's observed grants and remove its profile link.
+
+        The canonical key is server-generated.  Only grants with that exact
+        source identity are changed, and only their optional directory-profile
+        reference is cleared.  The observed source record and all grants stay
+        intact.
+        """
+        key = str(source_funder_key or "").strip()
+        if not key or len(key) > 500:
+            raise ValueError("source_funder_key must be a non-empty canonical key.")
+
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA busy_timeout = 8000")
+            conn.execute("BEGIN IMMEDIATE")
+            identity = conn.execute(
+                """
+                SELECT source_namespace, identity_method, source_organization_id,
+                       normalized_name_fallback, display_name
+                FROM grant_source_funder_facts
+                WHERE source_funder_key = ?
+                ORDER BY grant_id
+                LIMIT 1
+                """,
+                (key,),
+            ).fetchone()
+            if not identity:
+                conn.rollback()
+                return None
+
+            source_namespace = str(identity["source_namespace"] or "").strip()
+            source_identifier = str(identity["source_organization_id"] or "").strip()
+            identity_method = str(identity["identity_method"] or "").strip()
+            normalized_name = str(identity["normalized_name_fallback"] or "").strip()
+            display_name = str(identity["display_name"] or "Source funder").strip()
+
+            if source_identifier:
+                conn.execute(
+                    """
+                    INSERT INTO source_funder_link_overrides (
+                        source_namespace, source_organization_id, link_mode, updated_at
+                    , revision
+                    ) VALUES (?, ?, 'observed_only', ?, 1)
+                    ON CONFLICT(source_namespace, source_organization_id) DO UPDATE SET
+                        link_mode = excluded.link_mode,
+                        updated_at = excluded.updated_at,
+                        revision = source_funder_link_overrides.revision + 1
+                    """,
+                    (source_namespace, source_identifier, _utc_now()),
+                )
+                reset_revision = int(conn.execute(
+                    """
+                    SELECT revision FROM source_funder_link_overrides
+                    WHERE source_namespace = ? AND source_organization_id = ?
+                    """,
+                    (source_namespace, source_identifier),
+                ).fetchone()[0])
+            elif identity_method == "normalized_name_fallback" and normalized_name:
+                # The fallback key is defined from the normalized name within a
+                # source namespace. It is intentionally never used across
+                # sources, avoiding accidental cross-publisher mutation.
+                # Fall back to a key-scoped user decision instead of applying a
+                # name-based decision to every publisher record.  The literal
+                # key can never collide with a real publisher organization ID.
+                source_identifier = f"source-funder-key:{key}"
+                conn.execute(
+                    """
+                    INSERT INTO source_funder_link_overrides (
+                        source_namespace, source_organization_id, link_mode, updated_at, revision
+                    ) VALUES (?, ?, 'observed_only', ?, 1)
+                    ON CONFLICT(source_namespace, source_organization_id) DO UPDATE SET
+                        link_mode = excluded.link_mode,
+                        updated_at = excluded.updated_at,
+                        revision = source_funder_link_overrides.revision + 1
+                    """,
+                    (source_namespace, source_identifier, _utc_now()),
+                )
+                reset_revision = int(conn.execute(
+                    """
+                    SELECT revision FROM source_funder_link_overrides
+                    WHERE source_namespace = ? AND source_organization_id = ?
+                    """,
+                    (source_namespace, source_identifier),
+                ).fetchone()[0])
+            else:
+                # This should be unreachable for a valid canonical key, but
+                # keeping it explicit prevents an identity-less broad update.
+                raise ValueError("The source-funder entry has no safe reset identity.")
+
+            # A source-funder key is already the exact observed identity shown
+            # to the user.  Scope the grant update to its fact rows rather than
+            # broadly matching a publisher ID that could be reused elsewhere.
+            grant_ids = [
+                row[0] for row in conn.execute(
+                    "SELECT DISTINCT grant_id FROM grant_source_funder_facts WHERE source_funder_key = ?",
+                    (key,),
+                ).fetchall()
+            ]
+            changed = 0
+            if grant_ids:
+                placeholders = ", ".join("?" for _ in grant_ids)
+                changed = conn.execute(
+                    f"UPDATE grants SET funding_charity_id = NULL "
+                    f"WHERE grant_id IN ({placeholders}) AND funding_charity_id IS NOT NULL",
+                    grant_ids,
+                ).rowcount
+
+            cleared_facts = conn.execute(
+                """
+                UPDATE grant_source_funder_facts
+                SET linked_profile_id = NULL
+                WHERE source_funder_key = ? AND linked_profile_id IS NOT NULL
+                """,
+                (key,),
+            ).rowcount
+            conn.execute(
+                "DELETE FROM source_funder_profile_cache WHERE source_funder_key = ?",
+                (key,),
+            )
+            conn.execute("DELETE FROM grant_overview_cache")
+            conn.commit()
+            self._overview_revision = None
+            self._overview_source_metadata_cache.clear()
+            self._grant_entity_suggestion_cache.clear()
+            return {
+                "source_funder_key": key,
+                "display_name": display_name,
+                "updated_grant_count": changed,
+                "cleared_profile_link_count": cleared_facts,
+                "link_revision": reset_revision,
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    async def relink_source_funder_profile(
+        self, source_funder_key: str, profile_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Explicitly restore one verified profile link after an observed reset.
+
+        This is intentionally separate from all automatic import, matching, and
+        hydration paths.  It can only target an existing verified profile and
+        only touches grants represented by this exact source-funder key.
+        """
+        key = str(source_funder_key or "").strip()
+        if not key or len(key) > 500 or not isinstance(profile_id, int) or profile_id <= 0:
+            raise ValueError("A canonical source-funder key and verified profile ID are required.")
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA busy_timeout = 8000")
+            conn.execute("BEGIN IMMEDIATE")
+            profile_exists = conn.execute(
+                "SELECT 1 FROM charities WHERE charity_id = ?", (profile_id,)
+            ).fetchone()
+            if not profile_exists:
+                raise ValueError("The requested profile is not a verified directory profile.")
+            identity = conn.execute(
+                """
+                SELECT source_namespace, source_organization_id, display_name
+                FROM grant_source_funder_facts
+                WHERE source_funder_key = ? ORDER BY grant_id LIMIT 1
+                """,
+                (key,),
+            ).fetchone()
+            if not identity:
+                conn.rollback()
+                return None
+            source_namespace = str(identity["source_namespace"] or "").strip()
+            source_identifier = str(identity["source_organization_id"] or "").strip()
+            override_identifier = source_identifier or f"source-funder-key:{key}"
+            conn.execute(
+                """
+                DELETE FROM source_funder_link_overrides
+                WHERE source_namespace = ? AND source_organization_id = ?
+                """,
+                (source_namespace, override_identifier),
+            )
+            grant_ids = [row[0] for row in conn.execute(
+                "SELECT DISTINCT grant_id FROM grant_source_funder_facts WHERE source_funder_key = ?", (key,)
+            ).fetchall()]
+            updated_grants = 0
+            if grant_ids:
+                placeholders = ", ".join("?" for _ in grant_ids)
+                updated_grants = conn.execute(
+                    f"UPDATE grants SET funding_charity_id = ? WHERE grant_id IN ({placeholders})",
+                    (profile_id, *grant_ids),
+                ).rowcount
+            linked_facts = conn.execute(
+                "UPDATE grant_source_funder_facts SET linked_profile_id = ? WHERE source_funder_key = ?",
+                (profile_id, key),
+            ).rowcount
+            conn.execute("DELETE FROM source_funder_profile_cache WHERE source_funder_key = ?", (key,))
+            conn.execute("DELETE FROM grant_overview_cache")
+            conn.commit()
+            self._overview_revision = None
+            self._overview_source_metadata_cache.clear()
+            self._grant_entity_suggestion_cache.clear()
+            return {
+                "source_funder_key": key,
+                "display_name": str(identity["display_name"] or "Source funder"),
+                "profile_id": profile_id,
+                "updated_grant_count": max(0, updated_grants),
+                "linked_profile_fact_count": max(0, linked_facts),
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _linked_source_funder_profile(
+        conn: sqlite3.Connection, source_funder_key: str,
+    ) -> Optional[sqlite3.Row]:
+        return conn.execute(
+            """
+            SELECT source_funder_key, linked_profile_id
+            FROM grant_source_funder_facts
+            WHERE source_funder_key = ? AND linked_profile_id IS NOT NULL
+            ORDER BY grant_id
+            LIMIT 1
+            """,
+            (source_funder_key,),
+        ).fetchone()
+
+    def queue_source_funder_profile_hydration(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Queue a local source-record hydration without changing grant links."""
+        key = str(source_funder_key or "").strip()
+        if not key or len(key) > 500:
+            raise ValueError("source_funder_key must be a non-empty canonical key.")
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA busy_timeout = 8000")
+            conn.execute("BEGIN IMMEDIATE")
+            identity = conn.execute(
+                """
+                SELECT source_namespace, source_organization_id
+                FROM grant_source_funder_facts
+                WHERE source_funder_key = ?
+                ORDER BY grant_id LIMIT 1
+                """,
+                (key,),
+            ).fetchone()
+            if not identity:
+                conn.rollback()
+                return None
+            source_namespace = str(identity["source_namespace"] or "").strip()
+            source_identifier = str(identity["source_organization_id"] or "").strip()
+            override_identifier = source_identifier or f"source-funder-key:{key}"
+            override = conn.execute(
+                """
+                SELECT revision FROM source_funder_link_overrides
+                WHERE source_namespace = ? AND source_organization_id = ?
+                  AND link_mode = 'observed_only'
+                """,
+                (source_namespace, override_identifier),
+            ).fetchone()
+            if override:
+                conn.rollback()
+                return None
+            link_revision = int(override["revision"]) if override else 0
+            linked = self._linked_source_funder_profile(conn, key)
+            if not linked:
+                conn.rollback()
+                return None
+            profile_id = int(linked["linked_profile_id"])
+            cached = conn.execute(
+                """
+                SELECT status, profile_id, updated_at
+                FROM source_funder_profile_cache
+                WHERE source_funder_key = ?
+                """,
+                (key,),
+            ).fetchone()
+            if cached and int(cached["profile_id"]) == profile_id and cached["status"] in {"pending", "ready"}:
+                conn.commit()
+                return {
+                    "source_funder_key": key,
+                    "profile_id": profile_id,
+                    "status": str(cached["status"]),
+                    "updated_at": str(cached["updated_at"]),
+                }
+            now = _utc_now()
+            conn.execute(
+                """
+                INSERT INTO source_funder_profile_cache (
+                    source_funder_key, profile_id, status, payload, error, updated_at, link_revision
+                ) VALUES (?, ?, 'pending', NULL, NULL, ?, ?)
+                ON CONFLICT(source_funder_key) DO UPDATE SET
+                    profile_id = excluded.profile_id,
+                    status = 'pending',
+                    payload = NULL,
+                    error = NULL,
+                    updated_at = excluded.updated_at,
+                    link_revision = excluded.link_revision
+                """,
+                (key, profile_id, now, link_revision),
+            )
+            conn.commit()
+            return {
+                "source_funder_key": key,
+                "profile_id": profile_id,
+                "status": "pending",
+                "updated_at": now,
+                "link_revision": link_revision,
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def hydrate_source_funder_profile(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fill the transient source-profile cache from the local scraper record.
+
+        The cache is deliberately distinct from the canonical organization row:
+        resetting a source funder can remove it without deleting an independent
+        Charity Commission organization.
+        """
+        key = str(source_funder_key or "").strip()
+        if not key or len(key) > 500:
+            raise ValueError("source_funder_key must be a non-empty canonical key.")
+
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA busy_timeout = 8000")
+            linked = self._linked_source_funder_profile(conn, key)
+            if not linked:
+                conn.execute(
+                    "DELETE FROM source_funder_profile_cache WHERE source_funder_key = ?",
+                    (key,),
+                )
+                conn.commit()
+                return None
+            profile_id = int(linked["linked_profile_id"])
+            cache = conn.execute(
+                "SELECT link_revision FROM source_funder_profile_cache WHERE source_funder_key = ? AND profile_id = ?",
+                (key, profile_id),
+            ).fetchone()
+            if not cache:
+                return None
+            link_revision = int(cache["link_revision"])
+            identity = conn.execute(
+                """
+                SELECT source_namespace, source_organization_id
+                FROM grant_source_funder_facts
+                WHERE source_funder_key = ? ORDER BY grant_id LIMIT 1
+                """,
+                (key,),
+            ).fetchone()
+            source_namespace = str(identity["source_namespace"] or "").strip() if identity else ""
+            source_identifier = str(identity["source_organization_id"] or "").strip() if identity else ""
+            override_identifier = source_identifier or f"source-funder-key:{key}"
+        finally:
+            conn.close()
+
+        try:
+            with Path(DATA_PATH).open("r", encoding="utf-8") as source:
+                records = json.load(source)
+            payload = next(
+                (
+                    record for record in records
+                    if isinstance(record, Mapping)
+                    and int(record.get("registered_charity_number") or 0) == profile_id
+                ),
+                None,
+            )
+            if not isinstance(payload, Mapping):
+                raise LookupError("No local Charity Commission scraper record is available for this profile.")
+        except Exception as exc:
+            conn = self._get_conn()
+            try:
+                conn.execute(
+                    """
+                    UPDATE source_funder_profile_cache
+                    SET status = 'failed', error = ?, updated_at = ?
+                    WHERE source_funder_key = ? AND profile_id = ? AND link_revision = ?
+                    """,
+                    (str(exc), _utc_now(), key, profile_id, link_revision),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return {"source_funder_key": key, "profile_id": profile_id, "status": "failed"}
+
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA busy_timeout = 8000")
+            conn.execute("BEGIN IMMEDIATE")
+            still_linked = self._linked_source_funder_profile(conn, key)
+            observed_only = conn.execute(
+                """
+                SELECT 1 FROM source_funder_link_overrides
+                WHERE source_namespace = ? AND source_organization_id = ?
+                  AND link_mode = 'observed_only'
+                """,
+                (source_namespace, override_identifier),
+            ).fetchone()
+            if observed_only or not still_linked or int(still_linked["linked_profile_id"]) != profile_id:
+                conn.execute(
+                    "DELETE FROM source_funder_profile_cache WHERE source_funder_key = ?",
+                    (key,),
+                )
+                conn.commit()
+                return None
+            now = _utc_now()
+            conn.execute(
+                """
+                UPDATE source_funder_profile_cache
+                SET status = 'ready', payload = ?, error = NULL, updated_at = ?
+                WHERE source_funder_key = ? AND profile_id = ? AND link_revision = ?
+                """,
+                (json.dumps(payload, ensure_ascii=False), now, key, profile_id, link_revision),
+            )
+            conn.commit()
+            return {
+                "source_funder_key": key,
+                "profile_id": profile_id,
+                "status": "ready",
+                "payload": dict(payload),
+                "updated_at": now,
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_source_funder_profile_cache(
+        self, source_funder_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        key = str(source_funder_key or "").strip()
+        if not key or len(key) > 500:
+            raise ValueError("source_funder_key must be a non-empty canonical key.")
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                """
+                SELECT profile_id, status, payload, error, updated_at
+                FROM source_funder_profile_cache
+                WHERE source_funder_key = ?
+                """,
+                (key,),
+            ).fetchone()
+            if not row:
+                return None
+            return {
+                "source_funder_key": key,
+                "profile_id": int(row["profile_id"]),
+                "status": str(row["status"]),
+                "payload": _json_dict(row["payload"]) if row["status"] == "ready" else None,
+                "error": row["error"],
+                "updated_at": row["updated_at"],
+            }
+        finally:
+            conn.close()
 
 
 _repository_cache: tuple[tuple[str, int, int] | None, CharityRepository] | None = None

@@ -649,6 +649,12 @@ class SourceFunderEnrichmentRequest(BaseModel):
     skip_contact_crawler: bool = False
 
 
+class SourceFunderRelinkRequest(BaseModel):
+    """A deliberate user confirmation for one source-funder/profile link."""
+
+    profile_id: int = Field(..., gt=0)
+
+
 class SankeyNode(BaseModel):
     id: str
     label: str
@@ -688,10 +694,22 @@ class NewsSource(BaseModel):
     source: str
     published: str
     note: str = ""  # e.g. "page content too short or blocked, falling back to RSS title only"
+    classification: str = "undated"
+    published_at: Optional[str] = None
 
 class NewsSummary(BaseModel):
     foundation: str
     summary: str
-    sources: List[NewsSource] = []
+    sources: List[NewsSource] = Field(default_factory=list)
     searched_weeks: int = 4
     generated_at: str
+    # Additive status fields keep the original response contract intact while
+    # distinguishing a valid empty search from upstream or summarizer failures.
+    status: str = "success"
+    summary_status: str = "available"
+    source_status: str = "success"
+    lookback: str = "4w"
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    fallback_used: bool = False
+    message: Optional[str] = None

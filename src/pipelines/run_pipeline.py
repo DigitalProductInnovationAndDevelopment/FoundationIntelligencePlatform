@@ -84,14 +84,29 @@ def publish_full_run_database_with_ecb_conversion(
     db_file: str,
     timeout: int,
 ) -> dict:
-    """Publish enrichment results, then make Auto/EUR metrics immediately valid."""
-    db_loader.publish_staging_database(staging_db_file, db_file)
-    logger.info("Step G: Applying official ECB EUR conversions to observed grants...")
-    report_path = os.path.join(
-        PROJECT_ROOT,
-        "data/processed/ecb_exchange_rate_backfill_report.json",
-    )
-    report = apply_ecb_conversion_backfill(db_file, report_path, timeout)
+    """Validate and convert one staging DB, then publish it exactly once.
+
+    No active database is touched until the source/profile repair, conversion,
+    integrity check, and conversion report have all completed successfully.
+    """
+    if not os.path.exists(staging_db_file):
+        raise ValueError("Staging database disappeared before publication.")
+    try:
+        repair = db_loader.prepare_staging_database_for_publish(staging_db_file)
+        logger.info("Step F: Staging profile-link repair completed: %s", repair)
+        logger.info("Step G: Applying official ECB EUR conversions in staging...")
+        report_path = os.path.join(
+            PROJECT_ROOT,
+            "data/processed/ecb_exchange_rate_backfill_report.json",
+        )
+        report = apply_ecb_conversion_backfill(staging_db_file, report_path, timeout)
+        # backfill_database itself atomically replaces the staging path with its
+        # converted clone; validate it again and make the only active publish.
+        db_loader.publish_staging_database(staging_db_file, db_file)
+    except Exception:
+        if os.path.exists(staging_db_file):
+            os.unlink(staging_db_file)
+        raise
     logger.info(
         "Step G complete: %s of %s grants now have an EUR amount.",
         report.get("grants_with_eur_amount", report.get("converted_grants", 0)),
@@ -441,19 +456,15 @@ def run_pipeline(args):
 
         # 3. Process candidates foundation-by-foundation sequentially
         if not target_tuples:
-            logger.info("No foundations to process.")
             if conn:
-                philea_only, philea_report = integrate_philea_organizations(
-                    [], load_existing_raw(raw_philea_path)
-                )
-                insert_charities(conn, philea_only)
-                logger.info("Loaded %s cached Philea organizations.", len(philea_only))
                 conn.close()
-            publish_full_run_database_with_ecb_conversion(
-                staging_db_file,
-                db_file,
-                args.timeout,
-            )
+            if os.path.exists(staging_db_file):
+                os.unlink(staging_db_file)
+            if args.fresh:
+                raise RuntimeError(
+                    "Fresh full run has no successful primary-source discovery; refusing to publish an empty or Philea-only database."
+                )
+            logger.info("No foundations to process; active database remains unchanged.")
             return
             
         logger.info(f"Found {len(target_tuples)} target foundations to process.")
@@ -465,6 +476,7 @@ def run_pipeline(args):
         cc_raw_map = {int(x["registered_charity_number"]): x for x in raw_cc_existing if "registered_charity_number" in x}
         ts_raw_map = {x["org_id"]: x for x in raw_ts_existing if "org_id" in x}
         
+        successful_primary_imports = 0
         for idx, (reg_no, suffix) in enumerate(target_tuples, 1):
             if reg_no in completed_numbers and not args.fresh:
                 logger.info(f"[{idx}/{len(target_tuples)}] Skipping Charity {reg_no} (already processed in database).")
@@ -540,6 +552,7 @@ def run_pipeline(args):
                     if os.path.exists(staging_db_file):
                         os.unlink(staging_db_file)
                     raise RuntimeError(f"Database insertion failed for charity {reg_no}") from e
+                successful_primary_imports += 1
                     
             # Step F: Update raw cache files in background to preserve sync
             for rec in cc_records:
@@ -554,6 +567,15 @@ def run_pipeline(args):
             
             logger.info(f"[{idx}/{len(target_tuples)}] Foundation {reg_no} successfully integrated.")
             
+        if args.fresh and successful_primary_imports == 0:
+            if conn:
+                conn.close()
+            if os.path.exists(staging_db_file):
+                os.unlink(staging_db_file)
+            raise RuntimeError(
+                "Fresh full run imported no primary-source records; refusing to publish an incomplete database."
+            )
+
         if conn:
             philea_only, philea_report = integrate_philea_organizations(
                 [], load_existing_raw(raw_philea_path)
