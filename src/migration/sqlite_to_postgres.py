@@ -43,6 +43,7 @@ EXPECTED_CONTROLS = {
     "future_dated_grants": 1,
     "business_key_duplicate_groups": 4_271,
     "duplicate_charity_number_groups": 9_073,
+    "foreign_key_violations": 0,
 }
 VERSIONED_TABLES = {
     "charities",
@@ -202,6 +203,10 @@ class ValueConversionError(MigrationError):
         super().__init__(message)
         self.column = column
         self.value = value
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
 
 
 @dataclass(frozen=True)
@@ -810,6 +815,78 @@ async def _control_values(
             dataset_version,
         )
     )
+    constraints = await connection.fetch(
+        """
+        SELECT
+            child_namespace.nspname AS child_schema,
+            child_table.relname AS child_table,
+            parent_namespace.nspname AS parent_schema,
+            parent_table.relname AS parent_table,
+            array_agg(child_column.attname ORDER BY child_key.ordinality) AS child_columns,
+            array_agg(parent_column.attname ORDER BY child_key.ordinality) AS parent_columns
+        FROM pg_constraint AS constraint_definition
+        JOIN pg_class AS child_table
+          ON child_table.oid=constraint_definition.conrelid
+        JOIN pg_namespace AS child_namespace
+          ON child_namespace.oid=child_table.relnamespace
+        JOIN pg_class AS parent_table
+          ON parent_table.oid=constraint_definition.confrelid
+        JOIN pg_namespace AS parent_namespace
+          ON parent_namespace.oid=parent_table.relnamespace
+        JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+          AS child_key(attnum, ordinality) ON TRUE
+        JOIN LATERAL unnest(constraint_definition.confkey) WITH ORDINALITY
+          AS parent_key(attnum, ordinality)
+          ON parent_key.ordinality=child_key.ordinality
+        JOIN pg_attribute AS child_column
+          ON child_column.attrelid=child_table.oid
+         AND child_column.attnum=child_key.attnum
+        JOIN pg_attribute AS parent_column
+          ON parent_column.attrelid=parent_table.oid
+         AND parent_column.attnum=parent_key.attnum
+        WHERE constraint_definition.contype='f'
+          AND child_namespace.nspname=current_schema()
+        GROUP BY child_namespace.nspname, child_table.relname,
+                 parent_namespace.nspname, parent_table.relname,
+                 constraint_definition.conname
+        ORDER BY child_table.relname, constraint_definition.conname
+        """
+    )
+    foreign_key_violations = 0
+    for constraint in constraints:
+        child_table = ".".join(
+            _quote_identifier(part)
+            for part in (constraint["child_schema"], constraint["child_table"])
+        )
+        parent_table = ".".join(
+            _quote_identifier(part)
+            for part in (constraint["parent_schema"], constraint["parent_table"])
+        )
+        child_columns = [
+            _quote_identifier(column)
+            for column in constraint["child_columns"]
+        ]
+        parent_columns = [
+            _quote_identifier(column)
+            for column in constraint["parent_columns"]
+        ]
+        present = " AND ".join(f"child.{column} IS NOT NULL" for column in child_columns)
+        matches = " AND ".join(
+            f"parent.{parent} = child.{child}"
+            for child, parent in zip(child_columns, parent_columns)
+        )
+        foreign_key_violations += int(
+            await connection.fetchval(
+                f"""
+                SELECT COUNT(*) FROM {child_table} AS child
+                WHERE {present}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {parent_table} AS parent WHERE {matches}
+                  )
+                """
+            )
+        )
+    values["foreign_key_violations"] = foreign_key_violations
     return values
 
 
