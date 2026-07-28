@@ -54,6 +54,7 @@ RUN python -m pip install --no-index --find-links=/wheels /wheels/* \
 WORKDIR /app
 COPY --chown=10001:10001 src/bff /app/src/bff
 COPY --chown=10001:10001 src/data/*.py /app/src/data/
+COPY --chown=10001:10001 src/migration /app/src/migration
 COPY --chown=10001:10001 src/pipelines /app/src/pipelines
 COPY --chown=10001:10001 src/preprocessing /app/src/preprocessing
 COPY --chown=10001:10001 src/scoring /app/src/scoring

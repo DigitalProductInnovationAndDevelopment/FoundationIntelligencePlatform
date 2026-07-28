@@ -65,6 +65,12 @@
     "target_counts": {
       "$ref": "#/$defs/counts"
     },
+    "controls": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["integer", "number", "string"]
+      }
+    },
     "reconciliation_results": {
       "type": "object",
       "additionalProperties": {
@@ -108,6 +114,31 @@
         "id": {"type": "string", "minLength": 1},
         "type": {"enum": ["human", "service", "ci"]}
       }
+    },
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_bytes",
+        "estimated_postgres_and_indexes_bytes",
+        "estimated_wal_and_temp_bytes",
+        "safety_margin_bytes",
+        "minimum_free_bytes",
+        "available_bytes",
+        "sufficient"
+      ],
+      "properties": {
+        "source_bytes": {"type": "integer", "minimum": 0},
+        "estimated_postgres_and_indexes_bytes": {"type": "integer", "minimum": 0},
+        "estimated_wal_and_temp_bytes": {"type": "integer", "minimum": 0},
+        "safety_margin_bytes": {"type": "integer", "minimum": 0},
+        "minimum_free_bytes": {"type": "integer", "minimum": 0},
+        "available_bytes": {"type": "integer", "minimum": 0},
+        "sufficient": {"type": "boolean"}
+      }
+    },
+    "idempotent_noop": {
+      "type": "boolean"
     }
   },
   "$defs": {
