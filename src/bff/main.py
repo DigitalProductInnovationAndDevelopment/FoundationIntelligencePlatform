@@ -14,6 +14,7 @@ from bff.news import router as news_router
 from bff.repositories import get_charity_repository
 from bff.audit import StructuredLogAuditSink, event_from_request
 from bff.config import SECURITY_SETTINGS, validate_security_settings
+from bff.database import DatabaseManager, DatabaseSettings
 from bff.security import IdempotencyStore, SlidingWindowRateLimiter
 from bff.utils.logging import logger
 
@@ -22,11 +23,15 @@ from bff.utils.logging import logger
 async def lifespan(application: FastAPI):
     """Validate security before accepting traffic, then initialize repository state."""
     validate_security_settings(application.state.security_settings)
+    application.state.database = DatabaseManager(DatabaseSettings.from_env())
     get_charity_repository()
     logger.info(
         "Repository initialized; expensive Overview aggregation is request-driven."
     )
-    yield
+    try:
+        yield
+    finally:
+        await application.state.database.close()
 
 
 app = FastAPI(
@@ -46,6 +51,7 @@ app.state.rate_limiter = SlidingWindowRateLimiter(
 )
 app.state.idempotency_store = IdempotencyStore()
 app.state.audit_sink = StructuredLogAuditSink()
+app.state.database = DatabaseManager(DatabaseSettings.from_env())
 
 app.add_middleware(
     CORSMiddleware,
@@ -170,5 +176,22 @@ async def root_redirect():
 
 @app.get("/health", tags=["Health Check"])
 async def health_check():
-    """Simple endpoint to verify that the BFF is running and healthy."""
+    """Backward-compatible liveness endpoint."""
     return {"status": "healthy", "service": "bff"}
+
+
+@app.get("/health/live", tags=["Health Check"])
+async def liveness_check():
+    """Report process liveness without checking external dependencies."""
+    return {"status": "healthy", "service": "bff"}
+
+
+@app.get("/health/ready", tags=["Health Check"])
+async def readiness_check():
+    """Accept traffic only while the configured PostgreSQL database responds."""
+    if await app.state.database.check():
+        return {"status": "ready", "checks": {"postgresql": "healthy"}}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "not_ready", "checks": {"postgresql": "unavailable"}},
+    )

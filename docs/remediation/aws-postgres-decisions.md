@@ -2,7 +2,7 @@
 
 Created: 2026-07-28
 
-Status: active architecture contract through Phase 1; implementation evidence is recorded separately.
+Status: active architecture contract through Phase 2; implementation evidence is recorded separately.
 
 ## ADR-001 — PostgreSQL is the operational database
 
@@ -76,6 +76,14 @@ Status: active architecture contract through Phase 1; implementation evidence is
 - Local transition: process-local stores are permitted only while the application runs as one local task during remediation.
 - Production target: WAF/API edge limits provide distributed abuse protection; PostgreSQL supplies durable idempotency records and security audit events before ECS scales past one task.
 - Retry safety: a server failure/timeout retains the idempotency reservation because the side-effect outcome may be uncertain; validation/client failures release it for a corrected request.
+
+## ADR-013 — Reproducible dependency and image supply chain
+
+- Decision: direct Python inputs are exact pins; generated transitive locks carry accepted SHA-256 hashes and every installation/build uses `--require-hashes`.
+- Decision: npm installs use the committed lockfile, `npm ci` and disabled lifecycle scripts. Build-stage development tools never enter the static Nginx runtime.
+- Decision: the Dockerfile frontend and every base image use a concrete version plus a Docker Hub manifest-list digest.
+- Network boundary: dependency resolution is limited to PyPI/files.pythonhosted.org, registry.npmjs.org and the Docker Hub registry/auth endpoints explicitly authorized on 2026-07-29.
+- Multiarch: `linux/amd64` and `linux/arm64` are declared in one bake contract; CI must assemble/test both because the current local CLI has no working buildx plugin.
 
 ## Open external decisions
 

@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 2 — Docker and local PostgreSQL foundation
+- Current phase: Phase 3 — PostgreSQL schema
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -46,12 +46,23 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 2 — Docker and local PostgreSQL foundation
 
-- Status: `IN PROGRESS`
-- Next exact action: implement the data-free container boundary and pinned local PostgreSQL service without deleting existing Docker artifacts.
+- Status: `COMPLETED`
+- Files changed: strict `.dockerignore`; digest-pinned multi-stage backend/frontend Dockerfile; hash-locked Python inputs/outputs; same-origin static Nginx frontend; health-based Compose services for PostgreSQL/backend/frontend/migration/worker; database readiness manager; image contract script; multiarch bake declaration; dependency/digest record.
+- Supply-chain evidence: Python installs/builds require exact hashes; npm uses lockfile version 3, `npm ci`, the approved registry and disabled lifecycle scripts; Dockerfile frontend and four base images are pinned to Docker Hub manifest digests.
+- Gate evidence: local PostgreSQL 16.14, backend and frontend all healthy; direct and same-origin readiness report PostgreSQL healthy; frontend HTML loads; controlled shutdown completes; no arbitrary dependency sleeps.
+- Container evidence: backend UID/GID `10001:10001`, read-only root, all capabilities dropped, no-new-privileges, explicit tmpfs and healthcheck; no SQLite, `.env`, application credential/key path, domain payload or compiler; image size `354092439` bytes under the 500 MB target. Frontend is a 56.2 MB static Nginx image with equivalent isolation.
+- Multiarch evidence: versioned manifest-list digests and `linux/amd64` plus `linux/arm64` bake targets are present. The local Docker CLI lacks a working buildx plugin, so actual dual-platform manifest assembly remains a CI responsibility and is not falsely claimed as locally tested.
+- Tests executed: 300 backend tests with 76.57% coverage; Python compile/Flake8/pip check; 8 frontend tests, lint and build; Compose config for default and operations profiles; complete local image builds; image export/contract scans; PostgreSQL SQL query; container/HTTP health, start and stop checks.
+- Resolved failures: incompatible pip 26.1.2 resolver bootstrap pinned back to pip 25.3; absent Docker credential helper isolated via temporary empty config; npm build-stage dev omission fixed with `--include=dev`; occupied default PostgreSQL host port fixed through host-port parameters; Nginx health SPA fallback fixed with an explicit prefix proxy.
+- Known non-blocking warnings: 53 backend test warnings; five existing React hook warnings; 1.96 MB frontend main chunk. Frontend warnings/chunk remain assigned to Phase 7.
+- External actions: approved package/image downloads only. No AWS call, paid API, scraper/live model call, upload or push.
+- Gate result: `PASS`.
+- Commit hash: the scoped Phase-2 commit containing this completed ledger.
+- Next exact action: implement the authoritative PostgreSQL schema as Alembic migrations and validate upgrade/downgrade behavior against the retained local PostgreSQL volume.
 
 ### Phase 3 — PostgreSQL schema
 
-- Status: `PENDING`
+- Status: `IN PROGRESS`
 
 ### Phase 4 — SQLite to PostgreSQL migration
 

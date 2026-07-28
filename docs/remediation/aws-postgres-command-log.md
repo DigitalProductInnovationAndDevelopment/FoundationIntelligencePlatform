@@ -163,3 +163,137 @@ Result: the application starts with authentication disabled, exposes only the pu
 ### Phase-1 immutability and external-action check
 
 The active SQLite source retained SHA-256 `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`; the immutable audit checksum aggregate retained `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`. No AWS mutation, paid API call, external upload, push or Docker artifact deletion occurred.
+
+## Phase 2 — Docker and local PostgreSQL foundation
+
+### Explicit registry authorization and dependency locks
+
+On 2026-07-29 the user explicitly authorized downloads only from PyPI,
+`files.pythonhosted.org`, `registry.npmjs.org` and the Docker Hub registry/auth
+endpoints. AWS, live scrapers, paid APIs, uploads and pushes remained forbidden.
+
+```zsh
+venv/bin/python -m pip install --dry-run --ignore-installed --only-binary=:all: --report /private/tmp/fip-pip-tools-resolve.json pip-tools==7.5.2
+venv/bin/python -m pip install --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r requirements-locking.txt
+venv/bin/pip-compile --index-url=https://pypi.org/simple --resolver=backtracking --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url --output-file=requirements-runtime.txt requirements-runtime.in
+venv/bin/pip-compile --index-url=https://pypi.org/simple --resolver=backtracking --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url --output-file=requirements.txt requirements.in
+```
+
+The first compile attempts failed before modifying either output because
+`pip-tools==7.5.2` is incompatible with `pip==26.1.2`
+(`PackageFinder.allow_all_prereleases` is absent). The correction was resolved,
+hashed and installed explicitly:
+
+```zsh
+venv/bin/python -m pip install --dry-run --ignore-installed --only-binary=:all: --report /private/tmp/fip-pip-tools-resolve-pip25.json pip==25.3 pip-tools==7.5.2
+venv/bin/python -m pip install --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r requirements-locking.txt
+venv/bin/pip-compile --index-url=https://pypi.org/simple --resolver=backtracking --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url --output-file=requirements-runtime.txt requirements-runtime.in
+venv/bin/pip-compile --index-url=https://pypi.org/simple --resolver=backtracking --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url --output-file=requirements.txt requirements.in
+venv/bin/python -m pip install --index-url https://pypi.org/simple --require-hashes -r requirements.txt
+venv/bin/python -m pip check
+cd frontend && npm ci --ignore-scripts --registry=https://registry.npmjs.org
+```
+
+Result: both Python lockfiles contain exact transitive versions and accepted
+SHA-256 artifact hashes. The npm lock contains exact tarball integrity values;
+its only resolved host is `registry.npmjs.org`. `pip check` reports no broken
+requirements. The authoritative version/digest inventory is
+`aws-postgres-dependency-locks.md`.
+
+### Local application checks
+
+```zsh
+venv/bin/python -m compileall -q src
+venv/bin/python -m flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
+PYTHONPATH=src venv/bin/python -m pytest src/tests --cov=bff --cov-report=term-missing --cov-fail-under=70
+cd frontend && npm run test
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+Result: compile and blocking Flake8 pass; 300 backend tests pass with 76.57%
+coverage and 53 warnings; 8 frontend tests, lint and the Vite production build
+pass. The five existing hook warnings and 1.96 MB main chunk remain assigned to
+Phase 7.
+
+### Base-image pulls and digest capture
+
+```zsh
+docker pull python:3.12.13-slim-bookworm
+docker pull node:22.22.2-alpine
+docker pull nginxinc/nginx-unprivileged:1.30.4-alpine3.24
+docker pull postgres:16.14-alpine3.24
+docker image inspect --format '<tag>|<repo-digest>|<architecture>|<os>|<id>|<size>' <four-images>
+```
+
+The parallel Python and PostgreSQL pull clients reached their command timeouts;
+the exact two pulls were resumed and completed. All selected local variants are
+`linux/arm64`; the pinned values are multi-platform manifest-list digests. The
+Dockerfile frontend image resolved to
+`sha256:e87caa74dcb7d46cd820352bfea12591f3dba3ddc4285e19c7dcd13359f7cefd`.
+No non-approved image source was contacted.
+
+### Image build and contract verification
+
+```zsh
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder docker-compose config --quiet
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder docker-compose --profile operations config --quiet
+docker-compose build backend frontend
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder docker-compose build backend frontend
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder docker-compose build frontend
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config scripts/verify_container_image.sh foundation-intelligence-backend:local
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config scripts/verify_container_image.sh foundation-intelligence-frontend:local
+docker buildx bake --print
+```
+
+The first build invocation stopped before Dockerfile execution because the
+required Compose secret variable was absent. The second used the variable but
+stopped before the build because the configured `docker-credential-desktop`
+binary was unavailable. An isolated `/private/tmp` Docker config containing no
+credential helper fixed that local CLI issue. The first frontend stage then
+proved that production npm omission removed `tsc`; `npm ci --include=dev` fixed
+the build stage while the runtime remained static-only. The final backend
+context was 1.04 MB and frontend context 661 kB, compared with the 8.81 GB
+baseline context.
+
+The final backend is `354092439` bytes and UID/GID `10001:10001`; the frontend
+is `56230634` bytes and UID/GID `101:101`. Both have healthchecks and contain no
+`.env`, SQLite file, application credential/key path, domain-data payload or
+compiler. Both declare `linux/amd64` and `linux/arm64` in `docker-bake.hcl`.
+The installed Docker CLI has no usable buildx plugin (`docker buildx bake
+--print` exits 125 with `unknown flag: --print`), so local manifest assembly is
+not claimed; the platform declaration is statically verified and CI will run
+the real multi-platform build.
+
+### Gate-2 Compose start, health, HTTP and stop
+
+The first default-port start created containers but PostgreSQL did not start
+because `127.0.0.1:5432` was already occupied. Host ports were parameterized;
+containers and network from that attempt were removed without deleting the
+volume.
+
+```zsh
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder docker-compose up -d --no-build postgres backend frontend
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder docker-compose down --remove-orphans
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 BACKEND_HOST_PORT=58000 FRONTEND_HOST_PORT=58080 docker-compose up -d --no-build postgres backend frontend
+docker inspect --format '<health-and-isolation-fields>' foundation-intelligence-postgres-1 foundation-intelligence-backend-1 foundation-intelligence-frontend-1
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -tAc 'SELECT current_database(), current_user, current_setting('"'"'server_version'"'"');'
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:58000/health/live
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:58000/health/ready
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:58080/
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1:58080/health/ready
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 BACKEND_HOST_PORT=58000 FRONTEND_HOST_PORT=58080 docker-compose stop
+docker inspect --format '<exit-fields>' foundation-intelligence-postgres-1 foundation-intelligence-backend-1 foundation-intelligence-frontend-1
+docker logs --tail 50 foundation-intelligence-backend-1
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 BACKEND_HOST_PORT=58000 FRONTEND_HOST_PORT=58080 docker-compose down --remove-orphans
+```
+
+Result: PostgreSQL 16.14, backend and frontend all became healthy through
+health-based dependencies. Backend readiness returned PostgreSQL `healthy`;
+frontend static HTML loaded. An initial frontend `/health/ready` request exposed
+a SPA fallback bug; the corrected prefix proxy then returned the backend JSON
+readiness response. Backend/frontend roots are read-only, all Linux capabilities
+are dropped and `no-new-privileges` is active. Uvicorn logged `Application
+shutdown complete`; PostgreSQL/frontend exited 0 and the init-wrapped backend
+reported the delivered SIGTERM as 143. Containers and network were removed;
+the local PostgreSQL volume and images were retained.

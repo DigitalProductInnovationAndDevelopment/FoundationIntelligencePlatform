@@ -55,7 +55,7 @@ const DonorDirectoryPage = lazy(() => import("./components/DonorDirectoryPage"))
 
 // Configuration for API requests
 const API_BASE = import.meta.env.VITE_API_BASE_URL
-  || `${window.location.protocol}//${window.location.hostname}:8000`;
+  || "";
 const SHOW_LEGACY_OVERVIEW = import.meta.env.VITE_LEGACY_OVERVIEW === "true";
 const DEFAULT_DATA_SOURCES = ["360Giving", "Charity Commission for England and Wales", "Philea"];
 // Interface definitions
