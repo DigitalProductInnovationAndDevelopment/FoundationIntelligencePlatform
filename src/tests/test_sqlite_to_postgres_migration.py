@@ -250,6 +250,10 @@ class TestMigrationPostgreSQLIntegration(unittest.TestCase):
     async def _exercise(self):
         configured_url = os.getenv("TEST_DATABASE_URL") or DatabaseSettings.from_env().sqlalchemy_url()
         engine = create_async_engine(configured_url)
+        async with engine.connect() as connection:
+            prior_active = await connection.scalar(
+                text("SELECT dataset_version FROM dataset_versions WHERE is_active")
+            )
         suffix = uuid.uuid4().hex
         first = f"fixture-first-{suffix}"
         second = f"fixture-second-{suffix}"
@@ -367,6 +371,8 @@ class TestMigrationPostgreSQLIntegration(unittest.TestCase):
                 recovered_rollback = await rollback_dataset(first)
                 self.assertEqual(recovered_rollback, {"from": invalid, "to": first})
         finally:
+            if prior_active:
+                await rollback_dataset(prior_active)
             async with engine.begin() as connection:
                 for table in (
                     "source_funder_profile_cache",
@@ -420,6 +426,10 @@ class TestMigrationPostgreSQLIntegration(unittest.TestCase):
                 await connection.execute(
                     text("DELETE FROM exchange_rates WHERE source_series='fixture'")
                 )
+                active_after_cleanup = await connection.scalar(
+                    text("SELECT dataset_version FROM dataset_versions WHERE is_active")
+                )
+                self.assertEqual(active_after_cleanup, prior_active)
             await engine.dispose()
 
 
