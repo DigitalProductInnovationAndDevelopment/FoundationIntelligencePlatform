@@ -48,6 +48,16 @@ REQUIRED_SCHEMA = {
     "grant_beneficiary_terms": {"grant_id", "term"},
     "grant_beneficiary_countries": {"grant_id", "country_code", "country_name"},
     "grant_programme_categories": {"grant_id", "programme_area"},
+    "grant_overview_facts": {
+        "grant_id", "source_namespace", "award_date", "award_date_status", "currency",
+        "original_amount_minor", "original_amount_status", "eur_amount_minor",
+        "eur_amount_status", "conversion_status", "funding_name",
+        "funding_name_normalized", "recipient_name", "recipient_name_normalized",
+        "country_count", "programme_category_count", "programme_provenance",
+        "invalid_source_label", "low_confidence_inference",
+        "origin_country_code", "origin_country_name", "origin_source",
+        "data_revision",
+    },
     "grant_source_funder_facts": {
         "grant_id", "country_code", "country_name", "source_namespace",
         "source_funder_key", "identity_method", "source_organization_id",
@@ -58,6 +68,12 @@ REQUIRED_SCHEMA = {
         "publisher_source_url", "source_record_id", "data_revision",
     },
     "grant_overview_cache": {"cache_key", "data_revision", "payload", "created_at"},
+    "source_funder_link_overrides": {
+        "source_namespace", "source_organization_id", "link_mode", "updated_at", "revision",
+    },
+    "source_funder_profile_cache": {
+        "source_funder_key", "profile_id", "status", "payload", "error", "updated_at", "link_revision",
+    },
 }
 
 def create_connection(db_file):
@@ -66,6 +82,7 @@ def create_connection(db_file):
     try:
         os.makedirs(os.path.dirname(os.path.abspath(db_file)), exist_ok=True)
         conn = sqlite3.connect(db_file)
+        conn.execute("PRAGMA foreign_keys = ON")
         logger.info(f"Successfully connected to SQLite: {db_file}")
         return conn
     except Exception as e:
@@ -81,6 +98,35 @@ def migrate_grant_overview_schema(conn):
     reparsing every transaction JSON payload on each page load.
     """
     cursor = conn.cursor()
+
+    # These two tables contain only reproducible projections of ``grants``.
+    # During development (and future upgrades) an older projection may already
+    # exist with fewer columns. SQLite's CREATE TABLE IF NOT EXISTS cannot add
+    # those columns, so replace only the incompatible derived table and let the
+    # repository rebuild it below. Source grants and organization records are
+    # deliberately never touched here.
+    existing_tables = {
+        str(row[0])
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    for table_name in ("grant_overview_facts", "grant_source_funder_facts"):
+        if table_name not in existing_tables:
+            continue
+        existing_columns = {
+            str(row[1])
+            for row in cursor.execute(f"PRAGMA table_info({table_name})")
+        }
+        required_columns = REQUIRED_SCHEMA[table_name]
+        if not required_columns.issubset(existing_columns):
+            logger.info(
+                "Replacing incompatible derived table %s (missing: %s)",
+                table_name,
+                ", ".join(sorted(required_columns - existing_columns)),
+            )
+            cursor.execute(f"DROP TABLE {table_name}")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS grant_beneficiary_terms (
             grant_id TEXT NOT NULL,
@@ -112,6 +158,34 @@ def migrate_grant_overview_schema(conn):
             data_revision TEXT NOT NULL,
             payload TEXT NOT NULL,
             created_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grant_overview_facts (
+            grant_id TEXT PRIMARY KEY,
+            source_namespace TEXT NOT NULL,
+            award_date TEXT,
+            award_date_status TEXT NOT NULL,
+            currency TEXT,
+            original_amount_minor INTEGER,
+            original_amount_status TEXT NOT NULL,
+            eur_amount_minor INTEGER,
+            eur_amount_status TEXT NOT NULL,
+            conversion_status TEXT,
+            funding_name TEXT NOT NULL,
+            funding_name_normalized TEXT NOT NULL,
+            recipient_name TEXT NOT NULL,
+            recipient_name_normalized TEXT NOT NULL,
+            country_count INTEGER NOT NULL,
+            programme_category_count INTEGER NOT NULL,
+            programme_provenance TEXT NOT NULL,
+            invalid_source_label INTEGER NOT NULL DEFAULT 0,
+            low_confidence_inference INTEGER NOT NULL DEFAULT 0,
+            origin_country_code TEXT,
+            origin_country_name TEXT,
+            origin_source TEXT,
+            data_revision TEXT NOT NULL,
+            FOREIGN KEY (grant_id) REFERENCES grants(grant_id) ON DELETE CASCADE
         )
     """)
     cursor.execute("""
@@ -148,6 +222,10 @@ def migrate_grant_overview_schema(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_beneficiary_countries_code ON grant_beneficiary_countries(country_code, grant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area ON grant_programme_categories(programme_area, grant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_programme_categories_area_nocase ON grant_programme_categories(programme_area COLLATE NOCASE, grant_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_source_date ON grant_overview_facts(source_namespace, award_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_source_currency ON grant_overview_facts(source_namespace, currency)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_funder ON grant_overview_facts(source_namespace, funding_name_normalized)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_grant_overview_facts_recipient ON grant_overview_facts(source_namespace, recipient_name_normalized)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_key ON grant_source_funder_facts(country_code, source_namespace, source_funder_key)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_key_country ON grant_source_funder_facts(source_funder_key, country_code)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_country_date ON grant_source_funder_facts(country_code, award_date)")
@@ -155,6 +233,52 @@ def migrate_grant_overview_schema(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_source_funder_name ON grant_source_funder_facts(source_namespace, display_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_funder_facts_source_recipient_name ON grant_source_funder_facts(source_namespace, recipient_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_grants_source_date ON grants(source, date)")
+
+
+def migrate_source_funder_interaction_schema(conn):
+    """Store explicit user decisions separately from imported source data.
+
+    A publisher-supplied identifier can make a profile link technically
+    possible, but a user may deliberately keep that source funder in observed
+    mode.  This table prevents later imports from silently recreating that
+    cleared link.
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS source_funder_link_overrides (
+            source_namespace TEXT NOT NULL,
+            source_organization_id TEXT NOT NULL,
+            link_mode TEXT NOT NULL CHECK(link_mode IN ('observed_only')),
+            updated_at TEXT NOT NULL,
+            revision INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (source_namespace, source_organization_id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS source_funder_profile_cache (
+            source_funder_key TEXT PRIMARY KEY,
+            profile_id INTEGER NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('pending', 'ready', 'failed')),
+            payload TEXT,
+            error TEXT,
+            updated_at TEXT NOT NULL
+            ,link_revision INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_source_funder_profile_cache_profile "
+        "ON source_funder_profile_cache(profile_id, status)"
+    )
+    override_columns = {row[1] for row in cursor.execute("PRAGMA table_info(source_funder_link_overrides)")}
+    if "revision" not in override_columns:
+        cursor.execute(
+            "ALTER TABLE source_funder_link_overrides ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
+        )
+    cache_columns = {row[1] for row in cursor.execute("PRAGMA table_info(source_funder_profile_cache)")}
+    if "link_revision" not in cache_columns:
+        cursor.execute(
+            "ALTER TABLE source_funder_profile_cache ADD COLUMN link_revision INTEGER NOT NULL DEFAULT 0"
+        )
 
 def create_tables(conn, reset=False):
     """Create the full schema; optionally reset existing application tables."""
@@ -314,6 +438,7 @@ def create_tables(conn, reset=False):
             (SCHEMA_VERSION,)
         )
         migrate_grant_overview_schema(conn)
+        migrate_source_funder_interaction_schema(conn)
 
         # The broad Charity Commission register is a separate lightweight layer.
         # It intentionally does not reuse the enriched charities table or grants.
@@ -336,7 +461,7 @@ def create_tables(conn, reset=False):
         raise e
 
 
-def validate_database(db_file):
+def validate_database(db_file, *, require_foreign_keys=False):
     """Return ``(is_valid, reason)`` without creating or mutating the database."""
     if not db_file or not os.path.exists(db_file):
         return False, "database file does not exist"
@@ -349,8 +474,8 @@ def validate_database(db_file):
     try:
         uri = Path(db_file).resolve().as_uri() + "?mode=ro"
         conn = sqlite3.connect(uri, uri=True)
-        quick_check = conn.execute("PRAGMA quick_check").fetchone()
-        if not quick_check or quick_check[0] != "ok":
+        integrity_check = conn.execute("PRAGMA integrity_check").fetchone()
+        if not integrity_check or integrity_check[0] != "ok":
             return False, "SQLite integrity check failed"
 
         tables = {
@@ -366,6 +491,10 @@ def validate_database(db_file):
             missing_columns = sorted(required_columns - columns)
             if missing_columns:
                 return False, f"table '{table}' is missing columns: {', '.join(missing_columns)}"
+        if require_foreign_keys:
+            violation = conn.execute("PRAGMA foreign_key_check").fetchone()
+            if violation is not None:
+                return False, "foreign key check failed"
         return True, "valid"
     except sqlite3.Error as exc:
         return False, f"cannot open as compatible SQLite: {exc}"
@@ -422,11 +551,151 @@ def create_staging_database(db_file, preserve_existing=False):
 
 def publish_staging_database(staging_path, db_file):
     """Atomically publish a validated staging database."""
-    valid, reason = validate_database(staging_path)
+    valid, reason = validate_database(staging_path, require_foreign_keys=True)
     if not valid:
         raise ValueError(f"Refusing to publish invalid database: {reason}")
+    # Force the file contents out before replacing the active database.  The
+    # directory fsync makes the name replacement durable on filesystems that
+    # support it; unsupported filesystems still retain os.replace atomicity.
+    with open(staging_path, "rb") as staging_file:
+        os.fsync(staging_file.fileno())
     os.replace(staging_path, db_file)
+    try:
+        directory_fd = os.open(os.path.dirname(os.path.abspath(db_file)), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except OSError:
+        logger.debug("Directory fsync is not supported for %s", db_file)
     logger.info(f"Atomically published validated SQLite database at: {db_file}")
+
+
+def repair_optional_profile_foreign_keys(conn):
+    """Clear only dangling optional profile links in an already-open staging DB.
+
+    Source identities, grants, original amount/currency/date, and every valid
+    profile relationship remain untouched.  Callers own the transaction so a
+    failed reconciliation can roll the whole staging operation back.
+    """
+    conn.execute("PRAGMA foreign_keys = ON")
+    funding_cleared = conn.execute(
+        """
+        UPDATE grants
+           SET funding_charity_id = NULL
+         WHERE funding_charity_id IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM charities WHERE charities.charity_id = grants.funding_charity_id
+           )
+        """
+    ).rowcount
+    recipient_cleared = conn.execute(
+        """
+        UPDATE grants
+           SET recipient_charity_id = NULL
+         WHERE recipient_charity_id IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM charities WHERE charities.charity_id = grants.recipient_charity_id
+           )
+        """
+    ).rowcount
+    source_fact_links_cleared = conn.execute(
+        """
+        UPDATE grant_source_funder_facts
+           SET linked_profile_id = NULL
+         WHERE linked_profile_id IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM charities WHERE charities.charity_id = grant_source_funder_facts.linked_profile_id
+           )
+        """
+    ).rowcount
+    return {
+        "funding_profile_links_cleared": max(0, funding_cleared),
+        "recipient_profile_links_cleared": max(0, recipient_cleared),
+        "source_fact_profile_links_cleared": max(0, source_fact_links_cleared),
+    }
+
+
+def prepare_staging_database_for_publish(staging_path):
+    """Repair optional links and fail closed before an atomic publication.
+
+    This helper is deliberately staging-only.  Its small reconciliation checks
+    prove that the repair cannot remove grants or source facts before callers
+    run their wider pipeline reconciliation.
+    """
+    conn = sqlite3.connect(staging_path)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("BEGIN IMMEDIATE")
+        before = {
+            "grants": conn.execute("SELECT COUNT(*) FROM grants").fetchone()[0],
+            "source_facts": conn.execute("SELECT COUNT(*) FROM grant_source_funder_facts").fetchone()[0],
+        }
+        repair = repair_optional_profile_foreign_keys(conn)
+        after = {
+            "grants": conn.execute("SELECT COUNT(*) FROM grants").fetchone()[0],
+            "source_facts": conn.execute("SELECT COUNT(*) FROM grant_source_funder_facts").fetchone()[0],
+        }
+        if before != after:
+            raise ValueError("Optional-link repair unexpectedly changed grant or source-fact counts.")
+        if conn.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise ValueError("Staging database still has foreign-key violations after repair.")
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()
+        if not integrity or integrity[0] != "ok":
+            raise ValueError("Staging database integrity check failed after repair.")
+        conn.commit()
+        return {**repair, **{f"before_{key}": value for key, value in before.items()}}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _valid_optional_profile_ids(conn, values):
+    """Resolve optional directory-profile IDs in one query for a bulk import."""
+    candidate_ids = {
+        int(value)
+        for value in values
+        if isinstance(value, int) and not isinstance(value, bool)
+    }
+    if not candidate_ids:
+        return set()
+    placeholders = ", ".join("?" for _ in candidate_ids)
+    return {
+        int(row[0])
+        for row in conn.execute(
+            f"SELECT charity_id FROM charities WHERE charity_id IN ({placeholders})",
+            tuple(sorted(candidate_ids)),
+        )
+    }
+
+
+def sanitize_grant_profile_links(conn, grants_list):
+    """Return grant copies whose optional profile FKs reference real profiles only.
+
+    Publisher/source IDs are deliberately not inferred or rewritten here: they
+    remain in ``funding_org_source_id`` / ``recipient_org_source_id`` even when
+    no verified profile exists.
+    """
+    source = list(grants_list)
+    valid_ids = _valid_optional_profile_ids(
+        conn,
+        [
+            value
+            for grant in source
+            for value in (grant.get("funding_charity_id"), grant.get("recipient_charity_id"))
+        ],
+    )
+    sanitized = []
+    for grant in source:
+        row = dict(grant)
+        for field in ("funding_charity_id", "recipient_charity_id"):
+            value = row.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value not in valid_ids:
+                row[field] = None
+        sanitized.append(row)
+    return sanitized
 
 
 def _json_value(value, default):
@@ -436,6 +705,56 @@ def _json_value(value, default):
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False)
+
+
+def link_existing_grants_to_charities(conn, charity_ids):
+    """Link prior 360Giving grants to newly available Charity Commission profiles.
+
+    A 360Giving funder identifier in the ``GB-CHC-<number>`` form is a stable,
+    publisher-supplied Charity Commission identifier.  We may therefore repair
+    only grants that are still unlinked and have that *exact* identifier.  This
+    deliberately does not use organization names or touch recipient links.
+
+    The caller owns the transaction.  A non-zero return value means derived
+    grant indexes and cached overview payloads have been invalidated so the
+    next read rebuilds them with the new profile relationship.
+    """
+    normalized_ids = sorted({
+        int(charity_id)
+        for charity_id in charity_ids
+        if str(charity_id).strip().isdigit()
+    })
+    if not normalized_ids:
+        return 0
+
+    cursor = conn.cursor()
+    linked_count = 0
+    for charity_id in normalized_ids:
+        cursor.execute(
+            """
+            UPDATE grants
+               SET funding_charity_id = ?
+             WHERE funding_charity_id IS NULL
+               AND funding_org_source_id = ?
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM source_funder_link_overrides AS override
+                   WHERE override.source_namespace = grants.source
+                     AND override.source_organization_id = grants.funding_org_source_id
+                     AND override.link_mode = 'observed_only'
+               )
+            """,
+            (charity_id, f"GB-CHC-{charity_id}"),
+        )
+        linked_count += max(0, cursor.rowcount)
+
+    if linked_count:
+        # Source-funder facts carry the resolved profile ID, so neither their
+        # persisted rows nor cached dashboard responses are valid any longer.
+        cursor.execute("DELETE FROM metadata WHERE key = 'grant_overview_index_revision'")
+        cursor.execute("DELETE FROM grant_overview_cache")
+    return linked_count
+
 
 def insert_charities(conn, charities_list):
     """Inserts or replaces charity profiles in the charities table."""
@@ -507,6 +826,9 @@ def insert_charities(conn, charities_list):
                 _json_value(c.get("deduplication_candidates"), []),
                 )
             )
+        link_existing_grants_to_charities(
+            conn, [charity.get("charity_id") for charity in charities_list]
+        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -516,7 +838,7 @@ def insert_grants(conn, grants_list):
     """Inserts or replaces grant details in the grants table."""
     cursor = conn.cursor()
     try:
-        for g in grants_list:
+        for g in sanitize_grant_profile_links(conn, grants_list):
             cursor.execute(
             """
             INSERT OR REPLACE INTO grants (
@@ -688,6 +1010,11 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
         logger.warning(f"Grants JSONL file not found at: {grants_jsonl_path}")
     else:
         logger.info(f"Loading grants from {grants_jsonl_path}...")
+        # JSONL imports can be large, so resolve all verified profile IDs once
+        # instead of issuing a charity lookup for every observed grant.
+        verified_profile_ids = {
+            int(row[0]) for row in cursor.execute("SELECT charity_id FROM charities")
+        }
         grant_count = 0
         with open(grants_jsonl_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -696,6 +1023,18 @@ def load_jsonl_to_db(conn, charities_jsonl_path, grants_jsonl_path, strict=False
                     continue
                 try:
                     g = json.loads(line)
+                    # Observed publisher IDs remain as source provenance.  They
+                    # are not promoted to optional profile FKs until a matching
+                    # verified directory profile actually exists.
+                    g = dict(g)
+                    for profile_field in ("funding_charity_id", "recipient_charity_id"):
+                        profile_id = g.get(profile_field)
+                        if (
+                            not isinstance(profile_id, int)
+                            or isinstance(profile_id, bool)
+                            or profile_id not in verified_profile_ids
+                        ):
+                            g[profile_field] = None
                     cursor.execute(
                         """
                         INSERT OR REPLACE INTO grants (

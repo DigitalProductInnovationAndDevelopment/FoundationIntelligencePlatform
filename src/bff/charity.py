@@ -1,7 +1,14 @@
+import asyncio
+import json
+import os
+import sqlite3
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from datetime import datetime
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from starlette.concurrency import run_in_threadpool
 from typing import Any, Dict, List, Optional
 from bff.auth import get_current_user_token
+from bff.config import DB_PATH
 from bff.schemas import (
     CharityBase,
     CharityDetail,
@@ -18,8 +25,13 @@ from bff.schemas import (
     SankeyData,
     ScoreRequest,
     ScoreResponse,
+    PipelineStatus,
+    SourceFunderEnrichmentRequest,
+    SourceFunderRelinkRequest,
 )
 from bff.repositories import CharityRepository, get_charity_repository
+from data.registry import REGISTRY_LINK_TABLE, REGISTRY_TABLE, normalize_organization_name
+from preprocessing.enrichment import enrich_organization
 
 router = APIRouter(
     prefix="/api/charities", 
@@ -236,17 +248,19 @@ async def get_filtered_grant_overview(
         raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
     split_values = lambda value: [item.strip() for item in (value or "").split(",") if item.strip()]
     try:
-        return await repo.get_grant_overview(
-            currency=currency,
-            date_from=parsed_from,
-            date_to=parsed_to,
-            beneficiary_geographies=split_values(beneficiary_geographies),
-            programme_areas=split_values(programme_areas),
-            donor=donor,
-            recipient=recipient,
-            sources=split_values(sources) if sources is not None else None,
-            granularity=granularity,
-            include_connections=include_connections,
+        return await run_in_threadpool(
+            lambda: asyncio.run(repo.get_grant_overview(
+                currency=currency,
+                date_from=parsed_from,
+                date_to=parsed_to,
+                beneficiary_geographies=split_values(beneficiary_geographies),
+                programme_areas=split_values(programme_areas),
+                donor=donor,
+                recipient=recipient,
+                sources=split_values(sources) if sources is not None else None,
+                granularity=granularity,
+                include_connections=include_connections,
+            ))
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -297,16 +311,18 @@ async def get_filtered_grant_overview_trends(
         raise HTTPException(status_code=400, detail="date_from cannot be after date_to")
     split_values = lambda value: [item.strip() for item in (value or "").split(",") if item.strip()]
     try:
-        return await repo.get_grant_overview_trends(
-            currency=currency,
-            date_from=parsed_from,
-            date_to=parsed_to,
-            beneficiary_geographies=split_values(beneficiary_geographies),
-            programme_areas=split_values(programme_areas),
-            donor=donor,
-            recipient=recipient,
-            sources=split_values(sources) if sources is not None else None,
-            granularity=granularity,
+        return await run_in_threadpool(
+            lambda: asyncio.run(repo.get_grant_overview_trends(
+                currency=currency,
+                date_from=parsed_from,
+                date_to=parsed_to,
+                beneficiary_geographies=split_values(beneficiary_geographies),
+                programme_areas=split_values(programme_areas),
+                donor=donor,
+                recipient=recipient,
+                sources=split_values(sources) if sources is not None else None,
+                granularity=granularity,
+            ))
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -359,6 +375,419 @@ def _parse_grant_date(value: Optional[str], field: str) -> Optional[str]:
 
 def _split_grant_filter(value: Optional[str]) -> List[str]:
     return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+def _official_charity_url(charity_number: int) -> str:
+    """Return the stable public Charity Commission detail URL for a record."""
+    return (
+        "https://register-of-charities.charitycommission.gov.uk/"
+        f"en/charity-search/-/charity-details/{charity_number}"
+    )
+
+
+def _fast_link_confirmed_profiles(reg_numbers: List[int]) -> List[Dict[str, Any]]:
+    """Create lightweight profiles from cached official records and link known grants.
+
+    This intentionally performs no network calls, database clone, currency
+    backfill, or overview-index rebuild.  It only turns a confirmed cached
+    Charity Commission record into an Organization Research profile and links
+    grants whose publisher supplied the exact ``GB-CHC-<number>`` identifier.
+    The operation is one small SQLite transaction so the directory can open a
+    profile immediately after the user confirms it.
+    """
+    if not os.path.exists(DB_PATH):
+        raise RuntimeError("The local organization database is unavailable.")
+
+    conn = sqlite3.connect(DB_PATH, timeout=8)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 8000")
+        conn.execute("BEGIN IMMEDIATE")
+        profiles: List[Dict[str, Any]] = []
+        now = datetime.now().astimezone().isoformat()
+
+        for requested_number in reg_numbers:
+            registry = conn.execute(
+                f"""
+                SELECT registry_id, charity_number, registered_name,
+                       registration_status, income, expenditure,
+                       address_line_one, address_line_two, address_line_three,
+                       address_line_four, address_line_five, postcode, city,
+                       administrative_region, country_code, activity_text,
+                       source_name, source_record_updated_at
+                FROM {REGISTRY_TABLE}
+                WHERE charity_number = ? OR linked_charity_number = ?
+                ORDER BY CASE WHEN charity_number = ? THEN 0 ELSE 1 END,
+                         registry_id
+                LIMIT 1
+                """,
+                (str(requested_number), str(requested_number), str(requested_number)),
+            ).fetchone()
+            if not registry:
+                raise ValueError(
+                    f"No cached Charity Commission record was found for #{requested_number}."
+                )
+
+            try:
+                charity_number = int(str(registry["charity_number"]).strip())
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"The cached Charity Commission record for #{requested_number} has no usable charity number."
+                ) from exc
+
+            existing = conn.execute(
+                "SELECT charity_id, name FROM charities WHERE charity_id = ?",
+                (charity_number,),
+            ).fetchone()
+            if not existing:
+                address_parts = [
+                    registry[key]
+                    for key in (
+                        "address_line_one", "address_line_two", "address_line_three",
+                        "address_line_four", "address_line_five", "postcode",
+                    )
+                    if registry[key]
+                ]
+                source_url = _official_charity_url(charity_number)
+                raw_cc_data = {
+                    "registered_charity_number": charity_number,
+                    "link": source_url,
+                    "all_details": {
+                        "charity_name": registry["registered_name"],
+                        "reg_status": registry["registration_status"],
+                        "latest_income": registry["income"],
+                        "latest_expenditure": registry["expenditure"],
+                        "activities": registry["activity_text"],
+                        "address_country": registry["country_code"],
+                    },
+                    "description": registry["activity_text"],
+                    "registry_id": registry["registry_id"],
+                }
+                profile_seed: Dict[str, Any] = {
+                    "charity_id": charity_number,
+                    "name": registry["registered_name"],
+                    "type": "Charity",
+                    "address": ", ".join(str(value) for value in address_parts),
+                    "city": registry["city"],
+                    "state": registry["administrative_region"],
+                    "country": registry["country_code"],
+                    "annual_income": registry["income"],
+                    "annual_expenditure": registry["expenditure"],
+                    "raw_cc_data": raw_cc_data,
+                }
+                enrichment = enrich_organization(profile_seed)
+                conn.execute(
+                    """
+                    INSERT INTO charities (
+                        charity_id, name, type, address, city, state, country,
+                        annual_income, annual_expenditure, raw_cc_data,
+                        programme_areas_source, programme_areas_inferred,
+                        programme_area_scores, programme_area_method,
+                        programme_area_evidence, programme_area_review_required,
+                        geographic_focus_source, geographic_focus_inferred,
+                        headquarters_country, headquarters_region,
+                        geography_method, geography_confidence, geography_evidence,
+                        geography_review_required, enrichment_rule_version,
+                        enrichment_review_reasons, insufficient_source_text,
+                        normalized_name, organization_type, primary_source,
+                        source_names, source_record_id, source_url, source_records,
+                        ingestion_timestamp, transaction_coverage
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    (
+                        charity_number,
+                        registry["registered_name"],
+                        "Charity",
+                        profile_seed["address"],
+                        registry["city"],
+                        registry["administrative_region"],
+                        registry["country_code"],
+                        registry["income"],
+                        registry["expenditure"],
+                        json.dumps(raw_cc_data, ensure_ascii=False),
+                        json.dumps(enrichment["programme_areas_source"], ensure_ascii=False),
+                        json.dumps(enrichment["programme_areas_inferred"], ensure_ascii=False),
+                        json.dumps(enrichment["programme_area_scores"], ensure_ascii=False),
+                        enrichment["programme_area_method"],
+                        json.dumps(enrichment["programme_area_evidence"], ensure_ascii=False),
+                        int(bool(enrichment["programme_area_review_required"])),
+                        json.dumps(enrichment["geographic_focus_source"], ensure_ascii=False),
+                        json.dumps(enrichment["geographic_focus_inferred"], ensure_ascii=False),
+                        enrichment["headquarters_country"],
+                        enrichment["headquarters_region"],
+                        enrichment["geography_method"],
+                        enrichment["geography_confidence"],
+                        json.dumps(enrichment["geography_evidence"], ensure_ascii=False),
+                        int(bool(enrichment["geography_review_required"])),
+                        enrichment["enrichment_rule_version"],
+                        json.dumps(enrichment["enrichment_review_reasons"], ensure_ascii=False),
+                        int(bool(enrichment["insufficient_source_text"])),
+                        normalize_organization_name(registry["registered_name"]),
+                        "charity",
+                        registry["source_name"],
+                        json.dumps([registry["source_name"]], ensure_ascii=False),
+                        registry["registry_id"],
+                        source_url,
+                        json.dumps([{
+                            "source": registry["source_name"],
+                            "record_id": registry["registry_id"],
+                            "url": source_url,
+                            "record_updated_at": registry["source_record_updated_at"],
+                        }], ensure_ascii=False),
+                        now,
+                        "source_without_transactions",
+                    ),
+                )
+
+            source_identifier = f"GB-CHC-{charity_number}"
+            # A confirmed selection is an explicit user action to link this
+            # profile again. It intentionally supersedes a prior NL reset,
+            # while ordinary imports remain blocked by the persisted override.
+            conn.execute(
+                """
+                DELETE FROM source_funder_link_overrides
+                WHERE source_namespace = '360Giving' AND source_organization_id = ?
+                """,
+                (source_identifier,),
+            )
+            linked_grants = conn.execute(
+                """
+                UPDATE grants
+                   SET funding_charity_id = ?
+                 WHERE funding_charity_id IS NULL
+                   AND funding_org_source_id = ?
+                """,
+                (charity_number, source_identifier),
+            ).rowcount
+            linked_facts = conn.execute(
+                """
+                UPDATE grant_source_funder_facts
+                   SET linked_profile_id = ?
+                 WHERE linked_profile_id IS NULL
+                   AND source_organization_id = ?
+                """,
+                (charity_number, source_identifier),
+            ).rowcount
+            # Facts can occasionally predate the source-ID projection. Repair
+            # only rows whose underlying grant now has this exact profile link.
+            linked_facts += conn.execute(
+                """
+                UPDATE grant_source_funder_facts
+                   SET linked_profile_id = ?
+                 WHERE linked_profile_id IS NULL
+                   AND grant_id IN (
+                       SELECT grant_id
+                       FROM grants
+                       WHERE funding_charity_id = ?
+                   )
+                """,
+                (charity_number, charity_number),
+            ).rowcount
+            observed_grant_count = conn.execute(
+                "SELECT COUNT(*) FROM grants WHERE funding_charity_id = ?",
+                (charity_number,),
+            ).fetchone()[0]
+            conn.execute(
+                """
+                UPDATE charities
+                   SET transaction_coverage = ?
+                 WHERE charity_id = ?
+                """,
+                (
+                    "observed_grants_linked" if observed_grant_count else "source_without_transactions",
+                    charity_number,
+                ),
+            )
+            conn.execute(
+                f"""
+                INSERT INTO {REGISTRY_LINK_TABLE} (
+                    registry_id, enriched_organization_id, match_status,
+                    match_method, match_confidence, match_reason, reviewed_at,
+                    created_at, updated_at
+                ) VALUES (?, ?, 'accepted', 'exact_identifier', 1.0, ?, ?, ?, ?)
+                ON CONFLICT(registry_id, enriched_organization_id) DO UPDATE SET
+                    match_status = 'accepted',
+                    match_method = 'exact_identifier',
+                    match_confidence = 1.0,
+                    match_reason = excluded.match_reason,
+                    reviewed_at = excluded.reviewed_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    registry["registry_id"],
+                    charity_number,
+                    "Confirmed Charity Commission number selected by the user.",
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            profiles.append({
+                "charity_id": charity_number,
+                "name": str(registry["registered_name"]),
+                "linked_grants": int(observed_grant_count),
+                "newly_linked_grants": int(linked_grants),
+                "linked_source_facts": int(linked_facts),
+            })
+        conn.commit()
+        return profiles
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+async def _start_confirmed_profile_enrichment(
+    payload: SourceFunderEnrichmentRequest,
+    *,
+    run_source: str,
+) -> Dict[str, Any]:
+    """Immediately create confirmed local links without a blocking source scrape.
+
+    A full source refresh is deliberately *not* launched from this interaction:
+    the user-selected profile already has a locally cached official record and
+    current observed grants. Keeping the refresh as an explicit pipeline action
+    avoids a database-wide ECB backfill and index rebuild on every profile click.
+    """
+    reg_numbers = sorted({int(value) for value in payload.reg_numbers})
+    if not reg_numbers:
+        raise HTTPException(status_code=400, detail="Select at least one Charity Commission number.")
+    if len(reg_numbers) > 5:
+        raise HTTPException(status_code=400, detail="A donor-directory enrichment run may include at most five organizations.")
+    try:
+        profiles = await run_in_threadpool(_fast_link_confirmed_profiles, reg_numbers)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    now = datetime.now().astimezone().isoformat()
+    return {
+        "status": "success",
+        "started_at": now,
+        "finished_at": now,
+        "last_run_source": run_source,
+        "error": None,
+        "profiles": profiles,
+    }
+
+
+@router.post("/grants/funders/enrich", response_model=PipelineStatus)
+async def enrich_source_funders(
+    payload: SourceFunderEnrichmentRequest,
+):
+    """Link up to five confirmed cached Charity Commission records immediately."""
+    return await _start_confirmed_profile_enrichment(
+        payload,
+        run_source="directory_enrichment",
+    )
+
+
+@router.post("/directory/organizations/enrich", response_model=PipelineStatus)
+async def enrich_registry_organization(
+    payload: SourceFunderEnrichmentRequest,
+):
+    """Create one cached official profile and attach already observed grants."""
+    if len({int(value) for value in payload.reg_numbers}) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="The registry detail action can enrich exactly one organization at a time.",
+        )
+    return await _start_confirmed_profile_enrichment(
+        payload,
+        run_source="registry_enrichment",
+    )
+
+
+@router.post("/grants/funders/{source_funder_key}/reset-to-observed")
+async def reset_source_funder_to_observed(
+    source_funder_key: str,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Remove one source funder's directory link while retaining observed data."""
+    try:
+        reset = await repo.reset_source_funder_to_observed(source_funder_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    if not reset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source-funder entry not found.")
+    return {"status": "observed_only", **reset}
+
+
+@router.post("/grants/funders/{source_funder_key}/relink")
+async def relink_source_funder_profile(
+    source_funder_key: str,
+    payload: SourceFunderRelinkRequest,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Apply an explicit, verified profile relink after observed-only mode."""
+    try:
+        relinked = await repo.relink_source_funder_profile(source_funder_key, payload.profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    if not relinked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source-funder entry not found.")
+    return {"status": "linked", **relinked}
+
+
+@router.post("/grants/funders/{source_funder_key}/profile-cache")
+async def queue_source_funder_profile_cache(
+    source_funder_key: str,
+    background_tasks: BackgroundTasks,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Start local profile hydration without blocking the observed-donor view."""
+    try:
+        queued = repo.queue_source_funder_profile_hydration(source_funder_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The local profile database is busy. Please try again in a moment.",
+        ) from exc
+    if not queued:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This observed source funder has no active organization profile to hydrate.",
+        )
+    if queued["status"] == "pending":
+        background_tasks.add_task(repo.hydrate_source_funder_profile, source_funder_key)
+    return queued
+
+
+@router.get("/grants/funders/{source_funder_key}/profile-cache")
+async def get_source_funder_profile_cache(
+    source_funder_key: str,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    """Return the state of independently hydrated source-profile data."""
+    try:
+        cached = repo.get_source_funder_profile_cache(source_funder_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not cached:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No source-profile cache is available.")
+    return cached
 
 
 @router.get("/grants/funders", response_model=SourceFunderListResponse)

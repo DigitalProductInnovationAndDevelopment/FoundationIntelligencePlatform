@@ -17,9 +17,18 @@ if SRC_DIR not in sys.path:
 from bff.main import app
 from bff.config import JWT_SECRET_KEY, JWT_ALGORITHM, DATA_PATH
 from bff.repositories import JSONCharityRepository, get_charity_repository
+from bff import admin as admin_module
 
 class TestBFF(unittest.TestCase):
     def setUp(self):
+        self.admin_temp_dir = tempfile.TemporaryDirectory()
+        self.admin_paths = patch.multiple(
+            admin_module,
+            STATUS_FILE=os.path.join(self.admin_temp_dir.name, "pipeline_status.json"),
+            LOCK_FILE=os.path.join(self.admin_temp_dir.name, "pipeline_run.lock"),
+            LOG_FILE=os.path.join(self.admin_temp_dir.name, "pipeline_run.log"),
+        )
+        self.admin_paths.start()
         # Create a temporary JSON data file for testing repository
         self.test_data = [
             {
@@ -93,6 +102,8 @@ class TestBFF(unittest.TestCase):
         # Clean up temporary files and dependency overrides
         os.unlink(self.temp_file.name)
         app.dependency_overrides.clear()
+        self.admin_paths.stop()
+        self.admin_temp_dir.cleanup()
 
     # --- Authentication Tests ---
 
@@ -502,6 +513,72 @@ class TestBFF(unittest.TestCase):
         data = response.json()
         self.assertIn("status", data)
 
+    @patch("bff.charity._fast_link_confirmed_profiles")
+    def test_enrich_source_funders_is_bounded_and_uses_confirmed_numbers(self, mock_fast_link):
+        mock_fast_link.return_value = []
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.post(
+            "/api/charities/grants/funders/enrich",
+            json={"reg_numbers": [1002, 1001, 1001]},
+            cookies={"session_id": session_cookie},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+        self.assertEqual(response.json()["last_run_source"], "directory_enrichment")
+        mock_fast_link.assert_called_once_with([1001, 1002])
+
+    def test_enrich_source_funders_rejects_more_than_five_organizations(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+        response = self.client.post(
+            "/api/charities/grants/funders/enrich",
+            json={"reg_numbers": [1, 2, 3, 4, 5, 6]},
+            cookies={"session_id": session_cookie},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    @patch("bff.charity._fast_link_confirmed_profiles")
+    def test_registry_detail_enrichment_is_single_and_uses_confirmed_number(self, mock_fast_link):
+        mock_fast_link.return_value = []
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+
+        response = self.client.post(
+            "/api/charities/directory/organizations/enrich",
+            json={"reg_numbers": [1165944]},
+            cookies={"session_id": session_cookie},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["last_run_source"], "registry_enrichment")
+        self.assertEqual(response.json()["status"], "success")
+        mock_fast_link.assert_called_once_with([1165944])
+
+    def test_registry_detail_enrichment_rejects_more_than_one_organization(self):
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        session_cookie = login_resp.cookies.get("session_id")
+        response = self.client.post(
+            "/api/charities/directory/organizations/enrich",
+            json={"reg_numbers": [1001, 1002]},
+            cookies={"session_id": session_cookie},
+        )
+        self.assertEqual(response.status_code, 400)
+
     @patch("bff.admin.run_pipeline_task")
     def test_trigger_pipeline_success(self, mock_run_task):
         login_resp = self.client.post(
@@ -518,7 +595,7 @@ class TestBFF(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
-            mock_run_task.assert_called_once_with("quick_consolidate", None, False, None, None, False)
+            mock_run_task.assert_called_once_with("quick_consolidate", None, False, None, None, False, True)
 
     @patch("bff.admin.run_pipeline_task")
     def test_trigger_pipeline_full_run_success(self, mock_run_task):
@@ -536,7 +613,7 @@ class TestBFF(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
-            mock_run_task.assert_called_once_with("full_run", 10, True, None, None, False)
+            mock_run_task.assert_called_once_with("full_run", 10, True, None, None, False, True)
 
     def test_get_pipeline_logs_success(self):
         login_resp = self.client.post(
@@ -692,14 +769,32 @@ class TestSQLiteCharityRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["links"][0]["value"], 10000.0)
         self.assertEqual(res["metadata"]["included_grant_count"], 1)
 
+    async def test_automatic_score_uses_eur_grant_values(self):
+        automatic = await self.repo.get_score(202918)
+        historical = automatic["components"]["historical_grant_size_fit"]
+        self.assertEqual(historical["evidence"][0]["currency"], "EUR")
+        self.assertEqual(historical["evidence"][0]["observed_average_grant"], 10_000.0)
+
 
 class TestAdminPipelineExtra(unittest.TestCase):
     def setUp(self):
+        self.admin_temp_dir = tempfile.TemporaryDirectory()
+        self.admin_paths = patch.multiple(
+            admin_module,
+            STATUS_FILE=os.path.join(self.admin_temp_dir.name, "pipeline_status.json"),
+            LOCK_FILE=os.path.join(self.admin_temp_dir.name, "pipeline_run.lock"),
+            LOG_FILE=os.path.join(self.admin_temp_dir.name, "pipeline_run.log"),
+        )
+        self.admin_paths.start()
         self.login_resp = self.client.post(
             "/api/auth/login",
             json={"username": "admin", "password": "password"}
         )
         self.session_cookie = self.login_resp.cookies.get("session_id")
+
+    def tearDown(self):
+        self.admin_paths.stop()
+        self.admin_temp_dir.cleanup()
 
     @classmethod
     def setUpClass(cls):
@@ -732,13 +827,13 @@ class TestAdminPipelineExtra(unittest.TestCase):
             self.assertTrue(any(k.get("status") == "failed" for k in calls_kwargs))
 
     def test_trigger_pipeline_already_running(self):
-        with patch("bff.admin.read_status", return_value={"status": "running"}):
+        with patch("bff.admin.claim_pipeline_run", return_value=False):
             response = self.client.post(
                 "/api/admin/pipeline/trigger",
                 json={"source": "quick_consolidate"},
                 cookies={"session_id": self.session_cookie}
             )
-            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.status_code, 409)
             self.assertIn("already in progress", response.json()["detail"])
 
     def test_trigger_pipeline_invalid_mode(self):

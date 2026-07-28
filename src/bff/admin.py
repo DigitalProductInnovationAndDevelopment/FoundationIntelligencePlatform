@@ -2,6 +2,8 @@ import os
 import json
 import subprocess
 import datetime
+import tempfile
+import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from typing import Optional, List
 from bff.auth import get_current_user_token
@@ -15,6 +17,8 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)
 
 STATUS_FILE = os.path.join(SRC_DIR, "data", "pipeline_status.json")
 LOG_FILE = os.path.join(SRC_DIR, "data", "pipeline_run.log")
+LOCK_FILE = os.path.join(SRC_DIR, "data", "pipeline_run.lock")
+LOCK_STALE_AFTER_SECONDS = 6 * 60 * 60
 
 router = APIRouter(
     prefix="/api/admin", 
@@ -38,6 +42,105 @@ def read_status():
         "error": None
     }
 
+
+def _atomic_json_write(path: str, payload: dict):
+    """Persist status without exposing readers to partially written JSON."""
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temporary_path = tempfile.mkstemp(prefix=".pipeline-status-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=4)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        try:
+            directory_fd = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            pass
+    except Exception:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+        raise
+
+
+def _read_lock_metadata():
+    try:
+        with open(LOCK_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def _lock_owner_is_alive(metadata: dict) -> bool:
+    pid = metadata.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Do not reclaim a lock merely because another valid user owns it.
+        return True
+    return True
+
+
+def claim_pipeline_run(mode: str) -> bool:
+    """Acquire the process-wide pipeline claim or report that one is active."""
+    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+    metadata = {
+        "pid": os.getpid(),
+        "mode": mode,
+        "claimed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    for _ in range(2):
+        try:
+            descriptor = os.open(LOCK_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            existing = _read_lock_metadata()
+            try:
+                age_seconds = max(0.0, time.time() - os.path.getmtime(LOCK_FILE))
+            except OSError:
+                continue
+            if age_seconds < LOCK_STALE_AFTER_SECONDS or _lock_owner_is_alive(existing):
+                return False
+            # A stale lock is reclaimed only when it is old and its owner is
+            # conclusively gone (or the metadata is unusable).
+            try:
+                os.unlink(LOCK_FILE)
+            except FileNotFoundError:
+                continue
+            continue
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(metadata, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            return True
+        except Exception:
+            if os.path.exists(LOCK_FILE):
+                os.unlink(LOCK_FILE)
+            raise
+    return False
+
+
+def release_pipeline_claim():
+    """Release this process's claim; never remove a newer owner's lock."""
+    metadata = _read_lock_metadata()
+    if metadata.get("pid") != os.getpid():
+        return
+    try:
+        os.unlink(LOCK_FILE)
+    except FileNotFoundError:
+        pass
+
+
 def write_status(status: str, source: str, error: Optional[str] = None):
     """Writes current execution status to JSON file."""
     current = read_status()
@@ -58,9 +161,7 @@ def write_status(status: str, source: str, error: Optional[str] = None):
             current["error"] = None
             
     try:
-        os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
-        with open(STATUS_FILE, "w", encoding="utf-8") as f:
-            json.dump(current, f, indent=4)
+        _atomic_json_write(STATUS_FILE, current)
     except Exception as e:
         logger.error(f"Failed to write pipeline status: {e}")
 
@@ -70,9 +171,13 @@ def run_pipeline_task(
     fresh: bool = False,
     search_term: Optional[str] = None,
     reg_numbers: Optional[List[int]] = None,
-    skip_contact_crawler: bool = False
+    skip_contact_crawler: bool = False,
+    claim_acquired: bool = False,
 ):
     """Orchestrates pipeline execution as a background thread task."""
+    if not claim_acquired and not claim_pipeline_run(mode):
+        logger.warning("Skipped duplicate pipeline task for %s because a run is already claimed.", mode)
+        return
     write_status(status="running", source=mode)
     
     # Configure venv python path
@@ -146,6 +251,8 @@ def run_pipeline_task(
     except Exception as e:
         logger.error(f"Pipeline background execution error: {e}")
         write_status(status="failed", source=mode, error=str(e))
+    finally:
+        release_pipeline_claim()
 
 
 @router.get("/pipeline/status", response_model=PipelineStatus)
@@ -160,18 +267,21 @@ async def trigger_pipeline(
     background_tasks: BackgroundTasks
 ):
     """Triggers specific pipeline run source dynamically in the background."""
-    current_status = read_status()
-    if current_status.get("status") == "running":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pipeline execution is already in progress."
-        )
-        
     if payload.source not in ["quick_consolidate", "refresh_charities", "refresh_grants", "full_run"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported execution mode: {payload.source}"
         )
+    if not claim_pipeline_run(payload.source):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pipeline execution is already in progress.",
+        )
+    try:
+        write_status(status="running", source=payload.source)
+    except Exception:
+        release_pipeline_claim()
+        raise
         
     background_tasks.add_task(
         run_pipeline_task,
@@ -180,7 +290,8 @@ async def trigger_pipeline(
         payload.fresh or False,
         payload.search_term,
         payload.reg_numbers,
-        payload.skip_contact_crawler or False
+        payload.skip_contact_crawler or False,
+        True,
     )
     
     return {

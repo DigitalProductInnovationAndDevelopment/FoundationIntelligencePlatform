@@ -16,13 +16,13 @@
     "geographies": ["United Kingdom", "Ghana"],
     "minimum_annual_expenditure": 1000000,
     "target_average_grant_amount": 50000,
-    "currency": "GBP",
+    "currency": "EUR",
     "organization_types": ["foundation", "Funder", "Trust", "CIO", "Charity"]
   },
   "assumptions": [
     "This is an example configuration and is not client-approved.",
     "The score supports exploration of target-profile relevance; it is not a donation probability or prediction.",
     "The final score is the weighted sum of all criteria; missing criteria contribute zero rather than inflating a partial match.",
-    "Financial and grant-size comparisons are made only within the requested source currency."
+    "Grant-size comparisons use the requested currency; EUR comparisons use stored official ECB conversions."
   ]
 }

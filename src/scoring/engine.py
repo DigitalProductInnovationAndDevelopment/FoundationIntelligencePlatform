@@ -172,16 +172,31 @@ def score_relevance(
     target_programmes = _normalized_set(target_profile.get("programme_areas"))
     organization_programme_source = _normalized_set(organization.get("programme_areas_source"))
     organization_programme_inferred = _normalized_set(organization.get("programme_areas_inferred"))
-    organization_programmes = organization_programme_source | organization_programme_inferred
+    # A donor's observed grant history is direct evidence of the themes it
+    # actually funded.  It supplements (but never overwrites) the profile's
+    # own classification, which can be sparse for a registry-only profile.
+    organization_programme_observed = _normalized_set(
+        organization.get("observed_grant_programme_areas")
+    )
+    organization_programmes = (
+        organization_programme_source
+        | organization_programme_inferred
+        | organization_programme_observed
+    )
     if target_programmes and organization_programmes:
         matches = target_programmes & organization_programmes
         score = 100 * len(matches) / len(target_programmes)
-        confidence = 0.95 if matches & organization_programme_source else 0.70
+        confidence = (
+            0.95 if matches & organization_programme_source
+            else 0.85 if matches & organization_programme_observed
+            else 0.70
+        )
         components["thematic_fit"] = _component(score, config.weights["thematic_fit"], confidence, [{
             "target_values": sorted(target_programmes),
             "organization_values": sorted(organization_programmes),
+            "observed_grant_values": sorted(organization_programme_observed),
             "matched_values": sorted(matches),
-            "method": "exact_normalized_category_overlap",
+            "method": "exact_normalized_category_overlap_including_observed_grant_history",
         }])
     else:
         reason = "target programme areas missing" if not target_programmes else "organization programme areas missing"
@@ -195,16 +210,30 @@ def score_relevance(
     organization_geo_inferred = _normalized_geography_set(
         organization.get("geographic_focus_inferred")
     )
-    organization_geographies = organization_geo_source | organization_geo_inferred
+    # These are recipient/beneficiary geographies observed in transactions,
+    # not a claim about the funder's headquarters or legal operating address.
+    organization_geo_observed = _normalized_geography_set(
+        organization.get("observed_beneficiary_geographies")
+    )
+    organization_geographies = (
+        organization_geo_source
+        | organization_geo_inferred
+        | organization_geo_observed
+    )
     if target_geographies and organization_geographies:
         matches = target_geographies & organization_geographies
         score = 100 * len(matches) / len(target_geographies)
-        confidence = 0.95 if matches & organization_geo_source else 0.70
+        confidence = (
+            0.95 if matches & organization_geo_source
+            else 0.85 if matches & organization_geo_observed
+            else 0.70
+        )
         components["geographic_fit"] = _component(score, config.weights["geographic_fit"], confidence, [{
             "target_values": sorted(target_geographies),
             "organization_values": sorted(organization_geographies),
+            "observed_beneficiary_values": sorted(organization_geo_observed),
             "matched_values": sorted(matches),
-            "method": "normalized_geography_overlap_with_constituent_country_rollup",
+            "method": "normalized_geography_overlap_including_observed_beneficiary_history",
             "headquarters_excluded": True,
         }])
     else:

@@ -150,6 +150,30 @@ class TestGrantOverview(GrantOverviewFixture):
 
         self.assertEqual(cached, first)
 
+    async def test_organization_only_sources_reuse_the_same_grant_cache(self):
+        self.grant("CACHED-SOURCES", date="2025-01-15", amount=100)
+        all_sources = [
+            "360Giving",
+            "Charity Commission for England and Wales",
+            "Philea",
+        ]
+        first = await self.repo.get_grant_overview(
+            currency="GBP", sources=all_sources
+        )
+
+        with patch.object(
+            self.repo,
+            "_get_grant_overview_from_facts",
+            side_effect=AssertionError("organization-only source caused cache miss"),
+        ):
+            cached = await self.repo.get_grant_overview(
+                currency="GBP", sources=["360Giving"]
+            )
+
+        self.assertEqual(first["kpis"], cached["kpis"])
+        self.assertEqual(first["map"]["items"], cached["map"]["items"])
+        self.assertEqual(cached["applied_filters"]["sources"], ["360Giving"])
+
     async def test_connections_are_deferred_until_explicitly_requested(self):
         self.grant("FLOW", date="2025-01-15", amount=100, geography="Ghana")
         self.conn.execute(

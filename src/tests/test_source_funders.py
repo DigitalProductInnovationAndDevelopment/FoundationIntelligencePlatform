@@ -3,12 +3,13 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from bff.main import app
 from bff.repositories import SQLiteCharityRepository, get_charity_repository
-from data.db_loader import create_tables
+from data.db_loader import create_tables, insert_charities, link_existing_grants_to_charities
 
 
 class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
@@ -118,6 +119,35 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["display_name"] for item in response["items"]], ["Tech Fund"])
         self.assertEqual(response["items"][0]["observed_funding"]["currency"], "EUR")
 
+    async def test_auto_eur_returns_single_original_currency_when_conversion_is_missing(self):
+        self.grant(
+            "GBP-NO-EUR", funder_name="Sterling Fund", funder_source_id="sterling",
+            amount=125, currency="GBP", conversion_status="missing",
+        )
+
+        response = await self.repo.get_source_funders(beneficiary_country="GH")
+        funding = response["items"][0]["observed_funding"]
+
+        self.assertIsNone(funding["amount"])
+        self.assertEqual(funding["fallback_original_amount"], 125.0)
+        self.assertEqual(funding["fallback_original_currency"], "GBP")
+        self.assertEqual(funding["fallback_original_grant_count"], 1)
+
+    async def test_detail_does_not_present_missing_eur_conversion_as_zero_euros(self):
+        self.grant(
+            "GBP-NO-EUR", funder_name="Sterling Fund", funder_source_id="sterling",
+            recipient="Unconverted recipient", amount=125, currency="GBP",
+            conversion_status="missing",
+        )
+        listing = await self.repo.get_source_funders(beneficiary_country="GH")
+        detail = await self.repo.get_source_funder_detail(
+            listing["items"][0]["source_funder_key"], beneficiary_country="GH"
+        )
+
+        self.assertEqual(detail["top_recipients"], [])
+        self.assertEqual(detail["relationships"]["status"], "no_monetary_transactions")
+        self.assertEqual(detail["relationship_summary"]["recipient_count"], 1)
+
     async def test_sorting_uses_country_attributable_amount_but_recency_keeps_multi_country_activity(self):
         self.grant("RECENT-MULTI", funder_name="Recent multi-country", funder_source_id="recent", amount=500,
                    date="2025-12-01", geography=[{"name": "Ghana", "countryCode": "GH"}, {"name": "Kenya", "countryCode": "KE"}])
@@ -184,6 +214,144 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(linked["summary"]["status_counts"], {
             "all": 1, "linked": 1, "observed_only": 0,
         })
+
+    async def test_new_profile_exactly_relinks_prior_source_grants_and_rebuilds_facts(self):
+        self.grant(
+            "PRIOR-CHC-GRANT",
+            funder_name="Confirmed Funder",
+            funder_source_id="GB-CHC-1075920",
+            funder_charity_id=None,
+        )
+        before = await self.repo.get_source_funders(beneficiary_country="GH")
+        self.assertEqual(before["items"][0]["profile_link"]["status"], "none")
+
+        insert_charities(self.conn, [{
+            "charity_id": 1075920,
+            "name": "Confirmed Funder",
+            "type": "Charity",
+        }])
+
+        grant_row = self.conn.execute(
+            "SELECT funding_charity_id FROM grants WHERE grant_id = 'PRIOR-CHC-GRANT'"
+        ).fetchone()
+        self.assertEqual(grant_row[0], 1075920)
+        after = await self.repo.get_source_funders(beneficiary_country="GH")
+        self.assertEqual(after["items"][0]["profile_link"]["status"], "single")
+        self.assertEqual(after["items"][0]["profile_link"]["profile_id"], 1075920)
+
+    async def test_reset_source_funder_keeps_grants_and_removes_only_its_profile_link(self):
+        self.grant(
+            "FOOTHOLD-MAPPED", funder_name="Foothold", funder_source_id="GB-CHC-1",
+            funder_charity_id=1,
+        )
+        self.grant(
+            "FOOTHOLD-UNMAPPED", funder_name="Foothold", funder_source_id="GB-CHC-1",
+            funder_charity_id=1, geography=[],
+        )
+        self.grant(
+            "KEEP", funder_name="Keep Fund", funder_source_id="keep-id",
+            funder_charity_id=1,
+        )
+
+        before = await self.repo.get_source_funders(beneficiary_country="GH")
+        foothold_key = next(
+            item["source_funder_key"]
+            for item in before["items"] if item["display_name"] == "Foothold"
+        )
+        reset = await self.repo.reset_source_funder_to_observed(foothold_key)
+
+        self.assertEqual(reset["display_name"], "Foothold")
+        self.assertEqual(reset["updated_grant_count"], 2)
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM grants WHERE funding_org_source_id = 'GB-CHC-1'").fetchone()[0],
+            2,
+        )
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM grants WHERE funding_org_source_id = 'GB-CHC-1' AND funding_charity_id IS NULL").fetchone()[0],
+            2,
+        )
+        self.assertEqual(link_existing_grants_to_charities(self.conn, [1]), 0)
+        self.assertEqual(
+            self.conn.execute(
+                "SELECT link_mode FROM source_funder_link_overrides WHERE source_namespace = '360Giving' AND source_organization_id = 'GB-CHC-1'"
+            ).fetchone()[0],
+            "observed_only",
+        )
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM grants WHERE funding_org_source_id = 'keep-id'").fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM charities WHERE charity_id = 1").fetchone()[0],
+            1,
+        )
+        after = await self.repo.get_source_funders(beneficiary_country="GH")
+        foothold = next(item for item in after["items"] if item["display_name"] == "Foothold")
+        self.assertEqual(foothold["profile_link"]["status"], "none")
+
+    async def test_source_profile_cache_runs_independently_and_reset_clears_it(self):
+        self.grant(
+            "PROFILE-CACHE", funder_name="Foothold", funder_source_id="GB-CHC-1",
+            funder_charity_id=1,
+        )
+        donors = await self.repo.get_source_funders(beneficiary_country="GH")
+        source_funder_key = donors["items"][0]["source_funder_key"]
+        fixture_path = os.path.join(self.temp_dir.name, "profile-source.json")
+        with open(fixture_path, "w", encoding="utf-8") as fixture:
+            json.dump([{
+                "registered_charity_number": 1,
+                "all_details": {"charity_name": "Foothold", "latest_income": 10},
+                "financial_history": [{"financial_period_end_date": "2025-03-31", "income": 10, "expenditure": 8}],
+            }], fixture)
+
+        with patch("bff.repositories.DATA_PATH", fixture_path):
+            queued = self.repo.queue_source_funder_profile_hydration(source_funder_key)
+            self.assertEqual(queued["status"], "pending")
+            hydrated = self.repo.hydrate_source_funder_profile(source_funder_key)
+
+        self.assertEqual(hydrated["status"], "ready")
+        cached = self.repo.get_source_funder_profile_cache(source_funder_key)
+        self.assertEqual(cached["status"], "ready")
+        self.assertEqual(len(cached["payload"]["financial_history"]), 1)
+
+        await self.repo.reset_source_funder_to_observed(source_funder_key)
+        self.assertIsNone(self.repo.get_source_funder_profile_cache(source_funder_key))
+
+    async def test_reset_generation_blocks_stale_hydration_and_explicit_relink_restores_only_that_key(self):
+        self.grant(
+            "FOOTHOLD-GENERATION", funder_name="Foothold", funder_source_id="GB-CHC-1",
+            funder_charity_id=1,
+        )
+        self.grant(
+            "OTHER-GENERATION", funder_name="Other", funder_source_id="other-id",
+            funder_charity_id=1,
+        )
+        donors = await self.repo.get_source_funders(beneficiary_country="GH")
+        foothold_key = next(item["source_funder_key"] for item in donors["items"] if item["display_name"] == "Foothold")
+        self.assertEqual(self.repo.queue_source_funder_profile_hydration(foothold_key)["status"], "pending")
+
+        first = await self.repo.reset_source_funder_to_observed(foothold_key)
+        second = await self.repo.reset_source_funder_to_observed(foothold_key)
+        self.assertGreaterEqual(first["link_revision"], 1)
+        self.assertGreater(second["link_revision"], first["link_revision"])
+        # A worker that started before the reset cannot put its stale payload
+        # back because the pending cache row was deleted and profile link cleared.
+        self.assertIsNone(self.repo.hydrate_source_funder_profile(foothold_key))
+        self.assertIsNone(self.repo.queue_source_funder_profile_hydration(foothold_key))
+        self.assertEqual(
+            self.conn.execute("SELECT funding_charity_id FROM grants WHERE grant_id = 'OTHER-GENERATION'").fetchone()[0],
+            1,
+        )
+
+        relinked = await self.repo.relink_source_funder_profile(foothold_key, 1)
+        self.assertEqual(relinked["profile_id"], 1)
+        self.assertEqual(
+            self.conn.execute("SELECT funding_charity_id FROM grants WHERE grant_id = 'FOOTHOLD-GENERATION'").fetchone()[0],
+            1,
+        )
+        self.assertIsNone(self.conn.execute(
+            "SELECT 1 FROM source_funder_link_overrides WHERE source_namespace = '360Giving' AND source_organization_id = 'GB-CHC-1'"
+        ).fetchone())
 
     async def test_multiple_profile_links_are_not_auto_selected(self):
         self.conn.execute("INSERT INTO charities (charity_id, name) VALUES (2, 'Second candidate')")
@@ -271,6 +439,20 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(detail.status_code, 200)
                 self.assertEqual(detail.json()["relationships"]["status"], "available")
                 self.assertEqual(detail.json()["relationships"]["links"][0]["grant_count"], 1)
+                reset = client.post(
+                    f"/api/charities/grants/funders/{payload['items'][0]['source_funder_key']}/reset-to-observed",
+                    cookies=login.cookies,
+                )
+                self.assertEqual(reset.status_code, 200)
+                self.assertEqual(reset.json()["status"], "observed_only")
+                self.assertEqual(reset.json()["updated_grant_count"], 0)
+                after_reset = client.get(
+                    "/api/charities/grants/funders?beneficiary_country=GH&page_size=25",
+                    cookies=login.cookies,
+                )
+                self.assertEqual(after_reset.status_code, 200)
+                self.assertEqual(len(after_reset.json()["items"]), 1)
+                self.assertEqual(after_reset.json()["items"][0]["profile_link"]["status"], "none")
         finally:
             app.dependency_overrides.clear()
 

@@ -96,6 +96,7 @@ interface GrantWorldMapProps {
   onCountrySelectionChange?: (selection: MapCountrySelection | null) => void;
   refreshing?: boolean;
   onConnectionsVisibilityChange?: (visible: boolean) => void;
+  onResetScope?: () => void;
 }
 
 type MapMetric = "count" | "funding";
@@ -117,6 +118,7 @@ interface ConnectionGeometry {
 // introducing category colours that imply different meanings.
 const MAP_COLORS = ["#f1f0ff", "#e2e1ff", "#c6c6ff", "#a29aff", "#6664f1"];
 const MAX_VISIBLE_CONNECTIONS = 36;
+const CONNECTION_DISCLOSURE = "Illustrative funder HQ-to-beneficiary connections — not verified financial flows";
 // Keep the populated grant regions legible: the source map's full canvas gives
 // disproportionate space to Greenland and Antarctica on a wide dashboard card.
 // This crops only the presentation viewport; country paths and data semantics
@@ -226,6 +228,7 @@ export default function GrantWorldMap({
   onCountrySelectionChange,
   refreshing = false,
   onConnectionsVisibilityChange,
+  onResetScope,
 }: GrantWorldMapProps) {
   const [metric, setMetric] = useState<MapMetric>("count");
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
@@ -439,9 +442,18 @@ export default function GrantWorldMap({
         <>
           {!isMapAvailable && (
             <div className="data-notice data-notice-warning map-inline-notice" role="status">
-              {data.status === "no_geography"
-                  ? "The current grants contain no beneficiary geography that can be resolved to a country."
-                  : "Beneficiary-country data is unavailable for the current grant scope."}
+              {data.status === "no_geography" ? (
+                "The current grants contain no beneficiary geography that can be resolved to a country."
+              ) : (
+                <>
+                  <span>No observed grants match the current scope. Check Data sources or reset the grant filters.</span>
+                  {onResetScope && (
+                    <button type="button" className="map-inline-reset" onClick={onResetScope}>
+                      Reset grant filters
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -514,7 +526,7 @@ export default function GrantWorldMap({
                 );
               })}
               {showConnections && (
-                <g className="map-connection-layer" aria-label="Illustrative funder headquarters to beneficiary country connections">
+                <g className="map-connection-layer" aria-label={CONNECTION_DISCLOSURE}>
                   {connectionGeometry.map(({ connection, path, strokeWidth, opacity }) => (
                     <path
                       key={`${connection.origin_country_code}-${connection.destination_country_code}`}
@@ -534,9 +546,9 @@ export default function GrantWorldMap({
 
             {showConnections && (
               <div className="map-connection-disclosure" role="note">
-                <strong>{connectionGeometry.length} illustrative connections</strong>
+                <strong>{CONNECTION_DISCLOSURE}</strong>
                 <span>
-                  Registered funder location → beneficiary country · {data.connection_grant_count.toLocaleString("en-GB")} grants with drawable routes
+                  {connectionGeometry.length} displayed connection{connectionGeometry.length === 1 ? "" : "s"} · {data.connection_grant_count.toLocaleString("en-GB")} grants with drawable routes
                 </span>
               </div>
             )}
@@ -623,6 +635,23 @@ export default function GrantWorldMap({
                   ? ` ${selectedItem.excluded_multi_country_grant_count} multi-country grant amount(s) are excluded from this country total.`
                   : " No multi-country award amount is duplicated in this country total."}
               </p>
+              <p className="country-explorer-note">
+                Coverage: {data.known_geography_count.toLocaleString("en-GB")} of {totalFiltered.toLocaleString("en-GB")} filtered grants mapped ({data.coverage_percentage}%).
+                {` Source${data.metadata.source.length === 1 ? "" : "s"}: ${data.metadata.source.join(", ") || "not reported"}.`}
+                {data.metadata.data_mode ? ` Data mode: ${data.metadata.data_mode.replaceAll("_", " ")}.` : ""}
+              </p>
+              <p className="country-explorer-note">
+                Country funding uses {selectedItem.funding_grant_count.toLocaleString("en-GB")} eligible grant{selectedItem.funding_grant_count === 1 ? "" : "s"}.
+                {selectedItem.excluded_invalid_amount_grant_count > 0 ? ` ${selectedItem.excluded_invalid_amount_grant_count.toLocaleString("en-GB")} invalid or unavailable amount${selectedItem.excluded_invalid_amount_grant_count === 1 ? " is" : "s are"} excluded for this country.` : ""}
+                {data.funding_excluded_currency_count > 0 ? ` Across the current scope, ${data.funding_excluded_currency_count.toLocaleString("en-GB")} grant${data.funding_excluded_currency_count === 1 ? " is" : "s are"} excluded because no usable ${data.selected_currency || "selected-currency"} amount is available.` : ""}
+                {data.funding_excluded_invalid_amount_count > 0 ? ` ${data.funding_excluded_invalid_amount_count.toLocaleString("en-GB")} scope-level invalid amount${data.funding_excluded_invalid_amount_count === 1 ? " is" : "s are"} also excluded.` : ""}
+              </p>
+              {data.metadata.limitations.length > 0 && (
+                <details className="country-explorer-note">
+                  <summary>Coverage limitations</summary>
+                  <ul>{data.metadata.limitations.map(limitation => <li key={limitation}>{limitation}</li>)}</ul>
+                </details>
+              )}
               <button
                 type="button"
                 className="country-explorer-directory-button"
