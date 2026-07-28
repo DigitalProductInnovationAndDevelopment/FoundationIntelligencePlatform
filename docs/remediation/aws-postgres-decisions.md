@@ -2,7 +2,7 @@
 
 Created: 2026-07-28
 
-Status: initial Phase-0 architecture contract; implementation evidence is recorded separately.
+Status: active architecture contract through Phase 1; implementation evidence is recorded separately.
 
 ## ADR-001 — PostgreSQL is the operational database
 
@@ -40,6 +40,8 @@ Status: initial Phase-0 architecture contract; implementation evidence is record
 - Control plane: admin/mutation/proxy/external-cost routes require roles and immutable audit events.
 - Development bypass: explicit, local-only and prohibited in staging/production.
 - Missing production auth configuration causes startup/readiness failure.
+- Implementation: asymmetric OIDC algorithms, issuer, audience, expiry, subject and JWKS key ID are verified. No application shared password or symmetric production signing secret remains.
+- Browser contract: production supplies a bearer token through the selected OIDC client/gateway pattern; only explicit local development may use the HttpOnly session cookie.
 
 ## ADR-007 — Durable jobs and source ingestion state
 
@@ -67,6 +69,13 @@ Status: initial Phase-0 architecture contract; implementation evidence is record
 
 - Decision: production frontend is a Vite static build for a private S3 origin behind CloudFront/WAF; no Vite dev server in production.
 - Preserve the current visual identity and map-first structure while fixing responsiveness, accessibility, loading isolation, request duplication, stable keys and bundle size.
+
+## ADR-012 — Layered abuse controls and idempotency
+
+- Decision: application request IDs, payload/time bounds, per-actor rate limits and at-most-once mutation keys are mandatory even when edge controls are present.
+- Local transition: process-local stores are permitted only while the application runs as one local task during remediation.
+- Production target: WAF/API edge limits provide distributed abuse protection; PostgreSQL supplies durable idempotency records and security audit events before ECS scales past one task.
+- Retry safety: a server failure/timeout retains the idempotency reservation because the side-effect outcome may be uncertain; validation/client failures release it for a corrected request.
 
 ## Open external decisions
 

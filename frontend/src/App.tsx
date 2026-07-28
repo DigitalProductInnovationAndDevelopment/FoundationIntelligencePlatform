@@ -42,6 +42,7 @@ import {
   grantScopeFromUrl,
   type GrantScope,
 } from "./lib/grantScope";
+import { mutationHeaders } from "./lib/http";
 import amplifyLogo from "./assets/amplify-logo.svg";
 import type {
   GrantMapFilters,
@@ -55,8 +56,6 @@ const DonorDirectoryPage = lazy(() => import("./components/DonorDirectoryPage"))
 // Configuration for API requests
 const API_BASE = import.meta.env.VITE_API_BASE_URL
   || `${window.location.protocol}//${window.location.hostname}:8000`;
-const DEMO_USERNAME = import.meta.env.VITE_BFF_USERNAME || "admin";
-const DEMO_PASSWORD = import.meta.env.VITE_BFF_PASSWORD || "password";
 const SHOW_LEGACY_OVERVIEW = import.meta.env.VITE_LEGACY_OVERVIEW === "true";
 const DEFAULT_DATA_SOURCES = ["360Giving", "Charity Commission for England and Wales", "Philea"];
 // Interface definitions
@@ -1271,42 +1270,17 @@ export default function App() {
     return () => window.removeEventListener("active-source-funder-change", receiveActiveSourceFunder);
   }, []);
 
-  const autoLogin = async () => {
-    try {
-      const resp = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: DEMO_USERNAME, password: DEMO_PASSWORD }),
-        credentials: "include"
-      });
-      if (resp.ok) {
-        setAuthError(null);
-        setIsBffOnline(true);
-        console.log("Logged in to BFF successfully.");
-        return true;
-      }
-      setAuthError("The backend is reachable, but automatic demo authentication failed.");
-    } catch (e) {
-      console.error("Auto login failed", e);
-      setAuthError("The backend is reachable, but automatic demo authentication failed.");
-    }
-    return false;
-  };
-
   const checkBffHealth = async () => {
     setInitialLoading(true);
     try {
       const resp = await fetch(`${API_BASE}/health`);
       if (resp.ok) {
-        console.log("BFF Backend is online. Authenticating...");
-        const loggedIn = await autoLogin();
-        if (loggedIn) {
-          setIsBffOnline(true);
-          setApiError("health", null);
-          // The online-state effects load the live dataset once. Calling the
-          // same fetches here as well used to race the first directory render.
-          return;
-        }
+        setAuthError(null);
+        setIsBffOnline(true);
+        setApiError("health", null);
+        // Authentication is established by the deployment OIDC boundary.
+        // The browser never contains or posts a shared application password.
+        return;
       }
       setIsBffOnline(false);
       setApiError("health", "Backend unavailable. Values marked as illustrative are local prototype data.");
@@ -1543,7 +1517,12 @@ export default function App() {
     try {
       const queued = await fetch(
         `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(sourceFunderKey)}/profile-cache`,
-        { method: "POST", credentials: "include", signal },
+        {
+          method: "POST",
+          credentials: "include",
+          headers: mutationHeaders("hydrate source-funder profile"),
+          signal,
+        },
       );
       if (!requestIsCurrent()) return;
       if (!queued.ok && queued.status !== 409) {
@@ -2365,7 +2344,11 @@ export default function App() {
     try {
       const response = await fetch(
         `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(target.sourceFunderKey)}/reset-to-observed`,
-        { method: "POST", credentials: "include" },
+        {
+          method: "POST",
+          credentials: "include",
+          headers: mutationHeaders("reset source funder to observed-only"),
+        },
       );
       const body = await response.json();
       if (!response.ok) {
@@ -2439,7 +2422,7 @@ export default function App() {
     try {
       const resp = await fetch(`${API_BASE}/api/admin/pipeline/trigger`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: mutationHeaders(`trigger ${source} pipeline`, true),
         body: JSON.stringify({
           source: source,
           limit: source === "quick_consolidate" ? undefined : pipelineLimit,

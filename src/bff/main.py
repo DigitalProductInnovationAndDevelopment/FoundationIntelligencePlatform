@@ -1,4 +1,8 @@
+import asyncio
+from contextlib import asynccontextmanager
+import re
 import time
+import uuid
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -8,7 +12,22 @@ from bff.proxy import router as proxy_router
 from bff.admin import router as admin_router
 from bff.news import router as news_router
 from bff.repositories import get_charity_repository
+from bff.audit import StructuredLogAuditSink, event_from_request
+from bff.config import SECURITY_SETTINGS, validate_security_settings
+from bff.security import IdempotencyStore, SlidingWindowRateLimiter
 from bff.utils.logging import logger
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Validate security before accepting traffic, then initialize repository state."""
+    validate_security_settings(application.state.security_settings)
+    get_charity_repository()
+    logger.info(
+        "Repository initialized; expensive Overview aggregation is request-driven."
+    )
+    yield
+
 
 app = FastAPI(
     title="Foundation Intelligence Platform BFF API",
@@ -16,72 +35,121 @@ app = FastAPI(
         "Backend for the Foundation Intelligence Platform. It serves normalized organization, "
         "grant, provenance, enrichment, and experimental relevance-score data to the dashboard."
     ),
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
-# CORS configuration
-# Note: when allow_credentials=True, allow_origins cannot be ["*"].
-# We explicitly list common development and localhost URLs.
-origins = [
-    "http://localhost:3000",  # React / Next.js default
-    "http://localhost:5173",  # Vite default (React/Vue/Svelte)
-    "http://localhost:8000",  # FastAPI docs / local
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-    # Vite selects the next port when a previous local dev session owns 5173.
-    "http://127.0.0.1:5174",
-]
-
-# Vite moves to the next available port when another local development session
-# already owns its default port. Keep credentialed browser requests local-only,
-# while allowing those fallback Vite ports without having to restart the BFF for
-# each one.
-local_development_origin = r"http://(localhost|127\.0\.0\.1):\d+"
+app.state.security_settings = SECURITY_SETTINGS
+app.state.rate_limiter = SlidingWindowRateLimiter(
+    SECURITY_SETTINGS.rate_limit_requests,
+    SECURITY_SETTINGS.rate_limit_window_seconds,
+)
+app.state.idempotency_store = IdempotencyStore()
+app.state.audit_sink = StructuredLogAuditSink()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=local_development_origin,
+    allow_origins=list(SECURITY_SETTINGS.cors_origins),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "X-Action-Reason",
+        "X-Request-ID",
+    ],
 )
 
 
-@app.on_event("startup")
-async def warm_repository() -> None:
-    """Initialize the repository without blocking readiness on a full scan.
+# Request safety, audit and request-response logging middleware.
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
-    Persisted derived indexes and cached Overview payloads are reused by the
-    first relevant request. A synchronous full-Overview warmup previously kept
-    the health endpoint unavailable for tens of seconds on the audited 1.3 GB
-    SQLite file, making a healthy local process look crashed.
-    """
-    get_charity_repository()
-    logger.info(
-        "Repository initialized; expensive Overview aggregation is request-driven."
-    )
 
-# Request-Response logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    
-    # Process request
-    response = await call_next(request)
-    
+    supplied_request_id = request.headers.get("x-request-id", "")
+    request.state.request_id = (
+        supplied_request_id
+        if _REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+        else str(uuid.uuid4())
+    )
+    settings = app.state.security_settings
+
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        content_length = request.headers.get("content-length")
+        try:
+            declared_size = int(content_length) if content_length else 0
+        except ValueError:
+            declared_size = settings.max_request_body_bytes + 1
+        if declared_size > settings.max_request_body_bytes:
+            response = JSONResponse(
+                status_code=413,
+                content={"detail": "Request body exceeds the configured limit."},
+            )
+        else:
+            body = await request.body()
+            if len(body) > settings.max_request_body_bytes:
+                response = JSONResponse(
+                    status_code=413,
+                    content={"detail": "Request body exceeds the configured limit."},
+                )
+            else:
+                try:
+                    response = await asyncio.wait_for(
+                        call_next(request),
+                        timeout=settings.request_timeout_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    response = JSONResponse(
+                        status_code=504,
+                        content={"detail": "Request processing timed out."},
+                    )
+    else:
+        try:
+            response = await asyncio.wait_for(
+                call_next(request),
+                timeout=settings.request_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            response = JSONResponse(
+                status_code=504,
+                content={"detail": "Request processing timed out."},
+            )
+
+    response.headers["X-Request-ID"] = request.state.request_id
+    record_key = getattr(request.state, "idempotency_record_key", None)
+    if record_key:
+        if response.status_code < 400 or response.status_code >= 500:
+            app.state.idempotency_store.complete(record_key)
+        else:
+            app.state.idempotency_store.release(record_key)
+    if hasattr(request.state, "audit_action"):
+        error_class = None if response.status_code < 400 else f"http_{response.status_code}"
+        app.state.audit_sink.record(event_from_request(request, response.status_code, error_class))
+
     duration = time.time() - start_time
     logger.info(
-        f"Request: {request.method} {request.url.path} "
-        f"| Status: {response.status_code} "
-        f"| Duration: {duration:.4f}s"
+        "Request: %s %s | Request-ID: %s | Status: %s | Duration: %.4fs",
+        request.method,
+        request.url.path,
+        request.state.request_id,
+        response.status_code,
+        duration,
     )
     return response
 
 # Custom centralized exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception occurred on path {request.url.path}: {exc}", exc_info=True)
+    logger.error(
+        "Unhandled exception on path %s; class=%s",
+        request.url.path,
+        exc.__class__.__name__,
+        exc_info=True,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "An internal server error occurred. Please try again later."}

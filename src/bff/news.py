@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from bff import config
-from bff.auth import get_current_user_token
+from bff.security import Role, require_roles
 from bff.schemas import NewsSource, NewsSummary
 from bff.utils.logging import logger
 
@@ -895,7 +895,7 @@ def _parse_news_aliases(aliases: Optional[str]) -> list[str]:
 router = APIRouter(
     prefix="/api/news",
     tags=["Foundation News"],
-    dependencies=[Depends(get_current_user_token)],
+    dependencies=[Depends(require_roles(Role.ANALYST, action="news.read"))],
 )
 
 

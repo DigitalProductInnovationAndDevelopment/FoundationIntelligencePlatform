@@ -30,6 +30,7 @@ import {
   type DonorDirectoryState,
   type GrantScope,
 } from "../lib/grantScope";
+import { mutationHeaders } from "../lib/http";
 
 type ProfileLink =
   | { status: "none" }
@@ -785,7 +786,7 @@ export default function DonorDirectoryPage({
         fetch(`${apiBase}/api/charities/grants/funders/enrich`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: mutationHeaders("enrich source funders", true),
           body: JSON.stringify({ reg_numbers: queue.map(item => item.charityNumber) }),
         }),
         new Promise(resolve => window.setTimeout(resolve, LOCAL_PROFILE_LINK_DURATION_MS)),

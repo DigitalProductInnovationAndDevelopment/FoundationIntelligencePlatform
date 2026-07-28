@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 1 — security hardening
+- Current phase: Phase 2 — Docker and local PostgreSQL foundation
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -32,12 +32,22 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 1 — Security hardening
 
-- Status: `IN PROGRESS`
-- Next exact action: inventory route/action roles and add security contract tests before changing runtime authentication.
+- Status: `COMPLETED`
+- Files changed: typed/fail-closed security configuration; OIDC JWT/JWKS validation; hierarchical RBAC; request safety and audit middleware; local-only development authentication; restricted proxy; route-specific role/idempotency dependencies; log/admin-output redaction; frontend credential removal and mutation headers; route inventory; security tests.
+- Gate evidence: all routes are classified in `aws-postgres-route-inventory.md`; no protected mutation/admin route is anonymous; proxy is disabled by default and requires administrator plus destination/path/method/header allowlists; browser Authorization/Cookie headers are never forwarded; OIDC signature/issuer/audience/expiry/role behavior is locally tested.
+- Abuse controls: generated/validated request IDs, bounded request bodies, request/proxy timeouts, per-actor sliding-window rate limiting, required at-most-once keys on side-effecting routes, fixed CORS origins and structured audit events with the required fields.
+- Tests executed: compile and blocking Flake8; 297 backend tests plus 8 mutation-route subtests with 76.69% coverage; 11 dedicated security test methods; 8 frontend tests; frontend lint/build; tracked-source secret scan; default-runtime HTTP checks; source/audit immutability checks.
+- Known non-blocking warnings: 53 backend dependency/test-client deprecation warnings; five existing React hook warnings; 1.96 MB frontend main chunk. The browser warnings/chunk are assigned to Phase 7.
+- Transitional limits: the current single-process rate limiter and idempotency store are deterministic local controls. WAF/API edge rate limiting and PostgreSQL durable idempotency/audit/job records are mandatory before horizontally scaled ECS production. The runtime audit sink is append-only structured output for the managed log pipeline; durable relational audit storage follows the PostgreSQL schema phase.
+- External decisions: actual OIDC issuer/audience/role claim ownership remains unresolved. Production fails closed until those values are supplied; no identity provider or paid service was contacted.
+- Gate result: `PASS`.
+- Commit hash: the scoped Phase-1 commit containing this completed ledger.
+- Next exact action: create a strict data-excluding `.dockerignore`, multi-stage non-root image and local PostgreSQL Compose foundation before attempting a bounded image build.
 
 ### Phase 2 — Docker and local PostgreSQL foundation
 
-- Status: `PENDING`
+- Status: `IN PROGRESS`
+- Next exact action: implement the data-free container boundary and pinned local PostgreSQL service without deleting existing Docker artifacts.
 
 ### Phase 3 — PostgreSQL schema
 

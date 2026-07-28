@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, LoaderCircle, Search, X } from "lucide-react";
 import { validateOptionalNumericRange } from "../lib/numericRange";
+import { mutationHeaders } from "../lib/http";
 
 interface RegistrySummary {
   registry_id: string;
@@ -294,7 +295,7 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
         fetch(`${apiBase}/api/charities/directory/organizations/enrich`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: mutationHeaders("enrich registry organization", true),
           body: JSON.stringify({ reg_numbers: [charityNumber] }),
           signal: controller.signal,
         }),

@@ -120,3 +120,46 @@ git diff --check
 ```
 
 Result: commit `19e84ba11dd3567fc871b3411166ae59a5b6eef0` created with only the 16 immutable audit artifacts and four initial remediation documents. The final audit checksum set retained aggregate SHA-256 `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`; the active database retained SHA-256 `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`. The manifest Schema parses successfully and the post-baseline working diff passes whitespace validation.
+
+## Phase 1 — Security hardening
+
+### Route, configuration and client inventory
+
+Read-only `rg`, `sed`, `find`, Git and OpenAPI inspection enumerated every route, authentication dependency, proxy behavior, configuration input, frontend login/fetch path and existing test assumption. The resulting classification is `aws-postgres-route-inventory.md`.
+
+One overly broad local environment inventory command printed values from the ignored developer `.env` into transient tool output. No value was copied into source, documentation, Git or a remote service. The user was notified immediately and rotation of the affected third-party credentials was recommended. The `.env` file was not changed.
+
+### Security implementation and test gate
+
+```zsh
+venv/bin/python -m compileall -q src
+venv/bin/python -m flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
+PYTHONPATH=src venv/bin/python -m pytest src/tests --cov=bff --cov-report=term-missing --cov-fail-under=70
+cd frontend && npm run test
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+git grep -nE '<high-confidence credential patterns>' -- ':!docs/audits/**'
+shasum -a 256 src/data/charities.db
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+Result: compile and blocking Flake8 pass with zero findings. Backend has 297 passing tests plus 8 mutation-route subtests, 53 dependency/test-client warnings and 76.69% coverage. The 11 security test methods cover OIDC signature/claim validation, 401, 403, role success, audit fields, proxy/path/header allowlists, rate limiting, required idempotency/replay, payload limits, message/traceback redaction, public read-only behavior and production startup failure. Frontend has 8 passing tests; lint exits 0 with the five baseline hook warnings; production build passes with the baseline large-chunk warning. The tracked-source credential scan has no high-confidence match.
+
+### Default-runtime HTTP gate
+
+The first local start attempt inside the filesystem sandbox reached application startup but could not bind the loopback port (`operation not permitted`). It was repeated with the narrowly approved local start permission. No external network or service was contacted.
+
+```text
+GET  /health                    -> 200 + X-Request-ID
+GET  /api/charities             -> 401 + audit event + X-Request-ID
+GET  /api/admin/pipeline/status -> 401 + audit event + X-Request-ID
+GET  /api/core/v1/data          -> 401 + audit event + X-Request-ID
+POST /api/auth/login            -> 404 + audit event + X-Request-ID
+```
+
+Result: the application starts with authentication disabled, exposes only the public read surface, rejects protected/admin/proxy access and hides the local login until the development bypass is explicitly configured. The local process was stopped cleanly after the checks.
+
+### Phase-1 immutability and external-action check
+
+The active SQLite source retained SHA-256 `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`; the immutable audit checksum aggregate retained `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`. No AWS mutation, paid API call, external upload, push or Docker artifact deletion occurred.
