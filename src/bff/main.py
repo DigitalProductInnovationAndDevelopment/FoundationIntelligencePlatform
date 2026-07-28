@@ -7,11 +7,9 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from bff.auth import router as auth_router
-from bff.charity import router as charity_router
 from bff.proxy import router as proxy_router
 from bff.admin import router as admin_router
 from bff.news import router as news_router
-from bff.repositories import get_charity_repository
 from bff.audit import StructuredLogAuditSink, event_from_request
 from bff.config import SECURITY_SETTINGS, validate_security_settings
 from bff.database import DatabaseManager, DatabaseSettings
@@ -19,15 +17,32 @@ from bff.security import IdempotencyStore, SlidingWindowRateLimiter
 from bff.utils.logging import logger
 
 
+POSTGRESQL_ONLY_RUNTIME = SECURITY_SETTINGS.app_env in {"staging", "production"}
+if POSTGRESQL_ONLY_RUNTIME:
+    from bff.postgres.routes import router as charity_router
+else:
+    # The legacy SQLite repository is restricted to development/test while the
+    # remaining domain journeys are ported in Phase 5.
+    from bff.charity import router as charity_router
+    from bff.repositories import get_charity_repository
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Validate security before accepting traffic, then initialize repository state."""
     validate_security_settings(application.state.security_settings)
     application.state.database = DatabaseManager(DatabaseSettings.from_env())
-    get_charity_repository()
-    logger.info(
-        "Repository initialized; expensive Overview aggregation is request-driven."
-    )
+    if POSTGRESQL_ONLY_RUNTIME:
+        # Constructing the pool remains lazy; readiness owns the first bounded
+        # connection and all production repositories use the same manager.
+        application.state.database.sessions()
+        logger.info("PostgreSQL repository runtime initialized.")
+    else:
+        get_charity_repository()
+        logger.info(
+            "Development/test legacy repository initialized; expensive Overview "
+            "aggregation is request-driven."
+        )
     try:
         yield
     finally:

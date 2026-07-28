@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 3 — PostgreSQL schema
+- Current phase: Phase 4 — SQLite to PostgreSQL migration
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -62,11 +62,23 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 3 — PostgreSQL schema
 
-- Status: `IN PROGRESS`
+- Status: `COMPLETED`
+- Files changed: Alembic async environment and initial authoritative revision; PostgreSQL schema contract; async session factory; deterministic registry search repository/cursor; PostgreSQL-only production router; runtime import boundary and real schema integration tests; container now carries Alembic files.
+- Schema evidence: 25 application tables cover every required table plus migration/idempotency and normalized charity geography/programme relationships. Catalog evidence reports 30 validated FKs, zero unvalidated FKs and 117 check constraints.
+- Search evidence: `pg_trgm`, one stored `tsvector` GIN index and two trigram GIN indexes exist. Real asyncpg tests demonstrate deterministic rank/registry-ID cursor pagination.
+- Runtime evidence: staging/production selects the async PostgreSQL router before any legacy module import. A subprocess import hook fails on any `sqlite3` load and passes. Development/test retains the legacy repository only as a transition; unported production routes are absent, not fallback-enabled, until Phase 5.
+- Migration evidence: host `upgrade head`; `downgrade base` with only `alembic_version` remaining; second host zero-to-head upgrade; second downgrade; non-root/read-only Compose migration-service zero-to-head upgrade; catalog revision verification.
+- Tests executed: 304 passing unit/static tests plus one intentionally skipped live-PostgreSQL test in the normal suite (76.41% coverage); the same PostgreSQL test passes separately with real PostgreSQL, including FK rejection and search. Production-mode local process starts, reports PostgreSQL ready, denies anonymous search with 401 and shuts down cleanly.
+- Resolved failure: the first real search test exposed an ambiguous asyncpg type for an optional null status; an explicit PostgreSQL text cast fixed it and all repetitions pass.
+- Transitional limit: Phase 5 must port every application journey/domain before production can become a GO. Phase 3 proves that normal production does not import or fall back to SQLite, not that all routes are already available.
+- External actions: local PostgreSQL/container operations only. No AWS, paid API, live scraper/model, upload or push.
+- Gate result: `PASS` for schema creation, PostgreSQL runtime boundary, FK/search enforcement and zero-to-head migration.
+- Commit hash: the scoped Phase-3 commit containing this completed ledger.
+- Next exact action: implement deterministic, read-only SQLite-to-versioned-PostgreSQL loading with checksum/schema/integrity preflight, quarantine, reconciliation, activation and rollback.
 
 ### Phase 4 — SQLite to PostgreSQL migration
 
-- Status: `PENDING`
+- Status: `IN PROGRESS`
 
 ### Phase 5 — Application conversion to PostgreSQL
 

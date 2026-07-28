@@ -1,0 +1,88 @@
+# PostgreSQL Schema Contract
+
+Status: implemented by Alembic revision `0001_postgresql_foundation` on
+2026-07-29.
+
+## Version and activation model
+
+`dataset_versions.dataset_version` is the preserved external version key.
+`revision` is an identity-backed monotonic sequence. A partial unique index
+permits exactly one active dataset, while a check constraint requires active
+status and an activation timestamp to agree. Every serving row includes the
+dataset version in its primary and foreign keys, so a candidate can be loaded
+and reconciled without replacing the approved dataset. Prior versions remain
+addressable for rollback.
+
+`migration_runs` records the immutable source checksum/schema/fact versions,
+code revision, actor, counts, reconciliation results and errors. It owns no
+activation side effect by itself; Phase 4 performs activation in one explicit
+transaction after reconciliation.
+
+## Relational ownership
+
+| Domain | Tables and invariant |
+|---|---|
+| Organisations | `charities`, `charity_programme_categories`, `charity_geographic_areas`; source identity and dataset-scoped charity IDs are preserved. |
+| Official registry | `charity_registry_organizations`; `registry_id` remains textual and constituent rows sharing a charity number remain distinct. |
+| Grants | `grants`; textual grant/source IDs, original and EUR amounts/currency/conversion facts, negative/zero values, review evidence and dates remain typed fields. |
+| Grant relationships | `grant_beneficiary_countries`, `grant_beneficiary_terms`, `grant_programme_categories`; frequently filtered many-to-many facts are relational, not JSON. |
+| Serving facts | `grant_overview_facts`, `grant_source_funder_facts`; dataset/revision provenance and minor-unit money facts remain explicit. |
+| Curated links | `organization_registry_links`, `source_funder_link_overrides`, `source_funder_profile_cache`; accepted links, overrides and revision sequence are constrained. |
+| Currency | `exchange_rates`; ISO-style currency/date primary key, positive high-precision rate and typed retrieval timestamp. |
+| Jobs | `job_runs`, `job_events`, `source_ingestion_runs`; bounded statuses, timestamp ordering, idempotency and event sequence constraints. |
+| Audit/control | append-only `audit_events` and durable `idempotency_records`. |
+| Quality/governance | `data_quality_issues`, `materialization_versions`, `retention_actions`, `export_jobs`; quarantines retain original JSON values while queryable control fields remain relational. |
+
+Every relationship declares update/delete behavior. The local catalog contains
+30 validated foreign keys and 117 check constraints. PostgreSQL enforces these
+server-side for every connection; there is no connection-local equivalent to a
+SQLite FK pragma.
+
+## Types and constraints
+
+- Timestamps use `TIMESTAMPTZ`; source/business dates use `DATE`.
+- Grant and financial amounts use `NUMERIC(24,4)`; rates use
+  `NUMERIC(24,12)`; derived minor-unit facts use `BIGINT`.
+- Currency and country codes have uppercase length/shape checks.
+- Coordinates, confidence values, classification methods, conversion states,
+  job states, revision values and activation transitions are checked.
+- JSONB is limited to raw payload/evidence, result manifests and flexible audit
+  details; query relationships and control/status fields remain typed columns.
+- Audit events reject update and delete. Link-override updates require the
+  revision to advance by exactly one.
+
+## Search and cursor contract
+
+PostgreSQL `pg_trgm` is installed by the migration. Registry rows have a stored
+`tsvector` over name, normalized name, charity number, postcode and activity.
+The schema supplies a GIN vector index plus trigram GIN indexes for registered
+and normalized names.
+
+`RegistrySearchRepository` combines `websearch_to_tsquery`, `ts_rank_cd` and
+trigram similarity. Rank is rounded to eight decimal places and ordered
+descending; `registry_id` is the deterministic ascending tie-break. The opaque
+cursor contains exactly that rank/ID pair. Limits are bounded to 100 and all
+queries use SQLAlchemy async sessions over asyncpg.
+
+## Runtime boundary
+
+Staging and production select the PostgreSQL-only router at module import and
+never import the legacy SQLite repository. A subprocess architectural test
+blocks `sqlite3` and imports the production application to prove this boundary.
+Development/test may still load the legacy implementation while fixtures and
+journeys are ported. Unported staging/production journeys are intentionally
+absent rather than receiving a hidden SQLite fallback; Phase 5 must complete
+all route/domain implementations before production becomes a GO.
+
+## Local gate evidence
+
+- Host-venv `alembic upgrade head` succeeded.
+- `alembic downgrade base` left only `alembic_version`, then zero-to-head
+  upgrade succeeded again.
+- The non-root, read-only Compose migration service independently upgraded from
+  base to head.
+- The catalog reports revision `0001_postgresql_foundation`, 25 application
+  tables, 30 validated FKs, zero unvalidated FKs, 117 checks, `pg_trgm` and all
+  three required search indexes.
+- A real asyncpg integration test demonstrates FK rejection, full-text search,
+  deterministic tie-breaking and cursor continuation.

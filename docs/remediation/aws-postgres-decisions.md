@@ -85,6 +85,14 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Network boundary: dependency resolution is limited to PyPI/files.pythonhosted.org, registry.npmjs.org and the Docker Hub registry/auth endpoints explicitly authorized on 2026-07-29.
 - Multiarch: `linux/amd64` and `linux/arm64` are declared in one bake contract; CI must assemble/test both because the current local CLI has no working buildx plugin.
 
+## ADR-014 — Dataset-scoped relational schema and PostgreSQL search
+
+- Decision: serving rows use composite dataset/source keys so candidates and the prior approved dataset coexist; one partial unique index controls active selection.
+- Decision: external grant, registry, source and dataset identifiers stay textual where their source owns identity. Internal UUIDs are limited to runs/events/actions/jobs.
+- Decision: normal staging/production import selects PostgreSQL-only async repositories. Unported routes are absent until Phase 5 rather than using a hidden SQLite fallback.
+- Search: stored `tsvector` plus GIN and `pg_trgm` indexes; rounded rank descending and registry ID ascending form the stable cursor order.
+- Integrity: PostgreSQL FKs/checks are server-enforced, audit rows are append-only and override revisions must increment exactly once per update.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

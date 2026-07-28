@@ -297,3 +297,67 @@ are dropped and `no-new-privileges` is active. Uvicorn logged `Application
 shutdown complete`; PostgreSQL/frontend exited 0 and the init-wrapped backend
 reported the delivered SIGTERM as 143. Containers and network were removed;
 the local PostgreSQL volume and images were retained.
+
+## Phase 3 — PostgreSQL schema
+
+### Schema and runtime implementation
+
+Read-only SQLite `pragma_table_info` and distinct-value queries captured every
+source column plus observed classification, conversion, provenance and link
+status before target constraints were written. The authoritative DDL was added
+as Alembic revision `0001_postgresql_foundation`; no schema was generated from
+mutable ORM metadata.
+
+```zsh
+venv/bin/python -m compileall -q src alembic
+venv/bin/python -m flake8 src alembic --count --select=E9,F63,F7,F82 --show-source --statistics
+PYTHONPATH=src venv/bin/python -m pytest src/tests/test_postgres_schema.py -q
+git diff --check
+```
+
+Result: static schema/search/cursor tests and the production import guard pass.
+The normal suite later records 304 passed, one live test skipped and 76.41%
+coverage.
+
+### Real PostgreSQL Alembic and integration gate
+
+PostgreSQL remained bound only to local port 55432 and used the non-production
+Compose secret file. Commands passed the password by file path and never logged
+its value.
+
+```zsh
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 docker-compose up -d --no-build postgres
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic upgrade head
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest src/tests/test_postgres_schema.py -q
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic downgrade base
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -tAc '<public table inventory>'
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic upgrade head
+docker-compose build backend
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic downgrade base
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 docker-compose --profile operations run --rm migration
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -tAc '<catalog constraint/index summary>'
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest src/tests/test_postgres_schema.py -q
+```
+
+The first real search test failed because asyncpg could not infer the SQL type
+of a null optional status parameter. Casting that bind to PostgreSQL `text`
+resolved the defect; the repeated real suite passes 4/4. Both host and
+container zero-to-head upgrades pass. After downgrade, only `alembic_version`
+remained. The final catalog reports 25 application tables, 30 FKs, zero
+unvalidated FKs, 117 checks, the three search indexes and extensions `pg_trgm`
+and `plpgsql`.
+
+### Production-mode boundary
+
+```zsh
+APP_ENV=production AUTH_MODE=oidc OIDC_ISSUER=https://issuer.invalid OIDC_AUDIENCE=foundation-intelligence OIDC_JWKS_URL=https://issuer.invalid/jwks CORS_ORIGINS=https://app.invalid DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m uvicorn bff.main:app --host 127.0.0.1 --port 58001 --no-server-header
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:58001/health/live
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:58001/health/ready
+curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' 'http://127.0.0.1:58001/api/charities/directory/organizations?query=Alpha'
+```
+
+Result: the process logged PostgreSQL repository initialization, liveness and
+readiness returned 200 with PostgreSQL healthy, anonymous search returned 401,
+and Ctrl-C logged complete application shutdown. The `.invalid` OIDC values
+were validation-only placeholders and were never contacted. The subprocess
+import guard separately proves production imports no `sqlite3` module.

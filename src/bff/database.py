@@ -11,6 +11,7 @@ from typing import Mapping, Optional
 from sqlalchemy import URL, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bff.utils.logging import logger
 
@@ -122,6 +123,15 @@ class DatabaseManager:
                 },
             )
         return self._engine
+
+    def sessions(self) -> async_sessionmaker[AsyncSession]:
+        """Create sessions with explicit transactions and no implicit expiry."""
+        return async_sessionmaker(
+            self.engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
 
     async def check(self) -> bool:
         if not self.configured:

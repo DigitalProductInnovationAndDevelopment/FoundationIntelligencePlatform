@@ -59,6 +59,8 @@ COPY --chown=10001:10001 src/preprocessing /app/src/preprocessing
 COPY --chown=10001:10001 src/scoring /app/src/scoring
 COPY --chown=10001:10001 src/scrapers /app/src/scrapers
 COPY --chown=10001:10001 config/scoring.example.json /app/config/scoring.example.json
+COPY --chown=10001:10001 alembic.ini /app/alembic.ini
+COPY --chown=10001:10001 alembic /app/alembic
 
 USER 10001:10001
 EXPOSE 8000
