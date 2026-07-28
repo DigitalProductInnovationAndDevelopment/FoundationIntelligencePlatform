@@ -214,6 +214,10 @@ class TestMigrationSourceSafety(unittest.TestCase):
             "2025-07",
         )
 
+    def test_grant_award_timestamp_is_preserved(self):
+        value = "2016-03-11T16:57:17.743000+00:00"
+        self.assertEqual(convert_value("grants", "date", value), value)
+
     def test_source_is_checksum_verified_and_opened_read_only(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "fixture.db"
@@ -259,6 +263,11 @@ class TestMigrationPostgreSQLIntegration(unittest.TestCase):
                 invalid_checksum = _fixture_database(
                     invalid_source, invalid_currency=True
                 )
+                with sqlite3.connect(invalid_source) as invalid_connection:
+                    invalid_connection.execute(
+                        "UPDATE exchange_rates SET source_series='must-not-activate'"
+                    )
+                invalid_checksum = hashlib.sha256(invalid_source.read_bytes()).hexdigest()
                 report = await migrate(
                     source, checksum, "7", first, CODE_REVISION,
                     "integration-test", "ci", directory,
@@ -308,6 +317,47 @@ class TestMigrationPostgreSQLIntegration(unittest.TestCase):
                         {"version": invalid},
                     )
                     self.assertEqual(quality_count, 1)
+                    exchange_rate_source = await connection.scalar(
+                        text(
+                            """
+                            SELECT source_series FROM exchange_rates
+                            WHERE currency='GBP' AND rate_date=DATE '2025-01-01'
+                            """
+                        )
+                    )
+                    self.assertEqual(exchange_rate_source, "fixture")
+                with sqlite3.connect(invalid_source) as invalid_connection:
+                    invalid_connection.execute(
+                        "UPDATE grants SET currency='GBP'"
+                    )
+                    invalid_connection.execute(
+                        "UPDATE source_funder_link_overrides SET link_mode='blocked'"
+                    )
+                conflicting_checksum = hashlib.sha256(
+                    invalid_source.read_bytes()
+                ).hexdigest()
+                with self.assertRaises(MigrationError):
+                    await migrate(
+                        invalid_source, conflicting_checksum, "7", invalid,
+                        CODE_REVISION, "integration-test", "ci", directory,
+                        batch_size=2, enforce_baseline=False,
+                        enforce_capacity=False,
+                    )
+                async with engine.connect() as connection:
+                    active = await connection.scalar(
+                        text("SELECT dataset_version FROM dataset_versions WHERE is_active")
+                    )
+                    self.assertEqual(active, first)
+                    override_mode = await connection.scalar(
+                        text(
+                            """
+                            SELECT link_mode FROM source_funder_link_overrides
+                            WHERE source_namespace='fixture'
+                              AND source_organization_id='foundation-1'
+                            """
+                        )
+                    )
+                    self.assertEqual(override_mode, "observed_only")
                 recovered = await migrate(
                     source, checksum, "7", invalid, CODE_REVISION,
                     "integration-test", "ci", directory,

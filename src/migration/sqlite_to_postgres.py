@@ -25,7 +25,7 @@ from bff.database import DatabaseSettings
 
 
 GIB = 1024**3
-MIGRATION_SCHEMA_VERSION = "0002_exchange_rate_period"
+MIGRATION_SCHEMA_VERSION = "0003_grant_award_timestamp"
 EXPECTED_COUNTS = {
     "charities": 373,
     "charity_registry_organizations": 397_469,
@@ -119,9 +119,6 @@ BOOLEAN_COLUMNS = {
 DATE_COLUMNS = {
     ("charity_registry_organizations", name)
     for name in ("registration_date", "removal_date", "financial_period_end_date")
-} | {
-    ("grants", name)
-    for name in ("date",)
 } | {("grant_overview_facts", "award_date")} | {
     ("grant_source_funder_facts", "award_date")
 } | {("exchange_rates", "rate_date")}
@@ -169,6 +166,7 @@ NUMERIC_COLUMNS = {
 }
 UUID_COLUMNS = {("source_funder_profile_cache", "job_token")}
 MONTH_COLUMNS = {("grants", "exchange_rate_date")}
+RAW_DATE_COLUMNS = {("grants", "date")}
 CLASSIFICATION_METHODS = {
     "deterministic_regex",
     "source_normalization",
@@ -393,6 +391,17 @@ def _month_value(column: str, value: Any) -> Optional[str]:
     return candidate
 
 
+def _raw_date_value(column: str, value: Any) -> Optional[str]:
+    if value is None or str(value).strip() == "":
+        return None
+    candidate = str(value)
+    try:
+        date.fromisoformat(candidate[:10])
+    except ValueError as exc:
+        raise ValueConversionError(column, value, "invalid ISO date source value") from exc
+    return candidate
+
+
 def convert_value(table: str, column: str, value: Any) -> Any:
     identity = (table, column)
     if identity in JSON_COLUMNS:
@@ -414,6 +423,8 @@ def convert_value(table: str, column: str, value: Any) -> Any:
         converted = _uuid_value(column, value)
     elif identity in MONTH_COLUMNS:
         converted = _month_value(column, value)
+    elif identity in RAW_DATE_COLUMNS:
+        converted = _raw_date_value(column, value)
     else:
         converted = value
 
@@ -643,6 +654,8 @@ async def load_table(
     dataset_version: str,
     migration_run_id: uuid.UUID,
     batch_size: int,
+    staged_global_records: dict[str, list[tuple[Any, ...]]],
+    staged_global_columns: dict[str, tuple[str, ...]],
 ) -> int:
     table_info = source.execute(f'PRAGMA table_info("{table}")').fetchall()
     source_columns = tuple(str(row[1]) for row in table_info)
@@ -671,10 +684,11 @@ async def load_table(
                 raise MigrationError(
                     f"Quarantined invalid value in {table}.{exc.column}; activation stopped"
                 ) from exc
-        async with target.transaction():
-            if table in GLOBAL_KEYS:
-                await _upsert_global_records(target, table, target_columns, records)
-            else:
+        if table in GLOBAL_KEYS:
+            staged_global_columns.setdefault(table, target_columns)
+            staged_global_records.setdefault(table, []).extend(records)
+        else:
+            async with target.transaction():
                 await target.copy_records_to_table(
                     table,
                     records=records,
@@ -687,6 +701,7 @@ async def load_table(
 async def _target_counts(
     connection: asyncpg.Connection,
     dataset_version: str,
+    loaded_counts: dict[str, int],
 ) -> dict[str, int]:
     counts: dict[str, int] = {}
     for table in LOAD_ORDER:
@@ -698,9 +713,7 @@ async def _target_counts(
                 )
             )
         else:
-            counts[table] = int(
-                await connection.fetchval(f'SELECT COUNT(*) FROM "{table}"')
-            )
+            counts[table] = loaded_counts[table]
     return counts
 
 
@@ -847,6 +860,8 @@ async def _activate(
     migration_run_id: uuid.UUID,
     counts: dict[str, int],
     reconciliation: dict[str, dict[str, Any]],
+    staged_global_records: dict[str, list[tuple[Any, ...]]],
+    staged_global_columns: dict[str, tuple[str, ...]],
 ) -> Optional[str]:
     failures = [name for name, result in reconciliation.items() if result["status"] == "fail"]
     if failures:
@@ -870,6 +885,16 @@ async def _activate(
         )
         raise MigrationError(f"Reconciliation failed: {', '.join(failures)}")
     async with connection.transaction():
+        for table in LOAD_ORDER:
+            if table in GLOBAL_KEYS:
+                records = staged_global_records.get(table, [])
+                if records:
+                    await _upsert_global_records(
+                        connection,
+                        table,
+                        staged_global_columns[table],
+                        records,
+                    )
         previous = await connection.fetchval(
             "SELECT dataset_version FROM dataset_versions WHERE is_active FOR UPDATE"
         )
@@ -953,6 +978,8 @@ async def migrate(
                 "activation_status": "active",
                 "idempotent_noop": True,
             }
+        staged_global_records: dict[str, list[tuple[Any, ...]]] = {}
+        staged_global_columns: dict[str, tuple[str, ...]] = {}
         with open_sqlite_read_only(source_path) as source:
             loaded_counts = {}
             for table in LOAD_ORDER:
@@ -963,8 +990,10 @@ async def migrate(
                     dataset_version,
                     migration_run_id,
                     batch_size,
+                    staged_global_records,
+                    staged_global_columns,
                 )
-        target_counts = await _target_counts(target, dataset_version)
+        target_counts = await _target_counts(target, dataset_version, loaded_counts)
         controls = await _control_values(target, dataset_version)
         reconciliation = _reconciliation(
             preflight.counts,
@@ -979,6 +1008,8 @@ async def migrate(
             migration_run_id,
             target_counts,
             reconciliation,
+            staged_global_records,
+            staged_global_columns,
         )
         completed_at = datetime.now(timezone.utc)
         report = {
