@@ -108,3 +108,15 @@ Result: Docker server 23.0.5/aarch64. Build transferred an 8.81 GB context, inst
 ### Baseline staging review
 
 The first `git diff --cached --check` exited 2 because the immutable audit Markdown contains intentional two-space CommonMark hard breaks. The audit files were not changed. The same check also identified removable whitespace in newly created remediation documents; those new documents were corrected and restaged. Future commits will pass `git diff --check` because the immutable audit is established in this dedicated baseline commit.
+
+### Immutable baseline commit and Phase-0 closeout
+
+```zsh
+git commit -m "Document immutable AWS readiness baseline"
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256
+shasum -a 256 src/data/charities.db
+jq -e . docs/remediation/schemas/migration-manifest.schema.json
+git diff --check
+```
+
+Result: commit `19e84ba11dd3567fc871b3411166ae59a5b6eef0` created with only the 16 immutable audit artifacts and four initial remediation documents. The final audit checksum set retained aggregate SHA-256 `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`; the active database retained SHA-256 `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`. The manifest Schema parses successfully and the post-baseline working diff passes whitespace validation.

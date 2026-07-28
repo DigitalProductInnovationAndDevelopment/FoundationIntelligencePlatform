@@ -6,6 +6,8 @@ Target branch: `91-clean-up-code-for-aws-integration`
 
 Starting revision: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
 
+Immutable baseline commit: `19e84ba11dd3567fc871b3411166ae59a5b6eef0`
+
 ## Safety contract
 
 - `src/data/charities.db` is a read-only migration source.
@@ -122,3 +124,7 @@ Currency, programme-provenance and geography-method distributions also match the
 An initial HTTP check accidentally reached the still-running process from the prior branch and showed 31/36 plus anonymous access. That process was stopped. The clean target-branch process produced the authoritative 33/38 and 401 baseline above.
 
 The Docker daemon is available (`23.0.5`, aarch64), but it held a 9.37 GB prior image and 12.74 GB build cache. The failure is evidence for Phase 2, not a passed Docker gate.
+
+## Phase-0 gate result
+
+`PASS`. The immutable evidence and remediation ledgers were committed separately from application and infrastructure code. A final checksum pass confirmed that the active SQLite source and all 16 audit files were unchanged. The target architecture and machine-readable migration-manifest contract are carried in the immediately following scoped Phase-0 commit.
