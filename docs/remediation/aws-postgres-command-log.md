@@ -361,3 +361,108 @@ readiness returned 200 with PostgreSQL healthy, anonymous search returned 401,
 and Ctrl-C logged complete application shutdown. The `.invalid` OIDC values
 were validation-only placeholders and were never contacted. The subprocess
 import guard separately proves production imports no `sqlite3` module.
+
+## Phase 4 — deterministic SQLite-to-PostgreSQL migration
+
+### Source and capacity preflight
+
+```zsh
+PYTHONPATH=src venv/bin/python -m migration.sqlite_to_postgres preflight --source src/data/charities.db --expected-checksum 8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651 --expected-schema-version 7
+sqlite3 'file:src/data/charities.db?mode=ro&immutable=1' '<classification, currency, country, date-shape and exchange-period aggregate queries>'
+shasum -a 256 src/data/charities.db
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+The preflight returned schema `7`, `integrity_check=ok`, the approved checksum
+and all 12 source counts. The source is 2,100,543,488 bytes; the conservative
+minimum-free estimate is 23,340,679,168 bytes including a 10 GiB safety margin.
+All capacity checks passed. The protected checksums remained
+`8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`
+and `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`.
+
+### Implementation and real-PostgreSQL tests
+
+```zsh
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 docker-compose up -d --no-build postgres
+PYTHONPATH=src venv/bin/python -m py_compile src/migration/sqlite_to_postgres.py src/tests/test_sqlite_to_postgres_migration.py
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest src/tests/test_sqlite_to_postgres_migration.py -q
+PYTHONPATH=src venv/bin/python -m pytest -q
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic downgrade 0001_postgresql_foundation
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic downgrade 0002_exchange_rate_period
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+```
+
+The fixture gate progressed from two unit passes plus one skip to a final five
+real-PostgreSQL passes. It covers immutable source access, checksum rejection,
+activation, repeated no-op, quarantine, failed-candidate retry, conflicting
+override rollback, full global-record transaction rollback, dataset rollback
+and restoration of any pre-existing active dataset. The final normal suite is
+308 passed, 2 intentional skips, 8 subtests and 53 known warnings.
+
+Two source-fidelity defects were found by full reconciliation and fixed with
+append-only Alembic revisions. `exchange_rate_date` contains 302,049 monthly
+`YYYY-MM` periods, not malformed dates. In addition, 8,736 grant award values
+contain full ISO timestamps; truncating them created 85 artificial duplicate
+groups. Revisions `0002_exchange_rate_period` and
+`0003_grant_award_timestamp` preserve both values exactly and passed their
+downgrade/upgrade cycles.
+
+### Full migration attempts and failure isolation
+
+The migration command shape used throughout was:
+
+```zsh
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m migration.sqlite_to_postgres migrate --source src/data/charities.db --expected-checksum 8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651 --expected-schema-version 7 --dataset-version <version> --code-revision <full-git-sha> --actor-id codex-local-remediation --actor-type ci --output-directory <private-tmp-output> --batch-size 10000
+```
+
+Executed full checkpoints:
+
+- `262b4a894dd1f3c869ddfb43301b20990bf5f42d` stopped and quarantined the monthly exchange-period type mismatch before activation.
+- One invocation containing an unverified SHA string was interrupted before PostgreSQL connection/mutation. The next invocation used `git rev-parse HEAD`; no record or candidate was created by the interrupted command.
+- `9afbc4a18de5d52a159dccfe4fa55ef168069e99` loaded all rows but was rejected because truncated award dates produced 4,356 rather than 4,271 business-key duplicate groups.
+- The rejected run had written 18,964 exchange rates and one override under the pre-staging implementation. With zero active datasets verified, exactly those derived rows were deleted in one local transaction (`DELETE 18964`, `DELETE 1`) before the atomic-staging correction was retested.
+- `919aa96e835775b79a09aa639f5cc57826ec77c7` produced the first successful full snapshot `sqlite-v7-8fc0cce61c81`.
+- An initial `r2` load under `a74d75c0772b6aaff839d9460302e8d3eca158de` was interrupted while inactive after a progress query exposed that a fixture cleanup had not restored the preceding active snapshot. `rollback --dataset-version sqlite-v7-8fc0cce61c81` restored it before the test-isolation fix.
+- `d6d2b69d1f9ff7dd8bc6f58021060586b3c17757` produced the final full snapshot `sqlite-v7-8fc0cce61c81-r2` and manifest run `60af368e-c440-5521-9648-5ab272f9ddb6`.
+
+Read-only `docker-compose exec ... psql -Atc` queries repeatedly checked only
+candidate status, active flags, schema revision, constraint validation and
+aggregate table counts during these runs. No source rows, secrets or credential
+values were printed.
+
+### Manifest, idempotency and rollback gate
+
+```zsh
+python3 -c '<Draft202012Validator check_schema and manifest validation>'
+jq '<required manifest fields and reconciliation failures>' /private/tmp/fip-phase4-full-report-d6d2b69/migration-sqlite-v7-8fc0cce61c81-r2.json
+<repeat the exact final migrate command for sqlite-v7-8fc0cce61c81-r2>
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m migration.sqlite_to_postgres rollback --dataset-version sqlite-v7-8fc0cce61c81
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -Atc '<active dataset and core-count checks>'
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m migration.sqlite_to_postgres rollback --dataset-version sqlite-v7-8fc0cce61c81-r2
+```
+
+The committed JSON report validates against Draft 2020-12. All source/target
+counts and controls pass, including 30 catalog-derived FK relationships with
+zero violations. The exact repeated migration returns
+`idempotent_noop=true` and the same run ID. Full rollback to the first snapshot
+retained 302,546 active grants and 397,469 active registry rows; switching back
+to `r2` succeeded and left exactly one active dataset.
+
+### Final container rebuild and inspection
+
+```zsh
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config docker build --pull=false --target backend-runtime -t foundation-intelligence-backend:local .
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config scripts/verify_container_image.sh foundation-intelligence-backend:local
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=10001,gid=10001 --entrypoint python foundation-intelligence-backend:local -c 'from migration.sqlite_to_postgres import MIGRATION_SCHEMA_VERSION; print(MIGRATION_SCHEMA_VERSION)'
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=10001,gid=10001 --workdir /app --entrypoint alembic foundation-intelligence-backend:local heads
+docker image inspect --format '<id|digests|size|architecture|os|user>' foundation-intelligence-backend:local
+```
+
+The legacy builder re-downloaded only hash-locked PyPI artifacts from the
+approved hosts and did not pull a base image. No dependency version changed.
+The final image passes the complete contract, contains migration and Alembic
+head `0003_grant_award_timestamp`, and has local image ID
+`sha256:e43491e5e7080e0923b9d777aa1f985bfd3c4897482d662d0be7bf7364758b91`.
+It is an unpushed local image and therefore has no repository digest.

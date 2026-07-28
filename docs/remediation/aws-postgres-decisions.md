@@ -93,6 +93,13 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Search: stored `tsvector` plus GIN and `pg_trgm` indexes; rounded rank descending and registry ID ascending form the stable cursor order.
 - Integrity: PostgreSQL FKs/checks are server-enforced, audit rows are append-only and override revisions must increment exactly once per update.
 
+## ADR-015 — Lossless temporal migration and atomic activation
+
+- Decision: migration preserves the source representation when it carries more precision than a normalized analytical field. Raw grant award values remain ISO date/timestamp text and ECB reference periods remain `YYYY-MM`; normalized fact dates stay typed separately.
+- Decision: global exchange rates and operator overrides are staged in memory and written only inside the candidate activation transaction. A rejected, interrupted or quarantined candidate cannot change global operational state.
+- Decision: every full migration report includes a catalog-driven anti-join result across all declared PostgreSQL foreign keys, in addition to relying on validated server constraints.
+- Consequence: apparent duplicate-count drift caused by truncating source timestamps is a schema defect, not an approved data correction. The schema must preserve the original business key before reconciliation can pass.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

@@ -1,7 +1,7 @@
 # PostgreSQL Schema Contract
 
-Status: implemented by Alembic revision `0001_postgresql_foundation` on
-2026-07-29.
+Status: implemented by Alembic revisions `0001_postgresql_foundation` through
+`0003_grant_award_timestamp` on 2026-07-29.
 
 ## Version and activation model
 
@@ -34,13 +34,16 @@ transaction after reconciliation.
 | Quality/governance | `data_quality_issues`, `materialization_versions`, `retention_actions`, `export_jobs`; quarantines retain original JSON values while queryable control fields remain relational. |
 
 Every relationship declares update/delete behavior. The local catalog contains
-30 validated foreign keys and 117 check constraints. PostgreSQL enforces these
+30 validated foreign keys and 119 check constraints. PostgreSQL enforces these
 server-side for every connection; there is no connection-local equivalent to a
 SQLite FK pragma.
 
 ## Types and constraints
 
-- Timestamps use `TIMESTAMPTZ`; source/business dates use `DATE`.
+- Timestamps use `TIMESTAMPTZ`; normalized source/business dates use `DATE`.
+  `grants.award_date` preserves the source's date-or-full-timestamp text exactly,
+  while `grants.exchange_rate_date` preserves its monthly `YYYY-MM` precision.
+  Dataset-versioned fact tables retain normalized `DATE` columns for analysis.
 - Grant and financial amounts use `NUMERIC(24,4)`; rates use
   `NUMERIC(24,12)`; derived minor-unit facts use `BIGINT`.
 - Currency and country codes have uppercase length/shape checks.
@@ -81,8 +84,8 @@ all route/domain implementations before production becomes a GO.
   upgrade succeeded again.
 - The non-root, read-only Compose migration service independently upgraded from
   base to head.
-- The catalog reports revision `0001_postgresql_foundation`, 25 application
-  tables, 30 validated FKs, zero unvalidated FKs, 117 checks, `pg_trgm` and all
+- The catalog reports revision `0003_grant_award_timestamp`, 25 application
+  tables, 30 validated FKs, zero unvalidated FKs, 119 checks, `pg_trgm` and all
   three required search indexes.
 - A real asyncpg integration test demonstrates FK rejection, full-text search,
   deterministic tie-breaking and cursor continuation.

@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 4 — SQLite to PostgreSQL migration
+- Current phase: Phase 5 — application conversion to PostgreSQL
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -78,7 +78,20 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 4 — SQLite to PostgreSQL migration
 
-- Status: `IN PROGRESS`
+- Status: `COMPLETED`
+- Files changed: deterministic read-only migration CLI and integration tests; Alembic revisions preserving exchange-rate month and raw grant timestamp precision; atomic global-record staging; migration-manifest Schema extensions; data-free runtime-image inclusion; committed JSON and Markdown reconciliation evidence.
+- Source safety: immutable URI open, `PRAGMA query_only`, SHA-256 `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`, schema version `7`, `integrity_check=ok` and capacity preflight all pass. The final manifest records 64,959,250,432 bytes available against 23,340,679,168 required.
+- Reconciliation evidence: all 12 source/target table counts match. Mandatory controls pass exactly: 373 charities; 397,469 registry rows; 302,546 grants; 345 registry links; 104,191 mapped grants; 134,554 classified grants; EUR 22,435,986,707.70; zero source-identity duplicate groups; zero FK violations; 432 missing conversions; 2 negative and 2,101 zero grants; 1 future-dated grant; 4,271 business-key duplicate groups; 9,073 duplicate-charity-number groups.
+- Fidelity corrections: source ECB periods remain exact `YYYY-MM` strings and raw grant dates retain full ISO timestamp precision. Normalized analytical award dates remain typed `DATE` in fact tables. Alembic revisions `0002_exchange_rate_period` and `0003_grant_award_timestamp` both pass downgrade/upgrade tests.
+- Activation safety: candidates load under a dataset version; global exchange-rate/override records remain staged until the same transaction that activates the candidate. Quarantine, retry, conflicting override, failed-candidate isolation and prior-active restoration are exercised against real PostgreSQL.
+- Idempotency and rollback: repeating the final full command returns `idempotent_noop=true` with the same run ID. Full rollback from `sqlite-v7-8fc0cce61c81-r2` to `sqlite-v7-8fc0cce61c81` retained 302,546 grants and 397,469 registry rows; switching back to `r2` succeeded. Exactly one dataset is active in the final local state.
+- Report evidence: `evidence/phase4-migration-manifest.json` validates against the Draft 2020-12 Schema; `evidence/phase4-migration-report.md` is the human-readable companion. Final run ID is `60af368e-c440-5521-9648-5ab272f9ddb6`; code revision is `d6d2b69d1f9ff7dd8bc6f58021060586b3c17757`.
+- Tests executed: 308 passing normal tests, 2 intentional skips, 8 subtests and 53 known warnings; 5/5 real PostgreSQL migration integration tests; manifest Schema validation; 30/30 FKs validated; container image contract and isolated in-image migration/Alembic imports.
+- Container evidence: rebuilt backend is UID/GID `10001:10001`, 354,209,929 bytes, healthchecked and free of SQLite/domain data, environment/credential files and compiler tools. Image ID is `sha256:e43491e5e7080e0923b9d777aa1f985bfd3c4897482d662d0be7bf7364758b91`; the pinned Python base manifest digest is unchanged.
+- Protected state: active SQLite and the aggregate `docs/audits/` checksum remain byte-for-byte equal to baseline. No AWS, paid/live external API, scraper/model call, upload or push occurred.
+- Gate result: `PASS`.
+- Local implementation checkpoints: `262b4a8`, `9afbc4a`, `919aa96`, `a74d75c`, `d6d2b69`; the scoped closeout commit contains this ledger and durable evidence.
+- Next exact action: port every application journey and repository to async PostgreSQL, remove production SQLite route gaps and prove parity before starting the performance gate.
 
 ### Phase 5 — Application conversion to PostgreSQL
 

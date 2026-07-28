@@ -48,3 +48,14 @@ Docker Hub and are pinned directly in `Dockerfile` or `docker-compose.yml`:
 Local pull verification selected the `linux/arm64` variants. The pinned values
 are manifest-list digests; `docker-bake.hcl` declares both `linux/amd64` and
 `linux/arm64` targets.
+
+## Phase-4 rebuild record
+
+The Phase-4 backend rebuild reused the unchanged hashed Python locks and the
+digest-pinned Python base above. The legacy builder downloaded only the exact
+locked artifacts from PyPI/files.pythonhosted.org; no additional dependency
+version was resolved. No base-image pull was requested. The resulting local
+arm64 image is
+`sha256:e43491e5e7080e0923b9d777aa1f985bfd3c4897482d662d0be7bf7364758b91`
+at 354,209,929 bytes. It has no repository digest because it is an unpushed
+local build; this is not represented as a registry artifact.
