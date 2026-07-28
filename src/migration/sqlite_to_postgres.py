@@ -25,7 +25,7 @@ from bff.database import DatabaseSettings
 
 
 GIB = 1024**3
-MIGRATION_SCHEMA_VERSION = "0001_postgresql_foundation"
+MIGRATION_SCHEMA_VERSION = "0002_exchange_rate_period"
 EXPECTED_COUNTS = {
     "charities": 373,
     "charity_registry_organizations": 397_469,
@@ -121,7 +121,7 @@ DATE_COLUMNS = {
     for name in ("registration_date", "removal_date", "financial_period_end_date")
 } | {
     ("grants", name)
-    for name in ("date", "exchange_rate_date")
+    for name in ("date",)
 } | {("grant_overview_facts", "award_date")} | {
     ("grant_source_funder_facts", "award_date")
 } | {("exchange_rates", "rate_date")}
@@ -168,6 +168,7 @@ NUMERIC_COLUMNS = {
     ("exchange_rates", "eur_reference_rate")
 }
 UUID_COLUMNS = {("source_funder_profile_cache", "job_token")}
+MONTH_COLUMNS = {("grants", "exchange_rate_date")}
 CLASSIFICATION_METHODS = {
     "deterministic_regex",
     "source_normalization",
@@ -379,6 +380,19 @@ def _uuid_value(column: str, value: Any) -> Optional[uuid.UUID]:
         raise ValueConversionError(column, value, "invalid UUID source value") from exc
 
 
+def _month_value(column: str, value: Any) -> Optional[str]:
+    if value is None or str(value).strip() == "":
+        return None
+    candidate = str(value).strip()
+    try:
+        date.fromisoformat(f"{candidate}-01")
+    except ValueError as exc:
+        raise ValueConversionError(column, value, "invalid ISO month source value") from exc
+    if not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", candidate):
+        raise ValueConversionError(column, value, "invalid ISO month source value")
+    return candidate
+
+
 def convert_value(table: str, column: str, value: Any) -> Any:
     identity = (table, column)
     if identity in JSON_COLUMNS:
@@ -398,6 +412,8 @@ def convert_value(table: str, column: str, value: Any) -> Any:
         converted = _decimal_value(column, value)
     elif identity in UUID_COLUMNS:
         converted = _uuid_value(column, value)
+    elif identity in MONTH_COLUMNS:
+        converted = _month_value(column, value)
     else:
         converted = value
 

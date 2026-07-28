@@ -14,6 +14,7 @@ from bff.database import DatabaseSettings
 from migration.sqlite_to_postgres import (
     MigrationError,
     PreflightError,
+    convert_value,
     migrate,
     open_sqlite_read_only,
     rollback_dataset,
@@ -207,6 +208,12 @@ def _fixture_database(path: Path, *, invalid_currency: bool = False) -> str:
 
 
 class TestMigrationSourceSafety(unittest.TestCase):
+    def test_exchange_rate_month_is_preserved(self):
+        self.assertEqual(
+            convert_value("grants", "exchange_rate_date", "2025-07"),
+            "2025-07",
+        )
+
     def test_source_is_checksum_verified_and_opened_read_only(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "fixture.db"
