@@ -61,7 +61,7 @@ export default function AppHeader({
           <span>Reset</span>
         </button>
         <details className="data-sources-disclosure">
-          <summary className="app-header-action">
+          <summary className="app-header-action" aria-label="Data sources">
             <Database size={15} aria-hidden="true" />
             <span>Data sources</span>
           </summary>

@@ -32,6 +32,27 @@ the bootstrap lock pins the compatible `pip 25.3` release.
 The package lock is the authoritative inventory of all resolved npm versions,
 tarball URLs and integrity hashes.
 
+### Phase-7 browser-test additions
+
+The user approved one bounded npm-registry resolution and install for the named
+browser/a11y gate. Browser binaries were not downloaded; Playwright uses the
+already installed local Google Chrome. `npm install --package-lock-only` created
+the reviewed lock delta, followed by `npm ci --ignore-scripts` with
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`.
+
+| Package | Version | Integrity |
+|---|---:|---|
+| `@playwright/test` | `1.62.0` | `sha512-9zOJ6ZQRAena31MpOH9VSzIz8Ou3YJ/wtY/eQm5T2uhfhG7/U3COrMS8xOtUrZrp9OgdmzEnIYODye3nY1VqzA==` |
+| `playwright` | `1.62.0` | `sha512-Z14dG305dgaLu6foB1TXQagFiW8JfSUIUaUuPaKQ6NtBPKF1P/qXcqfh6c6K/icPqdy37JmjbiBXf6JNg6Sylw==` |
+| `playwright-core` | `1.62.0` | `sha512-nsNRyq0r2zsG8AcRHWknc9QRA5XCueC7gWMrs+Gx2tlZn9hcl8zudfh00lhJPY1DE7NmZ6bDsT9g2yey8mXljA==` |
+| `@axe-core/playwright` | `4.12.1` | `sha512-rMd7xriptqKpP+w5265i4Hdkv2X5kbu6uiBi/B2I7uf3hieRBM3qDCfaKPtxfiYb2mKXfF+yLODJwIx+Jv1GDw==` |
+| `axe-core` | `4.12.1` | `sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==` |
+| optional macOS `fsevents` | `2.3.2` | `sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==` |
+
+No pre-existing package entry changed version. All tarballs resolve under
+`https://registry.npmjs.org`; the full transitive inventory remains in
+`frontend/package-lock.json`.
+
 ## OCI base images
 
 The following versioned multi-platform manifest digests were returned by

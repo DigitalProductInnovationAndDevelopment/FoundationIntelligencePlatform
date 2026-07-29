@@ -592,3 +592,128 @@ git add <explicit Phase-6 file list>
 ```
 
 The ordinary sandbox failed with `Unable to create .git/index.lock: Operation not permitted`. The required escalated repetition was rejected before process creation by the same execution-service usage/approval limit. No index lock remained and no indirect `.git` write was attempted. The user then explicitly reconfirmed targeted staging and the local Phase-6 commit, while continuing to prohibit broad staging and push.
+
+## Phase 7 — frontend remediation
+
+All application and browser execution in this phase remained local. The
+initial remediation used the existing `frontend/node_modules` and npm
+lockfile. After the user separately approved the named test dependencies,
+only `registry.npmjs.org` was contacted to resolve and install the exact
+Playwright/axe packages documented below. No browser or image download,
+external API call, AWS action, upload or push occurred.
+
+### Baseline and source inspection
+
+```zsh
+cd frontend && npm test
+cd frontend && npm run lint
+cd frontend && npm run build
+rg <frontend request, hook, key, dialog, CSS and bundle patterns> frontend/src
+npm ls --depth=0
+```
+
+The baseline passed eight tests but Oxlint reported five React hook warnings.
+The production main chunk was 1,963.34 kB raw / 611.99 kB gzip and Vite emitted
+the large-chunk warning. The stylesheet also contained a runtime Google Fonts
+import. Playwright and axe packages were absent.
+
+### Static, unit and bundle gates
+
+```zsh
+cd frontend && npm run lint
+cd frontend && npm test
+cd frontend && npm run build
+cd frontend && npm run check:bundle
+node --check frontend/scripts/check-runtime-layout.mjs
+git diff --check
+```
+
+Final results: Oxlint emits zero warnings; all 13 tests pass; TypeScript and
+Vite pass; initial JavaScript is 87.80 KiB gzip / 120 KiB, initial CSS is 18.59
+KiB gzip / 25 KiB and the largest deferred chunk is 392.37 KiB gzip / 425 KiB.
+No generated `frontend/dist/` artifact is tracked.
+
+### Local browser journeys
+
+```zsh
+cd frontend && npm run test:runtime
+```
+
+The script builds the current source, starts Vite Preview on `127.0.0.1:4173`,
+launches the already installed Google Chrome 150 in headless mode with
+background networking disabled, injects deterministic local API responses and
+uses the Chrome DevTools Protocol. It stops both local processes and removes
+its isolated temporary browser profile afterward.
+
+The final run passes at 320, 390, 768, 1024, 1440 and 1920 pixels. It checks
+page overflow, visible control bounds/names, KPI cropping, map-first ordering,
+wrapped map controls, one initial overview request, one interaction-triggered
+connection request, filter drawer viewport bounds, Tab trapping, Escape/focus
+restoration and browser console/runtime exceptions. At 320 and 1024 it also
+navigates through Donor Directory and Advanced Charity Commission Search and
+checks the Registry empty state and Registry filter drawer.
+
+Early diagnostic runs correctly failed because the first checker counted the
+intentionally off-canvas closed mobile sidebar, checked focus before React's
+asynchronous focus tick and once exercised a stale `dist/` build. The checker
+now tests only intersecting visible controls, waits for focus and always builds
+current source. A Strict Mode focus restoration issue was fixed by retaining
+the trigger reference until the animation-frame focus completes.
+
+### Named-tool pre-approval check and immutable checks
+
+```zsh
+cd frontend && npm ls @playwright/test playwright @axe-core/playwright axe-core --depth=0
+node --version
+npm --version
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+shasum -a 256 src/data/charities.db
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+git status --short
+git diff --check
+git diff --stat
+```
+
+The named Playwright/axe package query returned `(empty)`. At that point,
+installing them required an npm-registry download and a lockfile update, so the
+work stopped for explicit approval. The active SQLite checksum remained
+`8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`;
+the aggregate audit checksum remains
+`d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`.
+No Phase-7 files were staged or committed before that approval.
+
+### Approved exact dependency install and named browser gate
+
+The user then explicitly approved downloads for the named Playwright and axe
+dependencies. Network access was restricted to `registry.npmjs.org`, install
+scripts and audits were disabled, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`
+prevented browser downloads. The already installed Google Chrome remained the
+only browser executable used.
+
+```zsh
+cd frontend && npm view @playwright/test version --registry=https://registry.npmjs.org
+cd frontend && npm view @axe-core/playwright version --registry=https://registry.npmjs.org
+cd frontend && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --package-lock-only --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+cd frontend && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+cd frontend && npm ls @playwright/test playwright playwright-core @axe-core/playwright axe-core --depth=1
+cd frontend && npm run test:e2e
+```
+
+The registry resolved exact direct versions `@playwright/test@1.62.0` and
+`@axe-core/playwright@4.12.1`. Their locked transitive runtime packages are
+`playwright@1.62.0`, `playwright-core@1.62.0` and `axe-core@4.12.1`; npm also
+locked the platform-optional `fsevents@2.3.2`. The exact lockfile integrity
+values are recorded in `docs/remediation/aws-postgres-dependency-locks.md`.
+The lockfile-only diff showed only these named packages and their required
+transitive entries; no existing package version changed. `npm ci` added 80
+local packages and performed no lifecycle script, audit or browser download.
+
+The first axe-enabled run found four genuine accessibility defects: invalid
+SVG-group labelling, insufficient active-navigation contrast, a skipped
+heading level and an unnamed compact-header disclosure. Each source issue was
+corrected and the complete gate was repeated. The final named gate passes all
+six viewport projects: eight tests pass and four deliberately redundant
+secondary journeys are skipped. The Overview journey runs at 320, 390, 768,
+1024, 1440 and 1920 pixels; the Donor/Registry journey additionally runs at
+320 and 1024 pixels. Every executed page reports zero axe violations, browser
+console errors, runtime errors and unexpected API requests.

@@ -1,4 +1,12 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Building2,
   ArrowLeft,
@@ -18,20 +26,11 @@ import {
   Star,
   X,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-} from "recharts";
-import GrantWorldMap from "./components/GrantWorldMap";
-import OverviewDashboard, { type FavoriteGrantExplorerPayload, type OverviewFilters } from "./components/OverviewDashboard";
 import AppHeader from "./components/AppHeader";
+import type {
+  FavoriteGrantExplorerPayload,
+  OverviewFilters,
+} from "./components/OverviewDashboard";
 import type {
   FavoriteDonorPayload,
   FavoriteDonorRequestPayload,
@@ -50,6 +49,11 @@ import type {
   SourceFunderCountrySelection,
 } from "./components/GrantWorldMap";
 
+const GrantWorldMap = lazy(() => import("./components/GrantWorldMap"));
+const OverviewDashboard = lazy(() => import("./components/OverviewDashboard"));
+const GrantAwardsChart = lazy(() => import("./components/DataCharts").then(module => ({ default: module.GrantAwardsChart })));
+const ProgrammeAllocationChart = lazy(() => import("./components/DataCharts").then(module => ({ default: module.ProgrammeAllocationChart })));
+const FinancialHistoryChart = lazy(() => import("./components/DataCharts").then(module => ({ default: module.FinancialHistoryChart })));
 const RegistryDirectory = lazy(() => import("./components/RegistryDirectory"));
 const DonorDirectoryPage = lazy(() => import("./components/DonorDirectoryPage"));
 
@@ -790,12 +794,14 @@ export default function App() {
   const [mapData, setMapData] = useState<GrantMapResponse>(EMPTY_MAP);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const mapRequestRef = useRef<AbortController | null>(null);
   const [mapFilters] = useState<GrantMapFilters>(EMPTY_GRANT_MAP_FILTERS);
   const [grantTrends, setGrantTrends] = useState<GrantTrendsResponse | null>(null);
   const [grantThemes, setGrantThemes] = useState<GrantThemesResponse | null>(null);
   const [grantAnalyticsLoading, setGrantAnalyticsLoading] = useState(false);
   const [grantAnalyticsError, setGrantAnalyticsError] = useState<string | null>(null);
   const [grantAnalyticsCurrency, setGrantAnalyticsCurrency] = useState("");
+  const grantAnalyticsRequestRef = useRef<AbortController | null>(null);
   const [selectedCharity, setSelectedCharity] = useState<Charity | null>(null);
   const [selectedCharityDetail, setSelectedCharityDetail] = useState<any>(null);
   const [selectedSourceFunderProfileKey, setSelectedSourceFunderProfileKey] = useState<string | null>(null);
@@ -969,6 +975,9 @@ export default function App() {
     && newsSummary
     && newsSummary.generated_at === savedNewsRun.generated_at,
   );
+  const visibleNewsSources = useMemo(() => Array.from(new Map(
+    (newsSummary?.sources || []).map(source => [`${source.link}\u001f${source.title}`, source]),
+  ).values()), [newsSummary?.sources]);
   const financialHistoryData = useMemo(() => {
     const history = selectedCharityDetail?.financial_history;
     if (!Array.isArray(history)) return [];
@@ -1023,21 +1032,57 @@ export default function App() {
   const [pipelineIds, setPipelineIds] = useState<string>("");
   const logsEndRef = useRef<HTMLDivElement>(null);
 
+  const runHealthCheck = useEffectEvent((signal: AbortSignal) => {
+    void checkBffHealth(signal);
+  });
+  const refreshStatistics = useEffectEvent((signal?: AbortSignal) => {
+    void fetchStats(undefined, signal);
+  });
+  const refreshDirectory = useEffectEvent(() => {
+    void fetchCharities();
+  });
+  const loadProfileSections = useEffectEvent((
+    id: number,
+    sourceFunderKey: string | null,
+    requestId: number,
+    signal: AbortSignal,
+  ) => {
+    void fetchCharityDetail(id, requestId, signal);
+    void fetchCharityGrants(id, requestId, signal);
+    void fetchSankeyData(id, requestId, signal);
+    void fetchScoreData(id, requestId, signal);
+    if (sourceFunderKey) {
+      void hydrateSourceFunderProfile(sourceFunderKey, id, requestId, signal);
+    }
+  });
+  const refreshPipelineStatus = useEffectEvent((signal: AbortSignal) => {
+    void fetchPipelineStatus(signal);
+  });
+  const refreshAfterPipelineSuccess = useEffectEvent((signal: AbortSignal) => {
+    void fetchStats(undefined, signal);
+    void fetchCharities();
+    window.dispatchEvent(new Event("overview-refresh"));
+  });
 
   // Fetch initial configuration on mount
   useEffect(() => {
-    checkBffHealth();
+    const controller = new AbortController();
+    runHealthCheck(controller.signal);
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
-    fetchStats();
+    if (!isBffOnline) return;
+    const controller = new AbortController();
+    refreshStatistics(controller.signal);
+    return () => controller.abort();
   }, [isBffOnline]);
 
   useEffect(() => {
     if (activeTab !== "directory" || directoryMode !== "profiles") return;
     const delay = searchTerm.trim() || maxAnnualGivingInput || maxAvgGrantSizeInput ? 250 : 0;
     const debounce = window.setTimeout(() => {
-      fetchCharities();
+      refreshDirectory();
     }, delay);
     return () => {
       window.clearTimeout(debounce);
@@ -1077,7 +1122,7 @@ export default function App() {
       })
       .catch(error => {
         if ((error as Error).name !== "AbortError") {
-          console.warn("Beneficiary geography options unavailable", error);
+          // Keep the bundled fallback options; this panel is independently usable.
         }
       });
     return () => controller.abort();
@@ -1113,7 +1158,6 @@ export default function App() {
         setOrganizationSuggestions(await response.json());
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
-          console.warn("Organization suggestions unavailable", error);
           setOrganizationSuggestions([]);
         }
       } finally {
@@ -1174,18 +1218,12 @@ export default function App() {
         : profileSectionState("idle"),
     });
 
-    void fetchCharityDetail(selectedCharityId, requestId, controller.signal);
-    void fetchCharityGrants(selectedCharityId, requestId, controller.signal);
-    void fetchSankeyData(selectedCharityId, requestId, controller.signal);
-    void fetchScoreData(selectedCharityId, requestId, controller.signal);
-    if (selectedSourceFunderProfileKey) {
-      void hydrateSourceFunderProfile(
-        selectedSourceFunderProfileKey,
-        selectedCharityId,
-        requestId,
-        controller.signal,
-      );
-    }
+    loadProfileSections(
+      selectedCharityId,
+      selectedSourceFunderProfileKey,
+      requestId,
+      controller.signal,
+    );
 
     return () => {
       controller.abort();
@@ -1197,22 +1235,26 @@ export default function App() {
   }, [selectedCharityId, selectedSourceFunderProfileKey, isBffOnline]);
 
   useEffect(() => {
-    if (activeTab === "admin") {
-      fetchPipelineStatus();
-      const interval = setInterval(fetchPipelineStatus, 3000);
-      return () => clearInterval(interval);
-    }
+    if (activeTab !== "admin") return;
+    let controller: AbortController | null = null;
+    const refresh = () => {
+      controller?.abort();
+      controller = new AbortController();
+      refreshPipelineStatus(controller.signal);
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 3000);
+    return () => {
+      window.clearInterval(interval);
+      controller?.abort();
+    };
   }, [activeTab]);
 
   useEffect(() => {
-    if (pipelineStatus.status === "success") {
-      fetchStats();
-      fetchCharities();
-      // The active Overview owns one aggregated request for its complete grant
-      // population. Notify it after ingestion instead of reviving legacy map
-      // and chart calls in the background.
-      window.dispatchEvent(new Event("overview-refresh"));
-    }
+    if (pipelineStatus.status !== "success") return;
+    const controller = new AbortController();
+    refreshAfterPipelineSuccess(controller.signal);
+    return () => controller.abort();
   }, [pipelineStatus.status]);
 
   useEffect(() => {
@@ -1270,10 +1312,11 @@ export default function App() {
     return () => window.removeEventListener("active-source-funder-change", receiveActiveSourceFunder);
   }, []);
 
-  const checkBffHealth = async () => {
+  const checkBffHealth = async (signal?: AbortSignal) => {
     setInitialLoading(true);
     try {
-      const resp = await fetch(`${API_BASE}/health`);
+      const resp = await fetch(`${API_BASE}/health`, { signal });
+      if (signal?.aborted) return;
       if (resp.ok) {
         setAuthError(null);
         setIsBffOnline(true);
@@ -1284,30 +1327,34 @@ export default function App() {
       }
       setIsBffOnline(false);
       setApiError("health", "Backend unavailable. Values marked as illustrative are local prototype data.");
-      console.warn("BFF offline. Falling back to mock dataset.");
-    } catch {
+    } catch (error) {
+      if ((error as Error).name === "AbortError") return;
       setIsBffOnline(false);
       setApiError("health", "Backend unavailable. Values marked as illustrative are local prototype data.");
-      console.warn("BFF offline. Falling back to mock dataset.");
     } finally {
-      setInitialLoading(false);
+      if (!signal?.aborted) setInitialLoading(false);
     }
   };
 
-  const fetchStats = async (forceOnline?: boolean) => {
+  const fetchStats = async (forceOnline?: boolean, signal?: AbortSignal) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
     if (!isOnline) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/charities/stats`, { credentials: "include" });
+      const resp = await fetch(`${API_BASE}/api/charities/stats`, {
+        credentials: "include",
+        signal,
+      });
+      if (signal?.aborted) return;
       if (resp.ok) {
         const data = await resp.json();
+        if (signal?.aborted) return;
         setStats(data);
         setApiError("statistics", null);
       } else {
         setApiError("statistics", `Statistics request failed (${resp.status}).`);
       }
     } catch (e) {
-      console.error("Failed to fetch stats", e);
+      if ((e as Error).name === "AbortError") return;
       setApiError("statistics", "Statistics are temporarily unavailable.");
     }
   };
@@ -1414,7 +1461,6 @@ export default function App() {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      console.error("Failed to fetch charities", e);
       if (requestSequence === directoryRequestSequenceRef.current) {
         setApiError("directory", "The organization directory is temporarily unavailable.");
       }
@@ -1492,7 +1538,6 @@ export default function App() {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
-      console.error("Failed to fetch charity details", e);
       const message = "Organization details are temporarily unavailable.";
       setSelectedCharityDetail(null);
       setProfileSection(requestId, "detail", "error", message);
@@ -1580,7 +1625,6 @@ export default function App() {
       }
     } catch (error) {
       if ((error as Error).name === "AbortError" || !requestIsCurrent()) return;
-      console.error("Could not hydrate source-funder profile", error);
       setProfileSection(
         requestId,
         "source_record",
@@ -1772,7 +1816,6 @@ export default function App() {
       if (!completed) throw new Error("News research ended before a briefing was returned.");
     } catch (e: any) {
       if ((e as Error).name === "AbortError" || !isCurrentNewsRequest()) return;
-      console.error("Failed to fetch news summary", e);
       setNewsError(e?.message || "An error occurred while connecting to the news service.");
     } finally {
       if (isCurrentNewsRequest()) {
@@ -1790,10 +1833,14 @@ export default function App() {
   ) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
     if (!isOnline) {
+      mapRequestRef.current?.abort();
       setMapData(EMPTY_MAP);
       setMapLoading(false);
       return;
     }
+    mapRequestRef.current?.abort();
+    const controller = new AbortController();
+    mapRequestRef.current = controller;
     setMapLoading(true);
     setMapError(null);
     const requestedCurrency = currencyOverride ?? grantAnalyticsCurrency;
@@ -1818,8 +1865,9 @@ export default function App() {
     try {
       const resp = await fetch(
         `${API_BASE}/api/charities/grants/map${query ? `?${query}` : ""}`,
-        { credentials: "include" },
+        { credentials: "include", signal: controller.signal },
       );
+      if (controller.signal.aborted || mapRequestRef.current !== controller) return;
       if (resp.ok) {
         const data: GrantMapResponse = await resp.json();
         setMapData(data);
@@ -1827,11 +1875,14 @@ export default function App() {
         setMapError(`Map-data request failed (${resp.status}).`);
       }
     } catch (e) {
-      console.error("Failed to fetch map metrics", e);
+      if ((e as Error).name === "AbortError" || mapRequestRef.current !== controller) return;
       setMapData(EMPTY_MAP);
       setMapError("Map data is temporarily unavailable.");
     } finally {
-      setMapLoading(false);
+      if (mapRequestRef.current === controller) {
+        mapRequestRef.current = null;
+        setMapLoading(false);
+      }
     }
   };
 
@@ -2120,11 +2171,15 @@ export default function App() {
   const fetchGrantAnalytics = async (forceOnline?: boolean, currencyOverride?: string) => {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
     if (!isOnline) {
+      grantAnalyticsRequestRef.current?.abort();
       setGrantTrends(null);
       setGrantThemes(null);
       setGrantAnalyticsError("Grant analytics require the cached SQLite transaction database.");
       return;
     }
+    grantAnalyticsRequestRef.current?.abort();
+    const controller = new AbortController();
+    grantAnalyticsRequestRef.current = controller;
     setGrantAnalyticsLoading(true);
     setGrantAnalyticsError(null);
     const requestedCurrency = currencyOverride || grantAnalyticsCurrency;
@@ -2134,12 +2189,15 @@ export default function App() {
     try {
       const [trendsResponse, themesResponse] = await Promise.all([
         fetch(`${API_BASE}/api/charities/grants/trends?months=24${currencyQuery}`, {
-          credentials: "include"
+          credentials: "include",
+          signal: controller.signal,
         }),
         fetch(`${API_BASE}/api/charities/grants/themes?${currencyQuery.slice(1)}`, {
-          credentials: "include"
+          credentials: "include",
+          signal: controller.signal,
         })
       ]);
+      if (controller.signal.aborted || grantAnalyticsRequestRef.current !== controller) return;
       if (!trendsResponse.ok || !themesResponse.ok) {
         setGrantAnalyticsError(
           `Grant analytics request failed (${trendsResponse.status}/${themesResponse.status}).`
@@ -2153,12 +2211,15 @@ export default function App() {
       const resolvedCurrency = trends.currency || themes.currency;
       if (resolvedCurrency) setGrantAnalyticsCurrency(resolvedCurrency);
     } catch (error) {
-      console.error("Failed to fetch grant analytics", error);
+      if ((error as Error).name === "AbortError" || grantAnalyticsRequestRef.current !== controller) return;
       setGrantAnalyticsError("Grant analytics are temporarily unavailable.");
       setGrantTrends(null);
       setGrantThemes(null);
     } finally {
-      setGrantAnalyticsLoading(false);
+      if (grantAnalyticsRequestRef.current === controller) {
+        grantAnalyticsRequestRef.current = null;
+        setGrantAnalyticsLoading(false);
+      }
     }
   };
 
@@ -2189,7 +2250,6 @@ export default function App() {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
-      console.error("Failed to fetch grants", e);
       const message = "Grant transactions are temporarily unavailable.";
       setCharityGrants([]);
       setGrantStatus("request_failed");
@@ -2245,7 +2305,6 @@ export default function App() {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
-      console.error("Failed to fetch sankey metrics", e);
       const message = "Grant-flow data is temporarily unavailable.";
       setSankeyData({ status: "request_failed", nodes: [], links: [], currency: null, excludedCount: 0 });
       setProfileSection(requestId, "relationships", "error", message);
@@ -2279,7 +2338,6 @@ export default function App() {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError" || !isCurrentProfileRequest(requestId)) return;
-      console.error("Failed to fetch experimental relevance score", e);
       const message = "The experimental relevance score is temporarily unavailable.";
       setScoreData(null);
       setProfileSection(requestId, "score", "error", message);
@@ -2366,29 +2424,37 @@ export default function App() {
       setActiveSourceFunder(null);
       clearActiveProfileSafely();
     } catch (error) {
-      console.error("Could not reset source-funder profile link", error);
       setApiError("source_reset", (error as Error).message || `Could not reset ${target.displayName} to observed-only.`);
     } finally {
       setSourceFunderResetPending(false);
     }
   };
 
-  const fetchPipelineStatus = async () => {
+  const fetchPipelineStatus = async (signal?: AbortSignal) => {
     if (!isBffOnline) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/admin/pipeline/status`, { credentials: "include" });
+      const resp = await fetch(`${API_BASE}/api/admin/pipeline/status`, {
+        credentials: "include",
+        signal,
+      });
+      if (signal?.aborted) return;
       if (resp.ok) {
         const data = await resp.json();
         setPipelineStatus(data);
       }
 
-      const logResp = await fetch(`${API_BASE}/api/admin/pipeline/logs`, { credentials: "include" });
+      const logResp = await fetch(`${API_BASE}/api/admin/pipeline/logs`, {
+        credentials: "include",
+        signal,
+      });
+      if (signal?.aborted) return;
       if (logResp.ok) {
         const logData = await logResp.json();
         setLogs(logData.logs || "System idle.\n");
       }
     } catch (e) {
-      console.error("Failed to get pipeline metrics", e);
+      if ((e as Error).name === "AbortError") return;
+      setLogs(previous => `${previous}\n[Error] Pipeline metrics are temporarily unavailable.\n`);
     }
   };
 
@@ -2442,7 +2508,7 @@ export default function App() {
         alert(`Failed to trigger: ${errorData.detail || "Unknown error"}`);
       }
     } catch (e) {
-      console.error("Failed to trigger pipeline run", e);
+      setLogs(previous => `${previous}\n[Error] Pipeline trigger failed: ${(e as Error).message || "Unknown error"}\n`);
     } finally {
       setIsTriggering(false);
     }
@@ -2528,77 +2594,9 @@ export default function App() {
     }
   };
 
-  if (initialLoading) {
-    return (
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100vh",
-        width: "100vw",
-        background: "var(--bg-main, #0f111a)",
-        color: "var(--text-main, #ffffff)",
-        fontFamily: "'Inter', sans-serif",
-        gap: "24px"
-      }}>
-        {/* Modern glowing spinner */}
-        <div style={{
-          position: "relative",
-          width: "64px",
-          height: "64px",
-        }}>
-          <div style={{
-            boxSizing: "border-box",
-            display: "block",
-            position: "absolute",
-            width: "64px",
-            height: "64px",
-            border: "6px solid var(--accent-sunny, #ffbb00)",
-            borderRadius: "50%",
-            animation: "spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite",
-            borderColor: "var(--accent-sunny, #ffbb00) transparent transparent transparent"
-          }} />
-          <div style={{
-            boxSizing: "border-box",
-            display: "block",
-            position: "absolute",
-            width: "64px",
-            height: "64px",
-            border: "6px solid rgba(255, 187, 0, 0.1)",
-            borderRadius: "50%"
-          }} />
-        </div>
-        
-        {/* Loading text */}
-        <div style={{
-          fontSize: "18px",
-          fontWeight: "600",
-          letterSpacing: "0.5px",
-          color: "var(--text-main, #ffffff)",
-          animation: "pulse 2s infinite"
-        }}>
-          Connecting to Foundation Intelligence...
-        </div>
-        
-        {/* Style injection for spin & pulse keyframes */}
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
   return (
     <div className={`app-container${sidebarCollapsed ? " sidebar-collapsed" : ""}${mobileNavigationOpen ? " sidebar-drawer-open" : ""}`}>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div>
@@ -2618,6 +2616,7 @@ export default function App() {
           <nav className="sidebar-nav">
             <button
               className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
+              aria-current={activeTab === "overview" ? "page" : undefined}
               onClick={() => navigateApplication("overview")}
               title="Overview"
             >
@@ -2626,6 +2625,7 @@ export default function App() {
             </button>
             <button
               className={`nav-item ${activeTab === "directory" ? "active" : ""}`}
+              aria-current={activeTab === "directory" ? "page" : undefined}
               onClick={() => navigateApplication("donors")}
               title="Donor Directory"
             >
@@ -2634,6 +2634,7 @@ export default function App() {
             </button>
             <button
               className={`nav-item ${activeTab === "favorites" ? "active" : ""}`}
+              aria-current={activeTab === "favorites" ? "page" : undefined}
               onClick={() => navigateApplication("favorites")}
               title="Favorites"
             >
@@ -2642,6 +2643,7 @@ export default function App() {
             </button>
             <button
               className={`nav-item ${activeTab === "admin" ? "active" : ""}`}
+              aria-current={activeTab === "admin" ? "page" : undefined}
               onClick={() => navigateApplication("pipeline")}
               title="Pipeline Monitor"
             >
@@ -2675,7 +2677,7 @@ export default function App() {
       {mobileNavigationOpen && <button type="button" className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setMobileNavigationOpen(false)} />}
 
       {/* Main Container Window */}
-      <main className="main-content">
+      <main id="main-content" className="main-content" tabIndex={-1}>
         <AppHeader
           filterCount={activeHeaderState.filterCount}
           filtersExpanded={activeHeaderState.filtersExpanded}
@@ -2692,35 +2694,25 @@ export default function App() {
 
         {/* Dynamic Pages */}
         <div className="page-container">
+          {initialLoading && (
+            <div className="data-notice data-notice-info connection-status" role="status" aria-live="polite">
+              <LoaderCircle className="spin" size={16} aria-hidden="true" /> Connecting to the local data service. Available panels remain usable while readiness is checked.
+            </div>
+          )}
           {visibleApiErrors.length > 0 && (
             <div className="data-notice data-notice-error" role="status">
               {visibleApiErrors.join(" ")}
             </div>
           )}
-          {!isBffOnline && (
+          {!initialLoading && !isBffOnline && (
             <div className="data-notice data-notice-warning" role="status">
               Illustrative prototype mode — displayed values are local examples, not live source data.
             </div>
           )}
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
-            <OverviewDashboard
-              apiBase={API_BASE}
-              online={isBffOnline}
-              selectedSources={selectedDataSources}
-              onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
-              onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
-              onSearchOrganization={(organizationName) => openOrganizationDirectoryFromMap({ ...EMPTY_GRANT_MAP_FILTERS, search: organizationName })}
-              onExploreSourceFunders={openSourceFundersFromMap}
-              favoriteGrantExplorerKeys={favorites.grantExplorers.map(favorite => favorite.key)}
-              onToggleFavoriteGrantExplorer={toggleFavoriteGrantExplorer}
-            />
-          )}
-
-          {activeTab === "favorites" && (
-            favoriteGrantExplorer ? (
+            <Suspense fallback={<div className="route-loading" role="status"><LoaderCircle className="spin" size={22} /> Loading landscape overview…</div>}>
               <OverviewDashboard
-                key={`favorite-explorer:${favoriteGrantExplorer.key}`}
                 apiBase={API_BASE}
                 online={isBffOnline}
                 selectedSources={selectedDataSources}
@@ -2730,10 +2722,29 @@ export default function App() {
                 onExploreSourceFunders={openSourceFundersFromMap}
                 favoriteGrantExplorerKeys={favorites.grantExplorers.map(favorite => favorite.key)}
                 onToggleFavoriteGrantExplorer={toggleFavoriteGrantExplorer}
-                presentation="favorite-explorer"
-                initialDrilldown={favoriteGrantExplorer.selection}
-                onBackToFavorites={closeFavoriteGrantExplorer}
               />
+            </Suspense>
+          )}
+
+          {activeTab === "favorites" && (
+            favoriteGrantExplorer ? (
+              <Suspense fallback={<div className="route-loading" role="status"><LoaderCircle className="spin" size={22} /> Loading saved grant view…</div>}>
+                <OverviewDashboard
+                  key={`favorite-explorer:${favoriteGrantExplorer.key}`}
+                  apiBase={API_BASE}
+                  online={isBffOnline}
+                  selectedSources={selectedDataSources}
+                  onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+                  onOpenProfile={(profileId, profileName) => openLinkedDirectoryProfile({ charity_id: profileId, name: profileName })}
+                  onSearchOrganization={(organizationName) => openOrganizationDirectoryFromMap({ ...EMPTY_GRANT_MAP_FILTERS, search: organizationName })}
+                  onExploreSourceFunders={openSourceFundersFromMap}
+                  favoriteGrantExplorerKeys={favorites.grantExplorers.map(favorite => favorite.key)}
+                  onToggleFavoriteGrantExplorer={toggleFavoriteGrantExplorer}
+                  presentation="favorite-explorer"
+                  initialDrilldown={favoriteGrantExplorer.selection}
+                  onBackToFavorites={closeFavoriteGrantExplorer}
+                />
+              </Suspense>
             ) : favoriteDonorWorkspace ? (
               <Suspense fallback={<div className="route-loading"><LoaderCircle className="spin" size={22} /> Loading saved donor view…</div>}>
                 <DonorDirectoryPage
@@ -2914,13 +2925,15 @@ export default function App() {
                 </div>
               </div>
 
-              <GrantWorldMap
-                data={mapData}
-                loading={mapLoading}
-                error={mapError}
-                filters={mapFilters}
-                onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
-              />
+              <Suspense fallback={<section className="glass-card route-loading" role="status"><LoaderCircle className="spin" size={22} /> Loading world map…</section>}>
+                <GrantWorldMap
+                  data={mapData}
+                  loading={mapLoading}
+                  error={mapError}
+                  filters={mapFilters}
+                  onOpenOrganizationDirectory={openOrganizationDirectoryFromMap}
+                />
+              </Suspense>
 
               <div className="analytics-charts-grid">
                 {/* Monthly source-derived grant awards */}
@@ -2960,51 +2973,9 @@ export default function App() {
                   ) : grantTrends?.status === "available" && grantTrends.items.length > 0 ? (
                     <>
                       <div className="analytics-chart-plot">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={grantTrends.items}>
-                            <defs>
-                              <linearGradient id="colorGrantAwards" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                            <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={10} tickFormatter={(month) => String(month).slice(2)} />
-                            <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(Number(value), grantTrends.currency || "GBP")} />
-                            <Tooltip
-                              filterNull={false}
-                              content={({ active, payload, label }: any) => {
-                                if (!active || !payload?.length) return null;
-                                const item = payload[0]?.payload as GrantTrendItem;
-                                return (
-                                  <div style={{ background: "var(--bg-surface-opaque)", border: "1px solid var(--border-glass)", padding: "10px", borderRadius: "8px" }}>
-                                    <strong>{label}</strong>
-                                    {item.coverage_status === "unknown" ? (
-                                      <div>No source coverage established; not a confirmed zero.</div>
-                                    ) : item.coverage_status === "partial" ? (
-                                      <div>Source records exist, but no valid amount can be aggregated.</div>
-                                    ) : (
-                                      <>
-                                        <div>{formatCurrency(item.total_amount, grantTrends.currency || "GBP")}</div>
-                                        <div>{item.grant_count} recorded grants</div>
-                                      </>
-                                    )}
-                                  </div>
-                                );
-                              }}
-                            />
-                            <Area
-                              type="monotone"
-                              dataKey="total_amount"
-                              name="Recorded grant awards"
-                              connectNulls={false}
-                              stroke="var(--nl-unicorn)"
-                              fillOpacity={1}
-                              fill="url(#colorGrantAwards)"
-                              isAnimationActive={false}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
+                        <Suspense fallback={<div className="loading-container" role="status"><div className="spinner" /> Loading chart…</div>}>
+                          <GrantAwardsChart items={grantTrends.items} currency={grantTrends.currency || "GBP"} formatCurrency={formatCurrency} />
+                        </Suspense>
                       </div>
                       <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
                         Active currency: {grantTrends.currency} · Period {grantTrends.period?.from}–{grantTrends.period?.to}, anchored to the latest available award month. {unknownTrendMonths} month(s) have unknown source coverage.
@@ -3040,19 +3011,9 @@ export default function App() {
                 ) : grantThemes?.status === "available" && grantThemes.items.length > 0 ? (
                   <>
                     <div className="analytics-chart-plot">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={grantThemes.items} layout="vertical" margin={{ left: 25, right: 30 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                          <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => formatCurrency(Number(value), grantThemes.currency || "GBP")} />
-                          <YAxis type="category" width={210} dataKey="programme_area" stroke="var(--text-muted)" fontSize={11} />
-                          <Tooltip
-                            formatter={(value) => formatCurrency(Number(value), grantThemes.currency || "GBP")}
-                            labelFormatter={(label) => String(label)}
-                            contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }}
-                          />
-                          <Bar dataKey="allocated_amount" name="Allocated source amount" fill="var(--nl-unicorn)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <Suspense fallback={<div className="loading-container" role="status"><div className="spinner" /> Loading chart…</div>}>
+                        <ProgrammeAllocationChart items={grantThemes.items} currency={grantThemes.currency || "GBP"} formatCurrency={formatCurrency} />
+                      </Suspense>
                     </div>
                     <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "12px" }}>
                       Classified: {grantThemes.classification_coverage.classified_grant_count} / {grantThemes.classification_coverage.qualifying_grant_count} grants ({classificationPercentage}%). Unclassified remains visible. Multi-category amounts and counts are split equally to preserve totals.
@@ -3824,15 +3785,15 @@ export default function App() {
                     <span>{newsRunMode === "illustrative" ? "Illustrative local briefing" : "Live external research"}</span>
                     <span>Generated {formatNewsDate(newsSummary.generated_at)}</span>
                     <span>Coverage: last {newsSummary.searched_weeks} weeks</span>
-                    <span>{newsSummary.sources.length} cited source{newsSummary.sources.length === 1 ? "" : "s"}</span>
+                    <span>{visibleNewsSources.length} cited source{visibleNewsSources.length === 1 ? "" : "s"}</span>
                   </div>
                   <div className="news-summary-copy">{renderMarkdown(newsSummary.summary)}</div>
-                  {newsSummary.sources.length > 0 && (
+                  {visibleNewsSources.length > 0 && (
                     <div className="news-source-section">
                       <div><span>Evidence</span><h4>Articles used in this briefing</h4></div>
                       <div className="news-source-list">
-                        {newsSummary.sources.map((source, index) => (
-                          <a key={`${source.link}-${index}`} href={source.link} target="_blank" rel="noopener noreferrer" className="news-source-item">
+                        {visibleNewsSources.map(source => (
+                          <a key={`${source.link}:${source.title}`} href={source.link} target="_blank" rel="noopener noreferrer" className="news-source-item">
                             <span className="news-source-date">{formatNewsDate(source.published)}</span>
                             <strong>{source.title}</strong>
                             <small>{source.source}{source.note ? ` · ${source.note}` : ""}</small>
@@ -4073,28 +4034,9 @@ export default function App() {
               <div>
                 <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "12px", color: "var(--text-secondary)" }}>Financial History Trends</h3>
                 <div style={{ width: "100%", height: "200px", padding: "10px", backgroundColor: "var(--nl-ash-light)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-glass)" }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={financialHistoryData}
-                      margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--nl-unicorn)" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="var(--nl-unicorn)" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--nl-sunny)" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="var(--nl-sunny)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="year" fontSize={11} tickLine={false} />
-                      <YAxis fontSize={11} tickLine={false} tickFormatter={(v) => formatCurrency(v).replace("€", "")} />
-                      <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={{ backgroundColor: "var(--bg-surface-opaque)", borderColor: "var(--border-glass)" }} />
-                      <Area type="monotone" dataKey="Income" stroke="var(--nl-unicorn)" fillOpacity={1} fill="url(#colorInc)" strokeWidth={2} isAnimationActive={false} />
-                      <Area type="monotone" dataKey="Expenditure" stroke="var(--nl-sunny)" fillOpacity={1} fill="url(#colorExp)" strokeWidth={2} isAnimationActive={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <Suspense fallback={<div className="loading-container" role="status"><div className="spinner" /> Loading chart…</div>}>
+                    <FinancialHistoryChart data={financialHistoryData} formatCurrency={formatCurrency} />
+                  </Suspense>
                 </div>
               </div>
             )}
@@ -4121,8 +4063,8 @@ export default function App() {
                           <span className="profile-table-loading"><LoaderCircle size={16} aria-hidden="true" /> Loading observed grant transactions…</span>
                         </td>
                       </tr>
-                    ) : charityGrants.map((gr, idx) => (
-                      <tr key={idx}>
+                    ) : charityGrants.map(gr => (
+                      <tr key={gr.grant_id}>
                         <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{gr.grant_id}</td>
                         <td>{gr.funding_charity_id === selectedCharity.registered_charity_number ? gr.recipient_name : (gr.funding_name || "Unknown funder")}</td>
                         <td style={{ fontWeight: "600", color: "var(--nl-unicorn)" }} title={gr.exchange_rate_date ? `ECB reference rate date: ${gr.exchange_rate_date}` : undefined}>

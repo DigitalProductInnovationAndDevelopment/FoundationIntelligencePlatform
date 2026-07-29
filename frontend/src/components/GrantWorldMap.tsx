@@ -95,6 +95,10 @@ interface GrantWorldMapProps {
   selectedCountryCode?: string | null;
   onCountrySelectionChange?: (selection: MapCountrySelection | null) => void;
   refreshing?: boolean;
+  connectionsVisible?: boolean;
+  connectionsLoading?: boolean;
+  connectionsError?: string | null;
+  connectionsDisabledReason?: string | null;
   onConnectionsVisibilityChange?: (visible: boolean) => void;
   onResetScope?: () => void;
 }
@@ -165,9 +169,10 @@ function buildQuantileScale(values: number[]) {
 
 function RankingList({ items }: { items: MapRankingItem[] }) {
   if (!items.length) return <span className="map-empty-value">Unavailable</span>;
+  const uniqueItems = Array.from(new Map(items.map(item => [item.name, item])).values());
   return (
     <ul className="map-ranking-list">
-      {items.map(item => (
+      {uniqueItems.map(item => (
         <li key={item.name}>
           <span>{item.name}</span>
           <strong>{item.count}</strong>
@@ -227,6 +232,10 @@ export default function GrantWorldMap({
   selectedCountryCode,
   onCountrySelectionChange,
   refreshing = false,
+  connectionsVisible,
+  connectionsLoading = false,
+  connectionsError = null,
+  connectionsDisabledReason = null,
   onConnectionsVisibilityChange,
   onResetScope,
 }: GrantWorldMapProps) {
@@ -234,6 +243,7 @@ export default function GrantWorldMap({
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [uncontrolledSelectedCode, setUncontrolledSelectedCode] = useState<string | null>(null);
   const [showConnections, setShowConnections] = useState(false);
+  const connectionsShown = connectionsVisible ?? showConnections;
   const [connectionGeometry, setConnectionGeometry] = useState<ConnectionGeometry[]>([]);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const pathRefs = useRef(new Map<string, SVGPathElement>());
@@ -246,12 +256,17 @@ export default function GrantWorldMap({
     : "Number of grants";
 
   const visibleConnections = useMemo(
-    () => (data.connections || []).slice(0, MAX_VISIBLE_CONNECTIONS),
+    () => Array.from(new Map(
+      (data.connections || []).map(connection => [
+        `${connection.origin_country_code}:${connection.destination_country_code}`,
+        connection,
+      ]),
+    ).values()).slice(0, MAX_VISIBLE_CONNECTIONS),
     [data.connections],
   );
 
   useLayoutEffect(() => {
-    if (!showConnections || !visibleConnections.length) {
+    if (!connectionsShown || !visibleConnections.length) {
       setConnectionGeometry([]);
       return;
     }
@@ -295,7 +310,7 @@ export default function GrantWorldMap({
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", calculateGeometry);
     };
-  }, [showConnections, visibleConnections]);
+  }, [connectionsShown, visibleConnections]);
 
   const itemByCode = useMemo(() => new Map(
     data.items
@@ -411,10 +426,12 @@ export default function GrantWorldMap({
             </button>
             <button
               type="button"
-              className={showConnections ? "active" : ""}
-              aria-pressed={showConnections}
+              className={connectionsShown ? "active" : ""}
+              aria-pressed={connectionsShown}
+              disabled={Boolean(connectionsDisabledReason)}
+              title={connectionsDisabledReason || undefined}
               onClick={() => setShowConnections(current => {
-                const next = !current;
+                const next = !(connectionsVisible ?? current);
                 onConnectionsVisibilityChange?.(next);
                 return next;
               })}
@@ -426,6 +443,14 @@ export default function GrantWorldMap({
       </div>
 
       {refreshing && <div className="world-map-refreshing" aria-hidden="true">Refreshing map data</div>}
+      {connectionsShown && connectionsLoading && (
+        <div className="map-secondary-status" role="status" aria-live="polite">
+          Loading bounded country connections…
+        </div>
+      )}
+      {connectionsShown && connectionsError && (
+        <div className="map-secondary-status is-error" role="alert">{connectionsError}</div>
+      )}
 
       <div className="map-coverage-inline" aria-label="Map data coverage">
         <span>{totalFiltered.toLocaleString("en-GB")} filtered grants</span>
@@ -525,8 +550,8 @@ export default function GrantWorldMap({
                   </path>
                 );
               })}
-              {showConnections && (
-                <g className="map-connection-layer" aria-label={CONNECTION_DISCLOSURE}>
+              {connectionsShown && (
+                <g className="map-connection-layer">
                   {connectionGeometry.map(({ connection, path, strokeWidth, opacity }) => (
                     <path
                       key={`${connection.origin_country_code}-${connection.destination_country_code}`}
@@ -544,7 +569,7 @@ export default function GrantWorldMap({
               )}
             </svg>
 
-            {showConnections && (
+            {connectionsShown && (
               <div className="map-connection-disclosure" role="note">
                 <strong>{CONNECTION_DISCLOSURE}</strong>
                 <span>
@@ -581,7 +606,7 @@ export default function GrantWorldMap({
             <div className="map-legend" aria-label={`Quantile legend for ${activeMetric === "count" ? countLabel : "awarded funding"}`}>
               <span className="map-legend-title">Quantile scale</span>
               {legendLabels.map((label, index) => (
-                <span className="map-legend-item" key={`${label}-${index}`}>
+                <span className="map-legend-item" key={`${activeMetric}:${MAP_COLORS[index]}:${label}`}>
                   <i style={{ background: MAP_COLORS[index] }} />{label}
                 </span>
               ))}
@@ -649,7 +674,7 @@ export default function GrantWorldMap({
               {data.metadata.limitations.length > 0 && (
                 <details className="country-explorer-note">
                   <summary>Coverage limitations</summary>
-                  <ul>{data.metadata.limitations.map(limitation => <li key={limitation}>{limitation}</li>)}</ul>
+                  <ul>{Array.from(new Set(data.metadata.limitations)).map(limitation => <li key={limitation}>{limitation}</li>)}</ul>
                 </details>
               )}
               <button

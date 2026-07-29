@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 7 — frontend remediation
+- Current phase: Phase 8 — pipelines, S3 and durable jobs (not started)
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -125,7 +125,18 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 7 — Frontend remediation
 
-- Status: `PENDING`
+- Status: `COMPLETED`
+- Runtime changes: the application shell no longer blocks on the health check; route, map and chart code is lazy; map connections are fetched only after explicit activation; obsolete requests are aborted and sequence-guarded; handled failures stay in panel-level UI rather than writing browser warnings/errors.
+- Responsive/accessibility changes: the map remains the first major dashboard section; viewport shells and dense controls are bounded; KPI text wraps without cropping; mobile map controls wrap; filter drawers stay scrollable; skip navigation, active-page state, dialog focus traps, Escape handling and focus restoration cover Overview, Donor and Registry journeys.
+- Bundle evidence: initial JavaScript is 87.81 KiB gzip against 120 KiB, initial CSS is 18.59 KiB against 25 KiB and the largest deferred JavaScript chunk is 392.36 KiB against 425 KiB. `npm run build` enforces these budgets.
+- Tests executed: 13/13 frontend unit/contract tests; warn-free Oxlint; TypeScript/Vite production build; compressed bundle gate; local Chrome 150 runtime journeys at 320, 390, 768, 1024, 1440 and 1920 pixels. The runtime gate found no page overflow, clipped visible controls, cropped KPIs, unnamed visible controls, duplicate initial overview request, console warning/error or runtime exception. The named Playwright/axe suite passes eight journeys and intentionally skips four redundant secondary-journey viewport combinations. It reports zero axe violations across six Overview widths plus Donor/Registry journeys at 320 and 1024 pixels.
+- Accessibility corrections from the named gate: active-state text now meets WCAG AA contrast, the mobile data-source disclosure has an explicit accessible name, the map SVG uses valid ARIA and the Overview heading hierarchy includes its H2 level.
+- Supply-chain action: after explicit approval, exact `@playwright/test==1.62.0` and `@axe-core/playwright==4.12.1` development dependencies were resolved and downloaded only from `registry.npmjs.org`. The reviewed lock delta contains only those packages and their exact transitive dependencies. `npm ci --ignore-scripts` ran with browser download disabled; installed Chrome 150 is used locally.
+- Protected state: active SQLite and aggregate `docs/audits/` checksums remain exactly at baseline. No AWS call, paid/live API, scraper/model call, browser download, upload or push occurred.
+- Gate result: `PASS`.
+- Commit hash: the scoped Phase-7 commit containing this ledger and evidence.
+- Evidence files: `frontend-bundle-budget.md`, `evidence/phase7-frontend-report.json` and `evidence/phase7-frontend-report.md`.
+- Next exact action: wait for explicit authorization before beginning Phase 8; do not perform S3/AWS, deployment, push or any other remote action.
 
 ### Phase 8 — Pipelines, S3 and durable jobs
 

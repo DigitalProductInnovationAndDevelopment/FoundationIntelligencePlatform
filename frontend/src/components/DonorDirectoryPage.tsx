@@ -328,6 +328,16 @@ function evidenceLinkType(evidence: EvidenceLink): "website" | "json" {
   return "website";
 }
 
+function evidenceKey(evidence: EvidenceLink) {
+  return [
+    evidence.kind,
+    evidence.url,
+    evidence.role || "",
+    evidence.organization_name || "",
+    evidence.link_type || "",
+  ].join("\u001f");
+}
+
 function evidenceOrganizationName(evidence: EvidenceLink): string {
   if (evidence.organization_name?.trim()) return evidence.organization_name;
   const role = evidenceRole(evidence);
@@ -955,7 +965,10 @@ export default function DonorDirectoryPage({
     && enrichmentIsActive(enrichmentRun)
     && enrichmentRun?.donorKeys.includes(detail.funder.source_funder_key),
   );
-  const visibleEvidence = useMemo(() => (detail?.source_evidence || [])
+  const uniqueEvidence = useMemo(() => Array.from(new Map(
+    (detail?.source_evidence || []).map(evidence => [evidenceKey(evidence), evidence]),
+  ).values()), [detail?.source_evidence]);
+  const visibleEvidence = useMemo(() => uniqueEvidence
     .filter(evidence => (
       evidenceRoleVisibility[evidenceRole(evidence)]
       && evidenceTypeVisibility[evidenceLinkType(evidence)]
@@ -964,7 +977,7 @@ export default function DonorDirectoryPage({
       const typeOrder = Number(evidenceLinkType(left) === "json") - Number(evidenceLinkType(right) === "json");
       if (typeOrder) return typeOrder;
       return evidenceOrganizationName(left).localeCompare(evidenceOrganizationName(right));
-    }), [detail?.source_evidence, evidenceRoleVisibility, evidenceTypeVisibility]);
+    }), [evidenceRoleVisibility, evidenceTypeVisibility, uniqueEvidence]);
 
   return (
     <section className={`donor-directory-page${isFavoriteDetail ? " favorite-donor-detail-page" : ""}${isFavoriteRequest ? " favorite-donor-request-page" : ""}`} aria-labelledby="donor-directory-title">
@@ -1292,7 +1305,7 @@ export default function DonorDirectoryPage({
                             </div>
                             {detail.source_evidence.length ? <>
                               <div className="evidence-display-controls">
-                                <span>{visibleEvidence.length} of {detail.source_evidence.length} links shown</span>
+                                <span>{visibleEvidence.length} of {uniqueEvidence.length} links shown</span>
                                 <button type="button" aria-expanded={evidenceSettingsOpen} onClick={() => setEvidenceSettingsOpen(current => !current)}><SlidersHorizontal size={14} /> Evidence settings</button>
                               </div>
                               {evidenceSettingsOpen && <div className="evidence-settings-panel" aria-label="Evidence display settings">
@@ -1303,10 +1316,10 @@ export default function DonorDirectoryPage({
                                   setEvidenceTypeVisibility({ website: true, json: true });
                                 }}>Show all</button>
                               </div>}
-                              {visibleEvidence.length ? visibleEvidence.map((evidence, index) => {
+                              {visibleEvidence.length ? visibleEvidence.map(evidence => {
                                 const role = evidenceRole(evidence);
                                 const linkType = evidenceLinkType(evidence);
-                                return <a key={`${evidence.kind}-${evidence.url}-${index}`} href={evidence.url} target="_blank" rel="noopener noreferrer" aria-label={evidence.label}>
+                                return <a key={evidenceKey(evidence)} href={evidence.url} target="_blank" rel="noopener noreferrer" aria-label={evidence.label}>
                                   <span><strong>{evidenceOrganizationName(evidence)}</strong><small>{role[0].toUpperCase() + role.slice(1)} {linkType === "json" ? "record" : "website"} · stored source record</small></span>
                                   <span className="evidence-link-meta"><em className={`evidence-link-type ${linkType}`}>{linkType === "json" ? "JSON" : "Website"}</em><ExternalLink size={15} aria-hidden="true" /></span>
                                 </a>;
