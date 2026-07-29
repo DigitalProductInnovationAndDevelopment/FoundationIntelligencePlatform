@@ -1,0 +1,91 @@
+{
+  "phase": 13,
+  "status": "completed_local_aws_production_unexecuted",
+  "generated_on": "2026-07-29",
+  "runtime": {
+    "default": "postgresql",
+    "sqlite_migration_source_production_allowed": false,
+    "shadow_primary": "postgresql",
+    "sqlite_fallback": false,
+    "shadow_async_after_response": true,
+    "maximum_pending": 8,
+    "maximum_response_bytes": 2097152,
+    "timeout_seconds": 20,
+    "journeys_registered": 21
+  },
+  "shadow_comparison": {
+    "status": "passed",
+    "semantic_projections": 18,
+    "difference_count": 0,
+    "dataset_version": "sqlite-v7-8fc0cce61c81-r2",
+    "source_sha256": "8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651",
+    "golden_sha256": "f2065b01fe6385357314e6db4bf61628f1755c9aae03be66246c327331639166",
+    "golden_bytes": 110590,
+    "live_news_calls": false
+  },
+  "rollback": {
+    "status": "passed",
+    "writers_frozen": true,
+    "from": "sqlite-v7-8fc0cce61c81-r2",
+    "to": "sqlite-v7-8fc0cce61c81",
+    "restored_to": "sqlite-v7-8fc0cce61c81-r2",
+    "counts_equal": true,
+    "materialization_active": true,
+    "bidirectional_replay": false
+  },
+  "restore": {
+    "status": "passed",
+    "type": "full_logical_pg_dump_pg_restore",
+    "archive_bytes": 247509368,
+    "archive_sha256": "2c571954768ba4379f3e61160fb808cbc0bd35e6e13ec2f0b4d776c760ceae87",
+    "schema_version": "0006_governance_retention",
+    "active_dataset": "sqlite-v7-8fc0cce61c81-r2",
+    "charities": 373,
+    "registry": 397469,
+    "grants": 302546,
+    "overview_total_eur_minor": 2243598670770,
+    "temporary_database_removed": true,
+    "archive_removed": true
+  },
+  "final_local_checks": {
+    "normal_backend_tests": {"passed": 352, "skipped": 13, "subtests_passed": 8},
+    "coverage_percent": 61,
+    "postgresql_combined_tests": {"passed": 55, "failed": 0},
+    "frontend_unit_tests": 13,
+    "frontend_e2e_passed": 8,
+    "frontend_e2e_skipped": 4,
+    "mypy_files": 17,
+    "blocking_flake8": "passed",
+    "workflow_offline_validation": "passed",
+    "terraform_offline_validation": "passed"
+  },
+  "containers": {
+    "backend_image_id": "sha256:101071f6c750f6806408ed2f898a6a2496d24704a7f36ddcfbb679fcbcc338ee",
+    "backend_size_bytes": 354658326,
+    "backend_user": "10001:10001",
+    "frontend_image_id": "sha256:8f665856111eb532dae72c5c1c82d1b9ee4b90b7b73cd3975cd17d6cead9ad1a",
+    "frontend_size_bytes": 56241904,
+    "frontend_user": "101:101",
+    "stack_liveness": "passed",
+    "stack_readiness": "passed",
+    "backend_restart_readiness": "passed"
+  },
+  "approved_downloads": {
+    "registry.npmjs.org": "npm ci in frontend image build and final local install",
+    "resolved_packages": 80,
+    "other_hosts": false
+  },
+  "expected_failures_recorded": [
+    "two initial transition query attempts rejected string parameters for PostgreSQL date bindings",
+    "the first rollback attempt rejected a stale hard-coded migration schema revision before switching datasets",
+    "integral PostgreSQL NUMERIC values initially produced representational type differences until exact integer normalization"
+    ,"the first container-backed E2E run used a stale local frontend image and failed 8 tests; rebuilding the current pinned image produced 8 passes and 4 intentional skips"
+  ],
+  "aws_cutover_performed": false,
+  "production_cutover_performed": false,
+  "push_performed": false,
+  "protected_checksums": {
+    "sqlite_sha256": "8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651",
+    "docs_audits_aggregate_sha256": "d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a"
+  }
+}

@@ -173,6 +173,16 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Reason: plan review must occur after digest resolution but before infrastructure/service mutation, and schema/data gates must precede traffic promotion.
 - Consequences: GitHub branch/environment settings, action SHA pins, OIDC trust and staging execution remain external blockers. Workflow presence is not evidence of deployment success.
 
+## ADR-025 — PostgreSQL-authoritative transition and one-way shadow evidence
+
+- Status: accepted and implemented locally in Phase 13.
+- Decision: `postgresql` is the default operational mode. `sqlite_migration_source` is local/test compatibility and is rejected in staging/production. `shadow_compare` returns only PostgreSQL results and requires a separate coherent SQLite snapshot.
+- Decision: shadow reads are submitted only after the primary response is sent, with queue, byte, timeout and evidence bounds. Failures, timeouts and queue pressure are recorded but never trigger fallback or affect user latency.
+- Decision: comparison records contain paths and fingerprints rather than raw profile values. Ordering may be ignored only for explicitly versioned non-semantic set paths; rankings and pagination are order-sensitive.
+- Decision: cutover is one-way until an approved conflict policy exists. Rollback selects a retained approved PostgreSQL dataset or independently restored backup, retains the failed target and reconciles before writers resume.
+- Reason: a hidden dual-read fallback would retain production SQLite coupling and mask PostgreSQL defects. Temporary asynchronous evidence provides transition confidence without changing authority.
+- Consequences: the local full restore and dataset rollback satisfy Gate 13, but AWS traffic changes, RDS restore, production shadow observation and production cutover remain unapproved and `NOT TESTED`.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

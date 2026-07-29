@@ -6,6 +6,7 @@ import os
 os.environ.update(
     {
         "APP_ENV": "test",
+        "DATA_RUNTIME_MODE": "sqlite_migration_source",
         "AUTH_MODE": "development",
         "DEV_AUTH_ENABLED": "true",
         "DEV_AUTH_USERNAME": "admin",

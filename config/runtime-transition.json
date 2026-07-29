@@ -1,0 +1,48 @@
+{
+  "configuration_version": "1",
+  "default_operational_mode": "postgresql",
+  "temporary_modes": [
+    "sqlite_migration_source",
+    "shadow_compare"
+  ],
+  "production_fallback": false,
+  "shadow": {
+    "maximum_pending_comparisons": 8,
+    "maximum_response_bytes": 2097152,
+    "timeout_seconds": 20,
+    "maximum_recorded_differences": 100,
+    "approved_unordered_paths": [
+      "$.available_currencies",
+      "$.available_sources",
+      "$.metadata.sources"
+    ],
+    "ignored_operational_paths": [
+      "$.metadata.data_mode",
+      "$.metadata.dataset_version",
+      "$.search_strategy"
+    ]
+  },
+  "journeys": [
+    "dashboard",
+    "map",
+    "map_relationships",
+    "date_filters",
+    "country_filters",
+    "programme_filters",
+    "donor_filters",
+    "recipient_filters",
+    "monthly_trends",
+    "yearly_trends",
+    "donor_ranking",
+    "recipient_ranking",
+    "registry_search",
+    "profile_detail",
+    "grant_list",
+    "drill_down",
+    "sankey",
+    "score",
+    "news",
+    "pipeline_status",
+    "manual_refresh_permissions"
+  ]
+}

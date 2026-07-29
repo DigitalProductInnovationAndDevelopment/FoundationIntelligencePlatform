@@ -77,6 +77,7 @@ with TestClient(app):
         environment.update(
             {
                 "APP_ENV": "production",
+                "DATA_RUNTIME_MODE": "postgresql",
                 "AUTH_MODE": "oidc",
                 "OIDC_ISSUER": "https://identity.example.invalid/",
                 "OIDC_AUDIENCE": "foundation-intelligence-api",
@@ -144,6 +145,7 @@ with TestClient(app) as client:
         environment = {
             **os.environ,
             "APP_ENV": "production",
+            "DATA_RUNTIME_MODE": "postgresql",
             "AUTH_MODE": "oidc",
             "OIDC_ISSUER": "https://identity.example.invalid/",
             "OIDC_AUDIENCE": "foundation-intelligence-api",

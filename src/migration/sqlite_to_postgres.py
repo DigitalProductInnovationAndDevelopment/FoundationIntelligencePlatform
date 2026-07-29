@@ -22,10 +22,11 @@ import uuid
 import asyncpg
 
 from bff.database import DatabaseSettings
+from observability.metrics import load_observability_configuration
 
 
 GIB = 1024**3
-MIGRATION_SCHEMA_VERSION = "0004_versioned_analytics"
+MIGRATION_SCHEMA_VERSION = load_observability_configuration().expected_schema_version
 EXPECTED_COUNTS = {
     "charities": 373,
     "charity_registry_organizations": 397_469,

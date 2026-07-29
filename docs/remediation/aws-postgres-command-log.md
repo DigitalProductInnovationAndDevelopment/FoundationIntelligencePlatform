@@ -929,3 +929,74 @@ smoke reports 14 governance policies, 21 metrics and eight sources.
 Final normal regression: 342 passing, 13 explicit live skips and eight
 subtests. The data-free non-root image is 354,624,742 bytes with ID
 `sha256:172dab7c1c7842b0b34f0991d97f8ae34391d36e6ece628db4a63672c36781e9`.
+
+## Phase 13 — Shadow comparison and cutover preparation
+
+No AWS API, production traffic, paid API, live news provider, upload or Git
+remote was contacted. The final frontend rebuild/install contacted only the
+explicitly approved `registry.npmjs.org` through deterministic `npm ci`.
+
+```zsh
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_shadow_transition.py src/tests/test_transition_golden.py
+PYTHONPATH=src venv/bin/mypy --config-file mypy.ini
+PYTHONPATH=src venv/bin/python -m flake8 src/transition scripts/verify_transition.py scripts/verify_local_rollback.py --count --select=E9,F63,F7,F82 --show-source --statistics
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python scripts/verify_transition.py --write-golden
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python scripts/verify_local_rollback.py
+POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 DOCKER_CONFIG=/private/tmp/docker-config-no-creds DOCKER_HOST=unix:///Users/manuelgrabmayer/.docker/run/docker.sock scripts/verify_local_restore.sh
+shasum -a 256 src/data/charities.db config/golden/transition-domain.json
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+The first two transition-query executions failed on the date projection because
+`asyncpg` required `date` objects rather than ISO strings. Explicit conversion
+was added. The next full execution exposed only exact-representation differences:
+SQLite integer minor units versus integral PostgreSQL `NUMERIC`; exact integral
+normalization removed the type-only difference without tolerance or rounding.
+The expanded final comparison passes 18 projections with zero differences.
+
+The first rollback execution stopped before activation because the migration
+module still hard-coded schema `0004_versioned_analytics` while Alembic was at
+`0006_governance_retention`. Migration and release gates now read the one
+versioned expected schema contract. The repeat switches from
+`sqlite-v7-8fc0cce61c81-r2` to `sqlite-v7-8fc0cce61c81` and back, with equal
+counts and active materialization.
+
+The full logical restore produced a 247,509,368-byte custom archive (SHA-256
+`2c571954768ba4379f3e61160fb808cbc0bd35e6e13ec2f0b4d776c760ceae87`),
+restored all 5.45 GB of database state into an isolated database, and matched
+schema, active dataset, charity/registry/grant counts, eligible EUR minor total
+and materialization state. The exact temporary database and archive were then
+removed and their absence verified.
+
+Final local validation added:
+
+```zsh
+docker build --pull=false --target backend-runtime --tag foundation-intelligence-backend:phase13 --tag foundation-intelligence-backend:local .
+scripts/verify_container_image.sh foundation-intelligence-backend:phase13
+docker run --rm --network none --entrypoint python foundation-intelligence-backend:phase13 -c '<transition and schema imports>'
+docker-compose up -d --no-build backend frontend
+curl --fail --silent --show-error http://127.0.0.1:8501/health/live
+curl --fail --silent --show-error http://127.0.0.1:8501/health/ready
+docker-compose restart backend
+curl --retry 10 --retry-delay 2 --retry-connrefused --fail --silent --show-error http://127.0.0.1:8501/health/ready
+PYTHONPATH=src venv/bin/coverage run --source=src/bff,src/migration,src/pipelines,src/transition -m pytest -q
+venv/bin/coverage report --skip-empty
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python -m pytest -q '<combined PostgreSQL suites>'
+docker build --pull=false --target frontend-runtime --tag foundation-intelligence-frontend:phase13 --tag foundation-intelligence-frontend:local .
+cd frontend && PHASE7_BASE_URL=http://127.0.0.1:8081 npm run test:e2e
+cd frontend && npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+cd frontend && npm run lint && npm test -- --run && npm run build
+```
+
+Normal regression passes 352 tests, 13 skips and eight subtests with measured
+61% coverage across the selected BFF/migration/pipeline/transition source. The
+combined PostgreSQL run passes 55. Frontend passes 13 unit tests and its bundle
+budgets. The first E2E run against the pre-existing stale frontend container
+failed eight tests. The current pinned frontend image was rebuilt, the container
+recreated, and the repeat passes eight tests with four intentional skips.
+
+The frontend image build and final local install used the approved npm registry
+through `npm ci`; 80 packages were installed locally on the final run. No other
+host was contacted. Backend image `sha256:101071f6c750...338ee` is 354,658,326
+bytes/non-root; frontend image `sha256:8f665856111e...9ad1a` is 56,241,904
+bytes/non-root. Stack start, liveness, readiness and backend restart pass.

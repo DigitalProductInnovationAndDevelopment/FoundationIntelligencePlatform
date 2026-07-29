@@ -210,9 +210,20 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 13 — Shadow comparison and cutover preparation
 
-- Status: `PENDING`
+- Status: `COMPLETED_LOCAL`; AWS/production cutover remains explicitly unexecuted.
+- Runtime boundary: PostgreSQL is the default and sole authoritative operational mode. SQLite migration-source mode is rejected in staging/production. Temporary shadow mode requires a separate coherent snapshot and cannot fall back to it.
+- Shadow execution: the final PostgreSQL response is passed through before bounded background work starts. The queue is capped at 8, response capture at 2 MiB, timeout at 20 seconds and evidence at 100 fingerprint-only differences. Only three versioned set-like paths may ignore order.
+- Domain gate: 21 journeys are registered. Eighteen executed SQLite/PostgreSQL semantic projections cover identities, totals, coverage, date/country/programme/donor/recipient filters, monthly/yearly trends, rankings, registry search/pagination, profiles, grant lists, Sankey, map relationships, score components and currency statuses. Result: zero differences.
+- Golden fixture: `config/golden/transition-domain.json`, 110,590 bytes, SHA-256 `f2065b01fe6385357314e6db4bf61628f1755c9aae03be66246c327331639166`, bound to source checksum `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`.
+- Rollback proof: writers/jobs were frozen; active dataset switched from `sqlite-v7-8fc0cce61c81-r2` to approved prior `sqlite-v7-8fc0cce61c81` and back. All eight counts and materialization state matched; no bidirectional replay occurred.
+- Restore proof: a full custom-format logical backup (247,509,368 bytes; SHA-256 `2c571954768ba4379f3e61160fb808cbc0bd35e6e13ec2f0b4d776c760ceae87`) was restored into an isolated database. Schema, active dataset, counts, EUR total and materialization matched; archive and temporary database were removed.
+- Runbooks: transition mode, cutover, rollback, backup/restore and troubleshooting procedures are complete. They preserve the failed target/source snapshot and require reconciliation before resuming writers.
+- Failed attempts recorded: two strict date-binding failures, exact `NUMERIC`/integer representation differences and one stale schema-revision rejection. Each stopped safely and was repeated successfully after a narrow fix.
+- Protected state/external boundary: SQLite and `docs/audits/` remain at baseline. The final frontend rebuild/install used only the explicitly approved npm registry through `npm ci`; no other download host, AWS, production traffic, paid/live API, upload or push occurred.
+- Gate result: Gate 13 `PASS` locally. AWS cutover, RDS restore and production execution remain `NOT TESTED`; production remains `NO-GO`.
+- Evidence files: `runtime-transition-guide.md`, `cutover-runbook.md`, `rollback-runbook.md`, `backup-restore-guide.md`, `evidence/phase13-transition-report.json` and `.md`.
 
 ### Push checkpoint
 
-- Status: `PENDING`
+- Status: `PENDING_EXPLICIT_APPROVAL`
 - Rule: stop and request explicit user confirmation before the first push.

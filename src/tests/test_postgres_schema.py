@@ -92,6 +92,7 @@ assert bff.main.POSTGRESQL_ONLY_RUNTIME
         environment = {
             **os.environ,
             "APP_ENV": "production",
+            "DATA_RUNTIME_MODE": "postgresql",
             "AUTH_MODE": "disabled",
             "PYTHONPATH": str(REPOSITORY_ROOT / "src"),
         }

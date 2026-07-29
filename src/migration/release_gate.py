@@ -9,9 +9,10 @@ from typing import Any, Mapping
 from sqlalchemy import text
 
 from bff.database import DatabaseManager, DatabaseSettings
+from observability.metrics import load_observability_configuration
 
 
-EXPECTED_SCHEMA_VERSION = "0006_governance_retention"
+EXPECTED_SCHEMA_VERSION = load_observability_configuration().expected_schema_version
 
 
 def evaluate_release_state(row: Mapping[str, Any]) -> dict[str, Any]:

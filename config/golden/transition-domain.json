@@ -1,0 +1,4301 @@
+{
+  "fixture_version": "1",
+  "non_database_journeys": {
+    "manual_refresh_permissions": "operator_role_and_idempotency_required",
+    "news": "live_network_calls_disabled_in_local_acceptance",
+    "pipeline_status": "durable_postgresql_job_status_contract"
+  },
+  "semantic_contract": {
+    "country_filter": [
+      {
+        "grant_count": 101127,
+        "total_eur_minor": 460419494571
+      }
+    ],
+    "country_totals": [
+      {
+        "country_code": "GB",
+        "country_name": "United Kingdom",
+        "grant_count": 101127,
+        "single_country_eur_minor": 460419494571
+      },
+      {
+        "country_code": "US",
+        "country_name": "United States",
+        "grant_count": 600,
+        "single_country_eur_minor": 4883920784
+      },
+      {
+        "country_code": "NG",
+        "country_name": "Nigeria",
+        "grant_count": 318,
+        "single_country_eur_minor": 319453244
+      },
+      {
+        "country_code": "KE",
+        "country_name": "Kenya",
+        "grant_count": 275,
+        "single_country_eur_minor": 3414700436
+      },
+      {
+        "country_code": "UG",
+        "country_name": "Uganda",
+        "grant_count": 263,
+        "single_country_eur_minor": 3013649323
+      },
+      {
+        "country_code": "ZA",
+        "country_name": "South Africa",
+        "grant_count": 237,
+        "single_country_eur_minor": 2473174492
+      },
+      {
+        "country_code": "IN",
+        "country_name": "India",
+        "grant_count": 106,
+        "single_country_eur_minor": 878513677
+      },
+      {
+        "country_code": "ZW",
+        "country_name": "Zimbabwe",
+        "grant_count": 105,
+        "single_country_eur_minor": 993195007
+      },
+      {
+        "country_code": "TZ",
+        "country_name": "Tanzania",
+        "grant_count": 86,
+        "single_country_eur_minor": 4801094023
+      },
+      {
+        "country_code": "LK",
+        "country_name": "Sri Lanka",
+        "grant_count": 84,
+        "single_country_eur_minor": 26842936
+      },
+      {
+        "country_code": "MW",
+        "country_name": "Malawi",
+        "grant_count": 84,
+        "single_country_eur_minor": 1381182712
+      },
+      {
+        "country_code": "ZM",
+        "country_name": "Zambia",
+        "grant_count": 80,
+        "single_country_eur_minor": 1813222781
+      },
+      {
+        "country_code": "GH",
+        "country_name": "Ghana",
+        "grant_count": 74,
+        "single_country_eur_minor": 2563914554
+      },
+      {
+        "country_code": "IL",
+        "country_name": "Israel",
+        "grant_count": 69,
+        "single_country_eur_minor": 1536757316
+      },
+      {
+        "country_code": "SL",
+        "country_name": "Sierra Leone",
+        "grant_count": 54,
+        "single_country_eur_minor": 1672575227
+      },
+      {
+        "country_code": "RW",
+        "country_name": "Rwanda",
+        "grant_count": 40,
+        "single_country_eur_minor": 1071797520
+      },
+      {
+        "country_code": "CA",
+        "country_name": "Canada",
+        "grant_count": 39,
+        "single_country_eur_minor": 78053300
+      },
+      {
+        "country_code": "ET",
+        "country_name": "Ethiopia",
+        "grant_count": 35,
+        "single_country_eur_minor": 1135350127
+      },
+      {
+        "country_code": "NP",
+        "country_name": "Nepal",
+        "grant_count": 35,
+        "single_country_eur_minor": 259675618
+      },
+      {
+        "country_code": "IS",
+        "country_name": "Iceland",
+        "grant_count": 34,
+        "single_country_eur_minor": 473356008
+      },
+      {
+        "country_code": "NL",
+        "country_name": "Netherlands",
+        "grant_count": 25,
+        "single_country_eur_minor": 1063677086
+      },
+      {
+        "country_code": "PK",
+        "country_name": "Pakistan",
+        "grant_count": 25,
+        "single_country_eur_minor": 18611076
+      },
+      {
+        "country_code": "IE",
+        "country_name": "Ireland",
+        "grant_count": 24,
+        "single_country_eur_minor": 85129164
+      },
+      {
+        "country_code": "GR",
+        "country_name": "Greece",
+        "grant_count": 21,
+        "single_country_eur_minor": 111216421
+      },
+      {
+        "country_code": "AF",
+        "country_name": "Afghanistan",
+        "grant_count": 20,
+        "single_country_eur_minor": 82861105
+      },
+      {
+        "country_code": "CM",
+        "country_name": "Cameroon",
+        "grant_count": 20,
+        "single_country_eur_minor": 62759674
+      },
+      {
+        "country_code": "BD",
+        "country_name": "Bangladesh",
+        "grant_count": 19,
+        "single_country_eur_minor": 508772266
+      },
+      {
+        "country_code": "RO",
+        "country_name": "Romania",
+        "grant_count": 18,
+        "single_country_eur_minor": 12643101
+      },
+      {
+        "country_code": "BR",
+        "country_name": "Brazil",
+        "grant_count": 17,
+        "single_country_eur_minor": 327752371
+      },
+      {
+        "country_code": "FR",
+        "country_name": "France",
+        "grant_count": 17,
+        "single_country_eur_minor": 37433803
+      },
+      {
+        "country_code": "ES",
+        "country_name": "Spain",
+        "grant_count": 16,
+        "single_country_eur_minor": 11780085
+      },
+      {
+        "country_code": "DE",
+        "country_name": "Germany",
+        "grant_count": 14,
+        "single_country_eur_minor": 98797447
+      },
+      {
+        "country_code": "IT",
+        "country_name": "Italy",
+        "grant_count": 14,
+        "single_country_eur_minor": 37860522
+      },
+      {
+        "country_code": "CD",
+        "country_name": "Democratic Republic of the Congo",
+        "grant_count": 13,
+        "single_country_eur_minor": 352370008
+      },
+      {
+        "country_code": "ID",
+        "country_name": "Indonesia",
+        "grant_count": 12,
+        "single_country_eur_minor": 37156714
+      },
+      {
+        "country_code": "LR",
+        "country_name": "Liberia",
+        "grant_count": 11,
+        "single_country_eur_minor": 562909109
+      },
+      {
+        "country_code": "LS",
+        "country_name": "Lesotho",
+        "grant_count": 10,
+        "single_country_eur_minor": 7435269
+      },
+      {
+        "country_code": "MG",
+        "country_name": "Madagascar",
+        "grant_count": 10,
+        "single_country_eur_minor": 62235687
+      },
+      {
+        "country_code": "MY",
+        "country_name": "Malaysia",
+        "grant_count": 10,
+        "single_country_eur_minor": 7088124
+      },
+      {
+        "country_code": "LB",
+        "country_name": "Lebanon",
+        "grant_count": 9,
+        "single_country_eur_minor": 26512804
+      },
+      {
+        "country_code": "AE",
+        "country_name": "United Arab Emirates",
+        "grant_count": 8,
+        "single_country_eur_minor": 7479414
+      },
+      {
+        "country_code": "JM",
+        "country_name": "Jamaica",
+        "grant_count": 8,
+        "single_country_eur_minor": 340400679
+      },
+      {
+        "country_code": "SS",
+        "country_name": "South Sudan",
+        "grant_count": 8,
+        "single_country_eur_minor": 193169388
+      },
+      {
+        "country_code": "MM",
+        "country_name": "Myanmar",
+        "grant_count": 7,
+        "single_country_eur_minor": 256842365
+      },
+      {
+        "country_code": "MZ",
+        "country_name": "Mozambique",
+        "grant_count": 7,
+        "single_country_eur_minor": 507564963
+      },
+      {
+        "country_code": "PH",
+        "country_name": "Philippines",
+        "grant_count": 7,
+        "single_country_eur_minor": 36060779
+      },
+      {
+        "country_code": "SN",
+        "country_name": "Senegal",
+        "grant_count": 7,
+        "single_country_eur_minor": 217481812
+      },
+      {
+        "country_code": "SY",
+        "country_name": "Syria",
+        "grant_count": 7,
+        "single_country_eur_minor": 55060016
+      },
+      {
+        "country_code": "CO",
+        "country_name": "Colombia",
+        "grant_count": 6,
+        "single_country_eur_minor": 135776664
+      },
+      {
+        "country_code": "HR",
+        "country_name": "Croatia",
+        "grant_count": 6,
+        "single_country_eur_minor": 4024234
+      },
+      {
+        "country_code": "MO",
+        "country_name": "Macao",
+        "grant_count": 6,
+        "single_country_eur_minor": 1391174
+      },
+      {
+        "country_code": "NZ",
+        "country_name": "New Zealand",
+        "grant_count": 6,
+        "single_country_eur_minor": 8044335
+      },
+      {
+        "country_code": "PE",
+        "country_name": "Peru",
+        "grant_count": 6,
+        "single_country_eur_minor": 7982772
+      },
+      {
+        "country_code": "SO",
+        "country_name": "Somalia",
+        "grant_count": 6,
+        "single_country_eur_minor": 138191070
+      },
+      {
+        "country_code": "TG",
+        "country_name": "Togo",
+        "grant_count": 6,
+        "single_country_eur_minor": 111572094
+      },
+      {
+        "country_code": "AU",
+        "country_name": "Australia",
+        "grant_count": 5,
+        "single_country_eur_minor": 4505456
+      },
+      {
+        "country_code": "BW",
+        "country_name": "Botswana",
+        "grant_count": 5,
+        "single_country_eur_minor": 2419182
+      },
+      {
+        "country_code": "CH",
+        "country_name": "Switzerland",
+        "grant_count": 5,
+        "single_country_eur_minor": 64923399
+      },
+      {
+        "country_code": "IM",
+        "country_name": "Isle of Man",
+        "grant_count": 5,
+        "single_country_eur_minor": 856834
+      },
+      {
+        "country_code": "IQ",
+        "country_name": "Iraq",
+        "grant_count": 5,
+        "single_country_eur_minor": 26327131
+      },
+      {
+        "country_code": "JO",
+        "country_name": "Jordan",
+        "grant_count": 5,
+        "single_country_eur_minor": 88062244
+      },
+      {
+        "country_code": "PS",
+        "country_name": "Palestine",
+        "grant_count": 5,
+        "single_country_eur_minor": 12875756
+      },
+      {
+        "country_code": "SD",
+        "country_name": "Sudan",
+        "grant_count": 5,
+        "single_country_eur_minor": 113679799
+      },
+      {
+        "country_code": "TH",
+        "country_name": "Thailand",
+        "grant_count": 5,
+        "single_country_eur_minor": 22018116
+      },
+      {
+        "country_code": "BE",
+        "country_name": "Belgium",
+        "grant_count": 4,
+        "single_country_eur_minor": 140913612
+      },
+      {
+        "country_code": "GM",
+        "country_name": "Gambia",
+        "grant_count": 4,
+        "single_country_eur_minor": 4340986
+      },
+      {
+        "country_code": "GT",
+        "country_name": "Guatemala",
+        "grant_count": 4,
+        "single_country_eur_minor": 11559630
+      },
+      {
+        "country_code": "MA",
+        "country_name": "Morocco",
+        "grant_count": 4,
+        "single_country_eur_minor": 6510941
+      },
+      {
+        "country_code": "QA",
+        "country_name": "Qatar",
+        "grant_count": 4,
+        "single_country_eur_minor": 8514469
+      },
+      {
+        "country_code": "BJ",
+        "country_name": "Benin",
+        "grant_count": 3,
+        "single_country_eur_minor": 4782273
+      },
+      {
+        "country_code": "CN",
+        "country_name": "China",
+        "grant_count": 3,
+        "single_country_eur_minor": 673248
+      },
+      {
+        "country_code": "HT",
+        "country_name": "Haiti",
+        "grant_count": 3,
+        "single_country_eur_minor": 11144700
+      },
+      {
+        "country_code": "ML",
+        "country_name": "Mali",
+        "grant_count": 3,
+        "single_country_eur_minor": 194292255
+      },
+      {
+        "country_code": "SE",
+        "country_name": "Sweden",
+        "grant_count": 3,
+        "single_country_eur_minor": 613964
+      },
+      {
+        "country_code": "AR",
+        "country_name": "Argentina",
+        "grant_count": 2,
+        "single_country_eur_minor": 4675392
+      },
+      {
+        "country_code": "BB",
+        "country_name": "Barbados",
+        "grant_count": 2,
+        "single_country_eur_minor": 2013953
+      },
+      {
+        "country_code": "BF",
+        "country_name": "Burkina Faso",
+        "grant_count": 2,
+        "single_country_eur_minor": 66270931
+      },
+      {
+        "country_code": "BO",
+        "country_name": "Bolivia",
+        "grant_count": 2,
+        "single_country_eur_minor": 233743
+      },
+      {
+        "country_code": "DK",
+        "country_name": "Denmark",
+        "grant_count": 2,
+        "single_country_eur_minor": 5993977
+      },
+      {
+        "country_code": "GN",
+        "country_name": "Guinea",
+        "grant_count": 2,
+        "single_country_eur_minor": 4899580
+      },
+      {
+        "country_code": "HK",
+        "country_name": "Hong Kong",
+        "grant_count": 2,
+        "single_country_eur_minor": 457047
+      },
+      {
+        "country_code": "HN",
+        "country_name": "Honduras",
+        "grant_count": 2,
+        "single_country_eur_minor": 13541713
+      },
+      {
+        "country_code": "KH",
+        "country_name": "Cambodia",
+        "grant_count": 2,
+        "single_country_eur_minor": 6931158
+      },
+      {
+        "country_code": "LY",
+        "country_name": "Libya",
+        "grant_count": 2,
+        "single_country_eur_minor": 3133762
+      },
+      {
+        "country_code": "NA",
+        "country_name": "Namibia",
+        "grant_count": 2,
+        "single_country_eur_minor": 105531990
+      },
+      {
+        "country_code": "PG",
+        "country_name": "Papua New Guinea",
+        "grant_count": 2,
+        "single_country_eur_minor": 3967858
+      },
+      {
+        "country_code": "PL",
+        "country_name": "Poland",
+        "grant_count": 2,
+        "single_country_eur_minor": 1476226
+      },
+      {
+        "country_code": "RU",
+        "country_name": "Russia",
+        "grant_count": 2,
+        "single_country_eur_minor": 1504183
+      },
+      {
+        "country_code": "SB",
+        "country_name": "Solomon Islands",
+        "grant_count": 2,
+        "single_country_eur_minor": 224391117
+      },
+      {
+        "country_code": "SK",
+        "country_name": "Slovakia",
+        "grant_count": 2,
+        "single_country_eur_minor": 1638074
+      },
+      {
+        "country_code": "TR",
+        "country_name": "Türkiye",
+        "grant_count": 2,
+        "single_country_eur_minor": 2258611
+      },
+      {
+        "country_code": "UA",
+        "country_name": "Ukraine",
+        "grant_count": 2,
+        "single_country_eur_minor": 6024800
+      },
+      {
+        "country_code": "YE",
+        "country_name": "Yemen",
+        "grant_count": 2,
+        "single_country_eur_minor": 146126496
+      },
+      {
+        "country_code": "BA",
+        "country_name": "Bosnia and Herzegovina",
+        "grant_count": 1,
+        "single_country_eur_minor": 31023250
+      },
+      {
+        "country_code": "BI",
+        "country_name": "Burundi",
+        "grant_count": 1,
+        "single_country_eur_minor": 240758
+      },
+      {
+        "country_code": "CG",
+        "country_name": "Republic of the Congo",
+        "grant_count": 1,
+        "single_country_eur_minor": 0
+      },
+      {
+        "country_code": "CL",
+        "country_name": "Chile",
+        "grant_count": 1,
+        "single_country_eur_minor": 0
+      },
+      {
+        "country_code": "CU",
+        "country_name": "Cuba",
+        "grant_count": 1,
+        "single_country_eur_minor": 787777
+      },
+      {
+        "country_code": "DM",
+        "country_name": "Dominica",
+        "grant_count": 1,
+        "single_country_eur_minor": 0
+      },
+      {
+        "country_code": "DO",
+        "country_name": "Dominican Republic",
+        "grant_count": 1,
+        "single_country_eur_minor": 32185891
+      },
+      {
+        "country_code": "EC",
+        "country_name": "Ecuador",
+        "grant_count": 1,
+        "single_country_eur_minor": 307337
+      },
+      {
+        "country_code": "EG",
+        "country_name": "Egypt",
+        "grant_count": 1,
+        "single_country_eur_minor": 44712613
+      },
+      {
+        "country_code": "FJ",
+        "country_name": "Fiji",
+        "grant_count": 1,
+        "single_country_eur_minor": 1174393
+      },
+      {
+        "country_code": "HU",
+        "country_name": "Hungary",
+        "grant_count": 1,
+        "single_country_eur_minor": 953477
+      },
+      {
+        "country_code": "LA",
+        "country_name": "Laos",
+        "grant_count": 1,
+        "single_country_eur_minor": 0
+      },
+      {
+        "country_code": "SG",
+        "country_name": "Singapore",
+        "grant_count": 1,
+        "single_country_eur_minor": 232901
+      },
+      {
+        "country_code": "SV",
+        "country_name": "El Salvador",
+        "grant_count": 1,
+        "single_country_eur_minor": 4228123
+      },
+      {
+        "country_code": "TD",
+        "country_name": "Chad",
+        "grant_count": 1,
+        "single_country_eur_minor": 5754101
+      },
+      {
+        "country_code": "TJ",
+        "country_name": "Tajikistan",
+        "grant_count": 1,
+        "single_country_eur_minor": 1168046
+      },
+      {
+        "country_code": "TT",
+        "country_name": "Trinidad and Tobago",
+        "grant_count": 1,
+        "single_country_eur_minor": 184474
+      },
+      {
+        "country_code": "VC",
+        "country_name": "Saint Vincent and the Grenadines",
+        "grant_count": 1,
+        "single_country_eur_minor": 160084
+      },
+      {
+        "country_code": "VE",
+        "country_name": "Venezuela",
+        "grant_count": 1,
+        "single_country_eur_minor": 2232858
+      },
+      {
+        "country_code": "VN",
+        "country_name": "Vietnam",
+        "grant_count": 1,
+        "single_country_eur_minor": 4355589
+      }
+    ],
+    "currency_statuses": [
+      {
+        "conversion_status": "ecb_monthly_average",
+        "currency": "CAD",
+        "grant_count": 7
+      },
+      {
+        "conversion_status": "ecb_monthly_average",
+        "currency": "CHF",
+        "grant_count": 10
+      },
+      {
+        "conversion_status": "native_eur",
+        "currency": "EUR",
+        "grant_count": 65
+      },
+      {
+        "conversion_status": "ecb_monthly_average",
+        "currency": "GBP",
+        "grant_count": 300388
+      },
+      {
+        "conversion_status": "unavailable_missing_rate",
+        "currency": "GBP",
+        "grant_count": 419
+      },
+      {
+        "conversion_status": "ecb_monthly_average",
+        "currency": "ILS",
+        "grant_count": 23
+      },
+      {
+        "conversion_status": "unavailable_missing_rate",
+        "currency": "KES",
+        "grant_count": 10
+      },
+      {
+        "conversion_status": "unavailable_missing_rate",
+        "currency": "TZS",
+        "grant_count": 1
+      },
+      {
+        "conversion_status": "ecb_monthly_average",
+        "currency": "USD",
+        "grant_count": 1615
+      },
+      {
+        "conversion_status": "unavailable_missing_rate",
+        "currency": "USD",
+        "grant_count": 2
+      },
+      {
+        "conversion_status": "ecb_monthly_average",
+        "currency": "ZAR",
+        "grant_count": 6
+      }
+    ],
+    "date_filter": [
+      {
+        "grant_count": 174384,
+        "total_eur_minor": 1048824524416
+      }
+    ],
+    "donor_filter": [
+      {
+        "grant_count": 52395,
+        "total_eur_minor": 809092991717
+      }
+    ],
+    "donor_rankings": [
+      {
+        "grant_count": 4895,
+        "identity": "name:the wellcome trust",
+        "name": "The Wellcome Trust",
+        "total_eur_minor": 597753032612
+      },
+      {
+        "grant_count": 3291,
+        "identity": "name:greater london authority",
+        "name": "Greater London Authority",
+        "total_eur_minor": 164583113436
+      },
+      {
+        "grant_count": 490,
+        "identity": "name:arcadia",
+        "name": "ARCADIA",
+        "total_eur_minor": 111424747780
+      },
+      {
+        "grant_count": 7085,
+        "identity": "name:esmée fairbairn foundation",
+        "name": "Esmée Fairbairn Foundation",
+        "total_eur_minor": 89011002522
+      },
+      {
+        "grant_count": 1477,
+        "identity": "326568",
+        "name": "Comic Relief",
+        "total_eur_minor": 59488868401
+      },
+      {
+        "grant_count": 4613,
+        "identity": "name:city bridge foundation",
+        "name": "City Bridge Foundation",
+        "total_eur_minor": 57545867986
+      },
+      {
+        "grant_count": 4198,
+        "identity": "1102927",
+        "name": "Paul Hamlyn Foundation",
+        "total_eur_minor": 53312080222
+      },
+      {
+        "grant_count": 230,
+        "identity": "251988",
+        "name": "Gatsby Charitable Foundation",
+        "total_eur_minor": 48321345644
+      },
+      {
+        "grant_count": 6551,
+        "identity": "name:henry smith foundation",
+        "name": "Henry Smith Foundation",
+        "total_eur_minor": 46381309659
+      },
+      {
+        "grant_count": 1761,
+        "identity": "name:guy s and st thomas charity",
+        "name": "Guy's and St Thomas' Charity",
+        "total_eur_minor": 44338695552
+      },
+      {
+        "grant_count": 7802,
+        "identity": "name:garfield weston foundation",
+        "name": "Garfield Weston Foundation",
+        "total_eur_minor": 42035293598
+      },
+      {
+        "grant_count": 3303,
+        "identity": "name:wolfson foundation",
+        "name": "Wolfson Foundation",
+        "total_eur_minor": 39671218857
+      },
+      {
+        "grant_count": 2019,
+        "identity": "name:sport england",
+        "name": "Sport England",
+        "total_eur_minor": 38669280434
+      },
+      {
+        "grant_count": 6375,
+        "identity": "name:bbc children in need",
+        "name": "BBC Children in Need",
+        "total_eur_minor": 31579784784
+      },
+      {
+        "grant_count": 4260,
+        "identity": "name:northern rock foundation",
+        "name": "Northern Rock Foundation",
+        "total_eur_minor": 29439969295
+      },
+      {
+        "grant_count": 520,
+        "identity": "name:lloyd s register foundation",
+        "name": "Lloyd's Register Foundation",
+        "total_eur_minor": 27997282471
+      },
+      {
+        "grant_count": 1991,
+        "identity": "name:cabinet office",
+        "name": "Cabinet Office",
+        "total_eur_minor": 23524270619
+      },
+      {
+        "grant_count": 1213,
+        "identity": "name:pears foundation",
+        "name": "Pears Foundation",
+        "total_eur_minor": 21331224047
+      },
+      {
+        "grant_count": 150,
+        "identity": "name:local trust",
+        "name": "Local Trust",
+        "total_eur_minor": 20875238600
+      },
+      {
+        "grant_count": 2370,
+        "identity": "name:wales council for voluntary action",
+        "name": "Wales Council for Voluntary Action",
+        "total_eur_minor": 19758669944
+      },
+      {
+        "grant_count": 3475,
+        "identity": "name:the tudor trust",
+        "name": "The Tudor Trust",
+        "total_eur_minor": 19010924782
+      },
+      {
+        "grant_count": 3765,
+        "identity": "name:the national lottery community fund",
+        "name": "The National Lottery Community Fund",
+        "total_eur_minor": 18216909889
+      },
+      {
+        "grant_count": 3944,
+        "identity": "name:lloyds bank foundation for england and wales",
+        "name": "Lloyds Bank Foundation for England and Wales",
+        "total_eur_minor": 16493606106
+      },
+      {
+        "grant_count": 411,
+        "identity": "name:the julia rausing trust",
+        "name": "The Julia Rausing Trust",
+        "total_eur_minor": 15212282424
+      },
+      {
+        "grant_count": 222,
+        "identity": "name:the national lottery heritage fund",
+        "name": "The National Lottery Heritage Fund",
+        "total_eur_minor": 15090635787
+      }
+    ],
+    "grant_list": [
+      {
+        "amount_minor": 5600891,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "0",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 4877300,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1110",
+        "recipient_name": "Alcohol Change UK"
+      },
+      {
+        "amount_minor": 4932000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1118",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 1762100,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1122",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 4558900,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1128",
+        "recipient_name": "Hear Us"
+      },
+      {
+        "amount_minor": 4000000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1131",
+        "recipient_name": "Time & Talents"
+      },
+      {
+        "amount_minor": 4944400,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1137",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 3000000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1141",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 5174400,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1144",
+        "recipient_name": "King's College London"
+      },
+      {
+        "amount_minor": 400000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1157",
+        "recipient_name": "King's College London"
+      },
+      {
+        "amount_minor": 1000000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1500",
+        "recipient_name": "King's College London"
+      },
+      {
+        "amount_minor": 2200000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1501",
+        "recipient_name": "Re-Instate Ltd"
+      },
+      {
+        "amount_minor": 4788500,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1502",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 4200000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1503",
+        "recipient_name": "Good Vibrations"
+      },
+      {
+        "amount_minor": 1000000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1504",
+        "recipient_name": "Mental Fight Club"
+      },
+      {
+        "amount_minor": 4510500,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1505",
+        "recipient_name": "Beat"
+      },
+      {
+        "amount_minor": 2000000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1506",
+        "recipient_name": "Hear Us"
+      },
+      {
+        "amount_minor": 3600000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1507",
+        "recipient_name": "Greenwich & Lewisham Young People’s Theatre"
+      },
+      {
+        "amount_minor": 4950000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1508",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 5000000,
+        "currency": "GBP",
+        "funding_name": "Maudsley Charity",
+        "grant_id": "1509",
+        "recipient_name": "South London and Maudsley NHS Foundation Trust"
+      }
+    ],
+    "map_relationships": [
+      {
+        "destination_country_code": "NG",
+        "destination_country_name": "Nigeria",
+        "grant_count": 309,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ZA",
+        "destination_country_name": "South Africa",
+        "grant_count": 154,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "US",
+        "destination_country_name": "United States",
+        "grant_count": 134,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "UG",
+        "destination_country_name": "Uganda",
+        "grant_count": 101,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "KE",
+        "destination_country_name": "Kenya",
+        "grant_count": 100,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "LK",
+        "destination_country_name": "Sri Lanka",
+        "grant_count": 78,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "IN",
+        "destination_country_name": "India",
+        "grant_count": 68,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "TZ",
+        "destination_country_name": "Tanzania",
+        "grant_count": 54,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MW",
+        "destination_country_name": "Malawi",
+        "grant_count": 52,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "GH",
+        "destination_country_name": "Ghana",
+        "grant_count": 50,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ZM",
+        "destination_country_name": "Zambia",
+        "grant_count": 49,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SL",
+        "destination_country_name": "Sierra Leone",
+        "grant_count": 40,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CA",
+        "destination_country_name": "Canada",
+        "grant_count": 27,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "RW",
+        "destination_country_name": "Rwanda",
+        "grant_count": 26,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ZW",
+        "destination_country_name": "Zimbabwe",
+        "grant_count": 22,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "PK",
+        "destination_country_name": "Pakistan",
+        "grant_count": 21,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "GR",
+        "destination_country_name": "Greece",
+        "grant_count": 19,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ET",
+        "destination_country_name": "Ethiopia",
+        "grant_count": 18,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "NL",
+        "destination_country_name": "Netherlands",
+        "grant_count": 18,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ES",
+        "destination_country_name": "Spain",
+        "grant_count": 15,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "FR",
+        "destination_country_name": "France",
+        "grant_count": 15,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "IE",
+        "destination_country_name": "Ireland",
+        "grant_count": 15,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CM",
+        "destination_country_name": "Cameroon",
+        "grant_count": 14,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "NP",
+        "destination_country_name": "Nepal",
+        "grant_count": 14,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "RO",
+        "destination_country_name": "Romania",
+        "grant_count": 14,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BR",
+        "destination_country_name": "Brazil",
+        "grant_count": 10,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "LR",
+        "destination_country_name": "Liberia",
+        "grant_count": 10,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MY",
+        "destination_country_name": "Malaysia",
+        "grant_count": 10,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BD",
+        "destination_country_name": "Bangladesh",
+        "grant_count": 9,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "AE",
+        "destination_country_name": "United Arab Emirates",
+        "grant_count": 8,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "JM",
+        "destination_country_name": "Jamaica",
+        "grant_count": 8,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ID",
+        "destination_country_name": "Indonesia",
+        "grant_count": 7,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MZ",
+        "destination_country_name": "Mozambique",
+        "grant_count": 7,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "IT",
+        "destination_country_name": "Italy",
+        "grant_count": 6,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MO",
+        "destination_country_name": "Macao",
+        "grant_count": 6,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SN",
+        "destination_country_name": "Senegal",
+        "grant_count": 6,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "AU",
+        "destination_country_name": "Australia",
+        "grant_count": 5,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CD",
+        "destination_country_name": "Democratic Republic of the Congo",
+        "grant_count": 5,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "DE",
+        "destination_country_name": "Germany",
+        "grant_count": 5,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "LB",
+        "destination_country_name": "Lebanon",
+        "grant_count": 5,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "NZ",
+        "destination_country_name": "New Zealand",
+        "grant_count": 5,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CO",
+        "destination_country_name": "Colombia",
+        "grant_count": 4,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "JO",
+        "destination_country_name": "Jordan",
+        "grant_count": 4,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "QA",
+        "destination_country_name": "Qatar",
+        "grant_count": 4,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "TG",
+        "destination_country_name": "Togo",
+        "grant_count": 4,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BJ",
+        "destination_country_name": "Benin",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BW",
+        "destination_country_name": "Botswana",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CH",
+        "destination_country_name": "Switzerland",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CN",
+        "destination_country_name": "China",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "IL",
+        "destination_country_name": "Israel",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MA",
+        "destination_country_name": "Morocco",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "ML",
+        "destination_country_name": "Mali",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "PE",
+        "destination_country_name": "Peru",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "PH",
+        "destination_country_name": "Philippines",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SO",
+        "destination_country_name": "Somalia",
+        "grant_count": 3,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "AR",
+        "destination_country_name": "Argentina",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BE",
+        "destination_country_name": "Belgium",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "GN",
+        "destination_country_name": "Guinea",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "HK",
+        "destination_country_name": "Hong Kong",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "LS",
+        "destination_country_name": "Lesotho",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MM",
+        "destination_country_name": "Myanmar",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "NA",
+        "destination_country_name": "Namibia",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "PL",
+        "destination_country_name": "Poland",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SB",
+        "destination_country_name": "Solomon Islands",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SD",
+        "destination_country_name": "Sudan",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SE",
+        "destination_country_name": "Sweden",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SK",
+        "destination_country_name": "Slovakia",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SS",
+        "destination_country_name": "South Sudan",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "YE",
+        "destination_country_name": "Yemen",
+        "grant_count": 2,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BF",
+        "destination_country_name": "Burkina Faso",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "BO",
+        "destination_country_name": "Bolivia",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CG",
+        "destination_country_name": "Republic of the Congo",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CL",
+        "destination_country_name": "Chile",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "CU",
+        "destination_country_name": "Cuba",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "DM",
+        "destination_country_name": "Dominica",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "DO",
+        "destination_country_name": "Dominican Republic",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "EG",
+        "destination_country_name": "Egypt",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "HR",
+        "destination_country_name": "Croatia",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "HU",
+        "destination_country_name": "Hungary",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "IQ",
+        "destination_country_name": "Iraq",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "KH",
+        "destination_country_name": "Cambodia",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "LA",
+        "destination_country_name": "Laos",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "MG",
+        "destination_country_name": "Madagascar",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "RU",
+        "destination_country_name": "Russia",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "SG",
+        "destination_country_name": "Singapore",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "TR",
+        "destination_country_name": "Türkiye",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "TT",
+        "destination_country_name": "Trinidad and Tobago",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      },
+      {
+        "destination_country_code": "VC",
+        "destination_country_name": "Saint Vincent and the Grenadines",
+        "grant_count": 1,
+        "origin_country_code": "GB",
+        "origin_country_name": "United Kingdom"
+      }
+    ],
+    "monthly_trends": [
+      {
+        "grant_count": 1,
+        "period": "1991-04",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1995-05",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 2,
+        "period": "1995-07",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 4,
+        "period": "1995-10",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1995-11",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1995-12",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1996-01",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1996-06",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1996-07",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1996-11",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 3,
+        "period": "1996-12",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 3,
+        "period": "1997-02",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 23,
+        "period": "1997-03",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 3,
+        "period": "1997-04",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 2,
+        "period": "1997-05",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 7,
+        "period": "1997-06",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 12,
+        "period": "1997-07",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 36,
+        "period": "1997-09",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1997-10",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 4,
+        "period": "1997-11",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1997-12",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 1,
+        "period": "1998-01",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 8,
+        "period": "1998-02",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 17,
+        "period": "1998-03",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 33,
+        "period": "1998-04",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 21,
+        "period": "1998-05",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 36,
+        "period": "1998-06",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 40,
+        "period": "1998-07",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 46,
+        "period": "1998-08",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 13,
+        "period": "1998-09",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 45,
+        "period": "1998-10",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 23,
+        "period": "1998-11",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 28,
+        "period": "1998-12",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 17,
+        "period": "1999-01",
+        "total_eur_minor": 30752235
+      },
+      {
+        "grant_count": 46,
+        "period": "1999-02",
+        "total_eur_minor": 226415782
+      },
+      {
+        "grant_count": 24,
+        "period": "1999-03",
+        "total_eur_minor": 383446852
+      },
+      {
+        "grant_count": 12,
+        "period": "1999-04",
+        "total_eur_minor": 11189167
+      },
+      {
+        "grant_count": 24,
+        "period": "1999-05",
+        "total_eur_minor": 107432197
+      },
+      {
+        "grant_count": 24,
+        "period": "1999-06",
+        "total_eur_minor": 15253884
+      },
+      {
+        "grant_count": 75,
+        "period": "1999-07",
+        "total_eur_minor": 132887823
+      },
+      {
+        "grant_count": 9,
+        "period": "1999-08",
+        "total_eur_minor": 161955932
+      },
+      {
+        "grant_count": 57,
+        "period": "1999-09",
+        "total_eur_minor": 267352315
+      },
+      {
+        "grant_count": 56,
+        "period": "1999-10",
+        "total_eur_minor": 538529781
+      },
+      {
+        "grant_count": 4,
+        "period": "1999-11",
+        "total_eur_minor": 251978679
+      },
+      {
+        "grant_count": 72,
+        "period": "1999-12",
+        "total_eur_minor": 345952817
+      },
+      {
+        "grant_count": 27,
+        "period": "2000-01",
+        "total_eur_minor": 197305113
+      },
+      {
+        "grant_count": 39,
+        "period": "2000-02",
+        "total_eur_minor": 210364104
+      },
+      {
+        "grant_count": 42,
+        "period": "2000-03",
+        "total_eur_minor": 255823660
+      },
+      {
+        "grant_count": 18,
+        "period": "2000-04",
+        "total_eur_minor": 17534964
+      },
+      {
+        "grant_count": 49,
+        "period": "2000-05",
+        "total_eur_minor": 192703172
+      },
+      {
+        "grant_count": 13,
+        "period": "2000-06",
+        "total_eur_minor": 12634244
+      },
+      {
+        "grant_count": 52,
+        "period": "2000-07",
+        "total_eur_minor": 215230941
+      },
+      {
+        "grant_count": 11,
+        "period": "2000-08",
+        "total_eur_minor": 33059371
+      },
+      {
+        "grant_count": 49,
+        "period": "2000-09",
+        "total_eur_minor": 462714461
+      },
+      {
+        "grant_count": 19,
+        "period": "2000-10",
+        "total_eur_minor": 1835594815
+      },
+      {
+        "grant_count": 27,
+        "period": "2000-11",
+        "total_eur_minor": 18006569
+      },
+      {
+        "grant_count": 56,
+        "period": "2000-12",
+        "total_eur_minor": 507594749
+      },
+      {
+        "grant_count": 22,
+        "period": "2001-01",
+        "total_eur_minor": 24667308
+      },
+      {
+        "grant_count": 43,
+        "period": "2001-02",
+        "total_eur_minor": 588725464
+      },
+      {
+        "grant_count": 36,
+        "period": "2001-03",
+        "total_eur_minor": 63819957
+      },
+      {
+        "grant_count": 51,
+        "period": "2001-04",
+        "total_eur_minor": 270913197
+      },
+      {
+        "grant_count": 28,
+        "period": "2001-05",
+        "total_eur_minor": 47387178
+      },
+      {
+        "grant_count": 45,
+        "period": "2001-06",
+        "total_eur_minor": 291244232
+      },
+      {
+        "grant_count": 30,
+        "period": "2001-07",
+        "total_eur_minor": 299037978
+      },
+      {
+        "grant_count": 57,
+        "period": "2001-08",
+        "total_eur_minor": 430756839
+      },
+      {
+        "grant_count": 23,
+        "period": "2001-09",
+        "total_eur_minor": 301252892
+      },
+      {
+        "grant_count": 73,
+        "period": "2001-10",
+        "total_eur_minor": 466213950
+      },
+      {
+        "grant_count": 35,
+        "period": "2001-11",
+        "total_eur_minor": 59139684
+      },
+      {
+        "grant_count": 63,
+        "period": "2001-12",
+        "total_eur_minor": 538917468
+      },
+      {
+        "grant_count": 23,
+        "period": "2002-01",
+        "total_eur_minor": 734821741
+      },
+      {
+        "grant_count": 83,
+        "period": "2002-02",
+        "total_eur_minor": 704053855
+      },
+      {
+        "grant_count": 48,
+        "period": "2002-03",
+        "total_eur_minor": 296419302
+      },
+      {
+        "grant_count": 35,
+        "period": "2002-04",
+        "total_eur_minor": 525775971
+      },
+      {
+        "grant_count": 91,
+        "period": "2002-05",
+        "total_eur_minor": 405123363
+      },
+      {
+        "grant_count": 49,
+        "period": "2002-06",
+        "total_eur_minor": 432576195
+      },
+      {
+        "grant_count": 68,
+        "period": "2002-07",
+        "total_eur_minor": 4965982392
+      },
+      {
+        "grant_count": 48,
+        "period": "2002-08",
+        "total_eur_minor": 87419273
+      },
+      {
+        "grant_count": 61,
+        "period": "2002-09",
+        "total_eur_minor": 551174056
+      },
+      {
+        "grant_count": 24,
+        "period": "2002-10",
+        "total_eur_minor": 35428064
+      },
+      {
+        "grant_count": 66,
+        "period": "2002-11",
+        "total_eur_minor": 118284485
+      },
+      {
+        "grant_count": 65,
+        "period": "2002-12",
+        "total_eur_minor": 445000693
+      },
+      {
+        "grant_count": 53,
+        "period": "2003-01",
+        "total_eur_minor": 585323629
+      },
+      {
+        "grant_count": 55,
+        "period": "2003-02",
+        "total_eur_minor": 39499597
+      },
+      {
+        "grant_count": 137,
+        "period": "2003-03",
+        "total_eur_minor": 614136155
+      },
+      {
+        "grant_count": 19,
+        "period": "2003-04",
+        "total_eur_minor": 35772256
+      },
+      {
+        "grant_count": 120,
+        "period": "2003-05",
+        "total_eur_minor": 417060232
+      },
+      {
+        "grant_count": 39,
+        "period": "2003-06",
+        "total_eur_minor": 81419033
+      },
+      {
+        "grant_count": 110,
+        "period": "2003-07",
+        "total_eur_minor": 793080963
+      },
+      {
+        "grant_count": 33,
+        "period": "2003-08",
+        "total_eur_minor": 29764749
+      },
+      {
+        "grant_count": 60,
+        "period": "2003-09",
+        "total_eur_minor": 600343059
+      },
+      {
+        "grant_count": 74,
+        "period": "2003-10",
+        "total_eur_minor": 2895820265
+      },
+      {
+        "grant_count": 29,
+        "period": "2003-11",
+        "total_eur_minor": 37237016
+      },
+      {
+        "grant_count": 138,
+        "period": "2003-12",
+        "total_eur_minor": 1394124759
+      },
+      {
+        "grant_count": 70,
+        "period": "2004-01",
+        "total_eur_minor": 1404382321
+      },
+      {
+        "grant_count": 60,
+        "period": "2004-02",
+        "total_eur_minor": 349663897
+      },
+      {
+        "grant_count": 80,
+        "period": "2004-03",
+        "total_eur_minor": 555117093
+      },
+      {
+        "grant_count": 53,
+        "period": "2004-04",
+        "total_eur_minor": 194825574
+      },
+      {
+        "grant_count": 92,
+        "period": "2004-05",
+        "total_eur_minor": 1119360150
+      },
+      {
+        "grant_count": 41,
+        "period": "2004-06",
+        "total_eur_minor": 538862268
+      },
+      {
+        "grant_count": 141,
+        "period": "2004-07",
+        "total_eur_minor": 1620326787
+      },
+      {
+        "grant_count": 34,
+        "period": "2004-08",
+        "total_eur_minor": 41936358
+      },
+      {
+        "grant_count": 52,
+        "period": "2004-09",
+        "total_eur_minor": 228698696
+      },
+      {
+        "grant_count": 61,
+        "period": "2004-10",
+        "total_eur_minor": 584957843
+      },
+      {
+        "grant_count": 60,
+        "period": "2004-11",
+        "total_eur_minor": 159033133
+      },
+      {
+        "grant_count": 44,
+        "period": "2004-12",
+        "total_eur_minor": 1214642461
+      },
+      {
+        "grant_count": 56,
+        "period": "2005-01",
+        "total_eur_minor": 146264554
+      },
+      {
+        "grant_count": 59,
+        "period": "2005-02",
+        "total_eur_minor": 475893682
+      },
+      {
+        "grant_count": 94,
+        "period": "2005-03",
+        "total_eur_minor": 4509680693
+      },
+      {
+        "grant_count": 23,
+        "period": "2005-04",
+        "total_eur_minor": 28598076
+      },
+      {
+        "grant_count": 78,
+        "period": "2005-05",
+        "total_eur_minor": 2505566926
+      },
+      {
+        "grant_count": 32,
+        "period": "2005-06",
+        "total_eur_minor": 62543078
+      },
+      {
+        "grant_count": 83,
+        "period": "2005-07",
+        "total_eur_minor": 1705356281
+      },
+      {
+        "grant_count": 31,
+        "period": "2005-08",
+        "total_eur_minor": 287824463
+      },
+      {
+        "grant_count": 41,
+        "period": "2005-09",
+        "total_eur_minor": 79411726
+      },
+      {
+        "grant_count": 70,
+        "period": "2005-10",
+        "total_eur_minor": 918865473
+      },
+      {
+        "grant_count": 32,
+        "period": "2005-11",
+        "total_eur_minor": 106891888
+      },
+      {
+        "grant_count": 69,
+        "period": "2005-12",
+        "total_eur_minor": 1462891570
+      },
+      {
+        "grant_count": 31,
+        "period": "2006-01",
+        "total_eur_minor": 88936701
+      },
+      {
+        "grant_count": 118,
+        "period": "2006-02",
+        "total_eur_minor": 363644661
+      },
+      {
+        "grant_count": 84,
+        "period": "2006-03",
+        "total_eur_minor": 2630184559
+      },
+      {
+        "grant_count": 90,
+        "period": "2006-04",
+        "total_eur_minor": 759828597
+      },
+      {
+        "grant_count": 107,
+        "period": "2006-05",
+        "total_eur_minor": 659962720
+      },
+      {
+        "grant_count": 137,
+        "period": "2006-06",
+        "total_eur_minor": 974623877
+      },
+      {
+        "grant_count": 86,
+        "period": "2006-07",
+        "total_eur_minor": 922400353
+      },
+      {
+        "grant_count": 38,
+        "period": "2006-08",
+        "total_eur_minor": 45327902
+      },
+      {
+        "grant_count": 45,
+        "period": "2006-09",
+        "total_eur_minor": 280912739
+      },
+      {
+        "grant_count": 148,
+        "period": "2006-10",
+        "total_eur_minor": 2228936468
+      },
+      {
+        "grant_count": 58,
+        "period": "2006-11",
+        "total_eur_minor": 541255631
+      },
+      {
+        "grant_count": 142,
+        "period": "2006-12",
+        "total_eur_minor": 2859874063
+      },
+      {
+        "grant_count": 51,
+        "period": "2007-01",
+        "total_eur_minor": 132885080
+      },
+      {
+        "grant_count": 82,
+        "period": "2007-02",
+        "total_eur_minor": 1293085896
+      },
+      {
+        "grant_count": 99,
+        "period": "2007-03",
+        "total_eur_minor": 2160154511
+      },
+      {
+        "grant_count": 990,
+        "period": "2007-04",
+        "total_eur_minor": 4426941179
+      },
+      {
+        "grant_count": 162,
+        "period": "2007-05",
+        "total_eur_minor": 1161106490
+      },
+      {
+        "grant_count": 59,
+        "period": "2007-06",
+        "total_eur_minor": 625934608
+      },
+      {
+        "grant_count": 162,
+        "period": "2007-07",
+        "total_eur_minor": 1320979705
+      },
+      {
+        "grant_count": 199,
+        "period": "2007-08",
+        "total_eur_minor": 205499205
+      },
+      {
+        "grant_count": 140,
+        "period": "2007-09",
+        "total_eur_minor": 845243044
+      },
+      {
+        "grant_count": 52,
+        "period": "2007-10",
+        "total_eur_minor": 720920806
+      },
+      {
+        "grant_count": 83,
+        "period": "2007-11",
+        "total_eur_minor": 754378043
+      },
+      {
+        "grant_count": 73,
+        "period": "2007-12",
+        "total_eur_minor": 563580145
+      },
+      {
+        "grant_count": 73,
+        "period": "2008-01",
+        "total_eur_minor": 683267656
+      },
+      {
+        "grant_count": 70,
+        "period": "2008-02",
+        "total_eur_minor": 764410369
+      },
+      {
+        "grant_count": 47,
+        "period": "2008-03",
+        "total_eur_minor": 735953093
+      },
+      {
+        "grant_count": 100,
+        "period": "2008-04",
+        "total_eur_minor": 386264879
+      },
+      {
+        "grant_count": 46,
+        "period": "2008-05",
+        "total_eur_minor": 617769578
+      },
+      {
+        "grant_count": 155,
+        "period": "2008-06",
+        "total_eur_minor": 1886604220
+      },
+      {
+        "grant_count": 110,
+        "period": "2008-07",
+        "total_eur_minor": 1061680944
+      },
+      {
+        "grant_count": 33,
+        "period": "2008-08",
+        "total_eur_minor": 258045921
+      },
+      {
+        "grant_count": 134,
+        "period": "2008-09",
+        "total_eur_minor": 955200981
+      },
+      {
+        "grant_count": 120,
+        "period": "2008-10",
+        "total_eur_minor": 1274927123
+      },
+      {
+        "grant_count": 161,
+        "period": "2008-11",
+        "total_eur_minor": 4239640425
+      },
+      {
+        "grant_count": 108,
+        "period": "2008-12",
+        "total_eur_minor": 1549817522
+      },
+      {
+        "grant_count": 84,
+        "period": "2009-01",
+        "total_eur_minor": 1671506907
+      },
+      {
+        "grant_count": 182,
+        "period": "2009-02",
+        "total_eur_minor": 675363880
+      },
+      {
+        "grant_count": 94,
+        "period": "2009-03",
+        "total_eur_minor": 2140986489
+      },
+      {
+        "grant_count": 157,
+        "period": "2009-04",
+        "total_eur_minor": 1937656708
+      },
+      {
+        "grant_count": 188,
+        "period": "2009-05",
+        "total_eur_minor": 6701278543
+      },
+      {
+        "grant_count": 284,
+        "period": "2009-06",
+        "total_eur_minor": 19536137581
+      },
+      {
+        "grant_count": 297,
+        "period": "2009-07",
+        "total_eur_minor": 3751989819
+      },
+      {
+        "grant_count": 110,
+        "period": "2009-08",
+        "total_eur_minor": 664403237
+      },
+      {
+        "grant_count": 206,
+        "period": "2009-09",
+        "total_eur_minor": 1813524707
+      },
+      {
+        "grant_count": 276,
+        "period": "2009-10",
+        "total_eur_minor": 1953805636
+      },
+      {
+        "grant_count": 199,
+        "period": "2009-11",
+        "total_eur_minor": 3663263260
+      },
+      {
+        "grant_count": 240,
+        "period": "2009-12",
+        "total_eur_minor": 1536801866
+      },
+      {
+        "grant_count": 194,
+        "period": "2010-01",
+        "total_eur_minor": 1125456090
+      },
+      {
+        "grant_count": 239,
+        "period": "2010-02",
+        "total_eur_minor": 1376299925
+      },
+      {
+        "grant_count": 210,
+        "period": "2010-03",
+        "total_eur_minor": 2278301102
+      },
+      {
+        "grant_count": 180,
+        "period": "2010-04",
+        "total_eur_minor": 2330521631
+      },
+      {
+        "grant_count": 236,
+        "period": "2010-05",
+        "total_eur_minor": 1356248779
+      },
+      {
+        "grant_count": 242,
+        "period": "2010-06",
+        "total_eur_minor": 1786392796
+      },
+      {
+        "grant_count": 362,
+        "period": "2010-07",
+        "total_eur_minor": 8834519233
+      },
+      {
+        "grant_count": 142,
+        "period": "2010-08",
+        "total_eur_minor": 1019980096
+      },
+      {
+        "grant_count": 291,
+        "period": "2010-09",
+        "total_eur_minor": 2021848441
+      },
+      {
+        "grant_count": 730,
+        "period": "2010-10",
+        "total_eur_minor": 15858227302
+      },
+      {
+        "grant_count": 286,
+        "period": "2010-11",
+        "total_eur_minor": 4015973722
+      },
+      {
+        "grant_count": 244,
+        "period": "2010-12",
+        "total_eur_minor": 4494065826
+      },
+      {
+        "grant_count": 184,
+        "period": "2011-01",
+        "total_eur_minor": 3644699154
+      },
+      {
+        "grant_count": 203,
+        "period": "2011-02",
+        "total_eur_minor": 6887313773
+      },
+      {
+        "grant_count": 227,
+        "period": "2011-03",
+        "total_eur_minor": 2238521192
+      },
+      {
+        "grant_count": 278,
+        "period": "2011-04",
+        "total_eur_minor": 5781299928
+      },
+      {
+        "grant_count": 294,
+        "period": "2011-05",
+        "total_eur_minor": 11114961270
+      },
+      {
+        "grant_count": 274,
+        "period": "2011-06",
+        "total_eur_minor": 10139393504
+      },
+      {
+        "grant_count": 234,
+        "period": "2011-07",
+        "total_eur_minor": 1526916661
+      },
+      {
+        "grant_count": 125,
+        "period": "2011-08",
+        "total_eur_minor": 965957680
+      },
+      {
+        "grant_count": 217,
+        "period": "2011-09",
+        "total_eur_minor": 1887109628
+      },
+      {
+        "grant_count": 439,
+        "period": "2011-10",
+        "total_eur_minor": 25666943833
+      },
+      {
+        "grant_count": 253,
+        "period": "2011-11",
+        "total_eur_minor": 3148204622
+      },
+      {
+        "grant_count": 307,
+        "period": "2011-12",
+        "total_eur_minor": 9984726477
+      },
+      {
+        "grant_count": 166,
+        "period": "2012-01",
+        "total_eur_minor": 3844401518
+      },
+      {
+        "grant_count": 325,
+        "period": "2012-02",
+        "total_eur_minor": 8141977369
+      },
+      {
+        "grant_count": 389,
+        "period": "2012-03",
+        "total_eur_minor": 11067050166
+      },
+      {
+        "grant_count": 211,
+        "period": "2012-04",
+        "total_eur_minor": 8151653600
+      },
+      {
+        "grant_count": 396,
+        "period": "2012-05",
+        "total_eur_minor": 10995124401
+      },
+      {
+        "grant_count": 298,
+        "period": "2012-06",
+        "total_eur_minor": 6490567944
+      },
+      {
+        "grant_count": 322,
+        "period": "2012-07",
+        "total_eur_minor": 4768697702
+      },
+      {
+        "grant_count": 116,
+        "period": "2012-08",
+        "total_eur_minor": 580754197
+      },
+      {
+        "grant_count": 301,
+        "period": "2012-09",
+        "total_eur_minor": 7333256685
+      },
+      {
+        "grant_count": 404,
+        "period": "2012-10",
+        "total_eur_minor": 20149799491
+      },
+      {
+        "grant_count": 378,
+        "period": "2012-11",
+        "total_eur_minor": 13000198673
+      },
+      {
+        "grant_count": 424,
+        "period": "2012-12",
+        "total_eur_minor": 12631647717
+      },
+      {
+        "grant_count": 267,
+        "period": "2013-01",
+        "total_eur_minor": 3259014594
+      },
+      {
+        "grant_count": 284,
+        "period": "2013-02",
+        "total_eur_minor": 1882831225
+      },
+      {
+        "grant_count": 281,
+        "period": "2013-03",
+        "total_eur_minor": 2306028929
+      },
+      {
+        "grant_count": 377,
+        "period": "2013-04",
+        "total_eur_minor": 8825779952
+      },
+      {
+        "grant_count": 410,
+        "period": "2013-05",
+        "total_eur_minor": 5783971097
+      },
+      {
+        "grant_count": 419,
+        "period": "2013-06",
+        "total_eur_minor": 5551936899
+      },
+      {
+        "grant_count": 357,
+        "period": "2013-07",
+        "total_eur_minor": 11275177616
+      },
+      {
+        "grant_count": 197,
+        "period": "2013-08",
+        "total_eur_minor": 1076440302
+      },
+      {
+        "grant_count": 553,
+        "period": "2013-09",
+        "total_eur_minor": 2773175206
+      },
+      {
+        "grant_count": 368,
+        "period": "2013-10",
+        "total_eur_minor": 8027178385
+      },
+      {
+        "grant_count": 321,
+        "period": "2013-11",
+        "total_eur_minor": 5009644067
+      },
+      {
+        "grant_count": 408,
+        "period": "2013-12",
+        "total_eur_minor": 8205775697
+      },
+      {
+        "grant_count": 279,
+        "period": "2014-01",
+        "total_eur_minor": 3075059735
+      },
+      {
+        "grant_count": 399,
+        "period": "2014-02",
+        "total_eur_minor": 4361114812
+      },
+      {
+        "grant_count": 572,
+        "period": "2014-03",
+        "total_eur_minor": 5446216097
+      },
+      {
+        "grant_count": 398,
+        "period": "2014-04",
+        "total_eur_minor": 3165635080
+      },
+      {
+        "grant_count": 388,
+        "period": "2014-05",
+        "total_eur_minor": 2848858552
+      },
+      {
+        "grant_count": 565,
+        "period": "2014-06",
+        "total_eur_minor": 5746400187
+      },
+      {
+        "grant_count": 445,
+        "period": "2014-07",
+        "total_eur_minor": 2338180049
+      },
+      {
+        "grant_count": 201,
+        "period": "2014-08",
+        "total_eur_minor": 1145229508
+      },
+      {
+        "grant_count": 510,
+        "period": "2014-09",
+        "total_eur_minor": 4747744701
+      },
+      {
+        "grant_count": 408,
+        "period": "2014-10",
+        "total_eur_minor": 4034527533
+      },
+      {
+        "grant_count": 448,
+        "period": "2014-11",
+        "total_eur_minor": 5154013667
+      },
+      {
+        "grant_count": 583,
+        "period": "2014-12",
+        "total_eur_minor": 9101369183
+      },
+      {
+        "grant_count": 488,
+        "period": "2015-01",
+        "total_eur_minor": 4241142452
+      },
+      {
+        "grant_count": 372,
+        "period": "2015-02",
+        "total_eur_minor": 1770427411
+      },
+      {
+        "grant_count": 820,
+        "period": "2015-03",
+        "total_eur_minor": 7686254661
+      },
+      {
+        "grant_count": 427,
+        "period": "2015-04",
+        "total_eur_minor": 4361748800
+      },
+      {
+        "grant_count": 479,
+        "period": "2015-05",
+        "total_eur_minor": 6519340710
+      },
+      {
+        "grant_count": 732,
+        "period": "2015-06",
+        "total_eur_minor": 6869682528
+      },
+      {
+        "grant_count": 608,
+        "period": "2015-07",
+        "total_eur_minor": 8574730616
+      },
+      {
+        "grant_count": 283,
+        "period": "2015-08",
+        "total_eur_minor": 853509299
+      },
+      {
+        "grant_count": 682,
+        "period": "2015-09",
+        "total_eur_minor": 6014358330
+      },
+      {
+        "grant_count": 564,
+        "period": "2015-10",
+        "total_eur_minor": 5161326646
+      },
+      {
+        "grant_count": 739,
+        "period": "2015-11",
+        "total_eur_minor": 10419055755
+      },
+      {
+        "grant_count": 611,
+        "period": "2015-12",
+        "total_eur_minor": 5218610380
+      },
+      {
+        "grant_count": 498,
+        "period": "2016-01",
+        "total_eur_minor": 10068638482
+      },
+      {
+        "grant_count": 490,
+        "period": "2016-02",
+        "total_eur_minor": 8638421439
+      },
+      {
+        "grant_count": 971,
+        "period": "2016-03",
+        "total_eur_minor": 27034826640
+      },
+      {
+        "grant_count": 1250,
+        "period": "2016-04",
+        "total_eur_minor": 7676701843
+      },
+      {
+        "grant_count": 751,
+        "period": "2016-05",
+        "total_eur_minor": 5711374533
+      },
+      {
+        "grant_count": 1117,
+        "period": "2016-06",
+        "total_eur_minor": 11077124210
+      },
+      {
+        "grant_count": 751,
+        "period": "2016-07",
+        "total_eur_minor": 11840736809
+      },
+      {
+        "grant_count": 399,
+        "period": "2016-08",
+        "total_eur_minor": 4624730267
+      },
+      {
+        "grant_count": 828,
+        "period": "2016-09",
+        "total_eur_minor": 6472351912
+      },
+      {
+        "grant_count": 837,
+        "period": "2016-10",
+        "total_eur_minor": 5841152618
+      },
+      {
+        "grant_count": 1208,
+        "period": "2016-11",
+        "total_eur_minor": 5523161916
+      },
+      {
+        "grant_count": 1151,
+        "period": "2016-12",
+        "total_eur_minor": 6830146422
+      },
+      {
+        "grant_count": 649,
+        "period": "2017-01",
+        "total_eur_minor": 4206906877
+      },
+      {
+        "grant_count": 805,
+        "period": "2017-02",
+        "total_eur_minor": 6604647621
+      },
+      {
+        "grant_count": 1507,
+        "period": "2017-03",
+        "total_eur_minor": 7963497721
+      },
+      {
+        "grant_count": 1456,
+        "period": "2017-04",
+        "total_eur_minor": 15043161971
+      },
+      {
+        "grant_count": 1045,
+        "period": "2017-05",
+        "total_eur_minor": 5137855626
+      },
+      {
+        "grant_count": 1671,
+        "period": "2017-06",
+        "total_eur_minor": 7108533824
+      },
+      {
+        "grant_count": 1558,
+        "period": "2017-07",
+        "total_eur_minor": 9991346395
+      },
+      {
+        "grant_count": 1358,
+        "period": "2017-08",
+        "total_eur_minor": 2256198489
+      },
+      {
+        "grant_count": 1108,
+        "period": "2017-09",
+        "total_eur_minor": 9909556708
+      },
+      {
+        "grant_count": 1239,
+        "period": "2017-10",
+        "total_eur_minor": 8214203254
+      },
+      {
+        "grant_count": 2432,
+        "period": "2017-11",
+        "total_eur_minor": 10219457700
+      },
+      {
+        "grant_count": 1329,
+        "period": "2017-12",
+        "total_eur_minor": 5610401770
+      },
+      {
+        "grant_count": 1104,
+        "period": "2018-01",
+        "total_eur_minor": 8328096039
+      },
+      {
+        "grant_count": 956,
+        "period": "2018-02",
+        "total_eur_minor": 3561319862
+      },
+      {
+        "grant_count": 2138,
+        "period": "2018-03",
+        "total_eur_minor": 7911523013
+      },
+      {
+        "grant_count": 1755,
+        "period": "2018-04",
+        "total_eur_minor": 13726127215
+      },
+      {
+        "grant_count": 1276,
+        "period": "2018-05",
+        "total_eur_minor": 5734796412
+      },
+      {
+        "grant_count": 1939,
+        "period": "2018-06",
+        "total_eur_minor": 11434338073
+      },
+      {
+        "grant_count": 1248,
+        "period": "2018-07",
+        "total_eur_minor": 6823534327
+      },
+      {
+        "grant_count": 691,
+        "period": "2018-08",
+        "total_eur_minor": 3837326824
+      },
+      {
+        "grant_count": 1007,
+        "period": "2018-09",
+        "total_eur_minor": 6944276389
+      },
+      {
+        "grant_count": 1500,
+        "period": "2018-10",
+        "total_eur_minor": 8658230064
+      },
+      {
+        "grant_count": 1784,
+        "period": "2018-11",
+        "total_eur_minor": 6981457234
+      },
+      {
+        "grant_count": 1578,
+        "period": "2018-12",
+        "total_eur_minor": 7027781588
+      },
+      {
+        "grant_count": 1066,
+        "period": "2019-01",
+        "total_eur_minor": 7758511228
+      },
+      {
+        "grant_count": 1550,
+        "period": "2019-02",
+        "total_eur_minor": 5357469696
+      },
+      {
+        "grant_count": 2345,
+        "period": "2019-03",
+        "total_eur_minor": 11871691688
+      },
+      {
+        "grant_count": 1559,
+        "period": "2019-04",
+        "total_eur_minor": 11047156545
+      },
+      {
+        "grant_count": 1239,
+        "period": "2019-05",
+        "total_eur_minor": 6606900054
+      },
+      {
+        "grant_count": 2021,
+        "period": "2019-06",
+        "total_eur_minor": 10840368560
+      },
+      {
+        "grant_count": 1563,
+        "period": "2019-07",
+        "total_eur_minor": 9354782564
+      },
+      {
+        "grant_count": 782,
+        "period": "2019-08",
+        "total_eur_minor": 1969941717
+      },
+      {
+        "grant_count": 1262,
+        "period": "2019-09",
+        "total_eur_minor": 6178557369
+      },
+      {
+        "grant_count": 1514,
+        "period": "2019-10",
+        "total_eur_minor": 4951891710
+      },
+      {
+        "grant_count": 1637,
+        "period": "2019-11",
+        "total_eur_minor": 7534740275
+      },
+      {
+        "grant_count": 1701,
+        "period": "2019-12",
+        "total_eur_minor": 10849888199
+      },
+      {
+        "grant_count": 1327,
+        "period": "2020-01",
+        "total_eur_minor": 7941885945
+      },
+      {
+        "grant_count": 1179,
+        "period": "2020-02",
+        "total_eur_minor": 6056954617
+      },
+      {
+        "grant_count": 2740,
+        "period": "2020-03",
+        "total_eur_minor": 18624421859
+      },
+      {
+        "grant_count": 6250,
+        "period": "2020-04",
+        "total_eur_minor": 23320511945
+      },
+      {
+        "grant_count": 4465,
+        "period": "2020-05",
+        "total_eur_minor": 11849190690
+      },
+      {
+        "grant_count": 4311,
+        "period": "2020-06",
+        "total_eur_minor": 16523569210
+      },
+      {
+        "grant_count": 3595,
+        "period": "2020-07",
+        "total_eur_minor": 9877716534
+      },
+      {
+        "grant_count": 1621,
+        "period": "2020-08",
+        "total_eur_minor": 7107206148
+      },
+      {
+        "grant_count": 2722,
+        "period": "2020-09",
+        "total_eur_minor": 8499387753
+      },
+      {
+        "grant_count": 2254,
+        "period": "2020-10",
+        "total_eur_minor": 12733630264
+      },
+      {
+        "grant_count": 2179,
+        "period": "2020-11",
+        "total_eur_minor": 7358642148
+      },
+      {
+        "grant_count": 2720,
+        "period": "2020-12",
+        "total_eur_minor": 10157291500
+      },
+      {
+        "grant_count": 1901,
+        "period": "2021-01",
+        "total_eur_minor": 6922744527
+      },
+      {
+        "grant_count": 1768,
+        "period": "2021-02",
+        "total_eur_minor": 36725288387
+      },
+      {
+        "grant_count": 3206,
+        "period": "2021-03",
+        "total_eur_minor": 13874329124
+      },
+      {
+        "grant_count": 1760,
+        "period": "2021-04",
+        "total_eur_minor": 12003634783
+      },
+      {
+        "grant_count": 1870,
+        "period": "2021-05",
+        "total_eur_minor": 7274218477
+      },
+      {
+        "grant_count": 2634,
+        "period": "2021-06",
+        "total_eur_minor": 13003044540
+      },
+      {
+        "grant_count": 2539,
+        "period": "2021-07",
+        "total_eur_minor": 12369170076
+      },
+      {
+        "grant_count": 1340,
+        "period": "2021-08",
+        "total_eur_minor": 8731958094
+      },
+      {
+        "grant_count": 1776,
+        "period": "2021-09",
+        "total_eur_minor": 17161124841
+      },
+      {
+        "grant_count": 2073,
+        "period": "2021-10",
+        "total_eur_minor": 7939791024
+      },
+      {
+        "grant_count": 2888,
+        "period": "2021-11",
+        "total_eur_minor": 28303455708
+      },
+      {
+        "grant_count": 2221,
+        "period": "2021-12",
+        "total_eur_minor": 11272256677
+      },
+      {
+        "grant_count": 1476,
+        "period": "2022-01",
+        "total_eur_minor": 7386346434
+      },
+      {
+        "grant_count": 1831,
+        "period": "2022-02",
+        "total_eur_minor": 9820263239
+      },
+      {
+        "grant_count": 3065,
+        "period": "2022-03",
+        "total_eur_minor": 21998129799
+      },
+      {
+        "grant_count": 3162,
+        "period": "2022-04",
+        "total_eur_minor": 16757618835
+      },
+      {
+        "grant_count": 2908,
+        "period": "2022-05",
+        "total_eur_minor": 19370132026
+      },
+      {
+        "grant_count": 2436,
+        "period": "2022-06",
+        "total_eur_minor": 10272898994
+      },
+      {
+        "grant_count": 3363,
+        "period": "2022-07",
+        "total_eur_minor": 10617399305
+      },
+      {
+        "grant_count": 1714,
+        "period": "2022-08",
+        "total_eur_minor": 8272519902
+      },
+      {
+        "grant_count": 2831,
+        "period": "2022-09",
+        "total_eur_minor": 25577796879
+      },
+      {
+        "grant_count": 3835,
+        "period": "2022-10",
+        "total_eur_minor": 7811574091
+      },
+      {
+        "grant_count": 3240,
+        "period": "2022-11",
+        "total_eur_minor": 9722882601
+      },
+      {
+        "grant_count": 3257,
+        "period": "2022-12",
+        "total_eur_minor": 14549589380
+      },
+      {
+        "grant_count": 3034,
+        "period": "2023-01",
+        "total_eur_minor": 10206493027
+      },
+      {
+        "grant_count": 2799,
+        "period": "2023-02",
+        "total_eur_minor": 11537635908
+      },
+      {
+        "grant_count": 3293,
+        "period": "2023-03",
+        "total_eur_minor": 16578894376
+      },
+      {
+        "grant_count": 2613,
+        "period": "2023-04",
+        "total_eur_minor": 12860496642
+      },
+      {
+        "grant_count": 2795,
+        "period": "2023-05",
+        "total_eur_minor": 43246313788
+      },
+      {
+        "grant_count": 3056,
+        "period": "2023-06",
+        "total_eur_minor": 19795970388
+      },
+      {
+        "grant_count": 3104,
+        "period": "2023-07",
+        "total_eur_minor": 23731567940
+      },
+      {
+        "grant_count": 2519,
+        "period": "2023-08",
+        "total_eur_minor": 10252987561
+      },
+      {
+        "grant_count": 3357,
+        "period": "2023-09",
+        "total_eur_minor": 54311597998
+      },
+      {
+        "grant_count": 3388,
+        "period": "2023-10",
+        "total_eur_minor": 18266505367
+      },
+      {
+        "grant_count": 3817,
+        "period": "2023-11",
+        "total_eur_minor": 16881978792
+      },
+      {
+        "grant_count": 2747,
+        "period": "2023-12",
+        "total_eur_minor": 12362173690
+      },
+      {
+        "grant_count": 2928,
+        "period": "2024-01",
+        "total_eur_minor": 25258434326
+      },
+      {
+        "grant_count": 3066,
+        "period": "2024-02",
+        "total_eur_minor": 10516541857
+      },
+      {
+        "grant_count": 4538,
+        "period": "2024-03",
+        "total_eur_minor": 19140494538
+      },
+      {
+        "grant_count": 3452,
+        "period": "2024-04",
+        "total_eur_minor": 18609085782
+      },
+      {
+        "grant_count": 4277,
+        "period": "2024-05",
+        "total_eur_minor": 28413774759
+      },
+      {
+        "grant_count": 3691,
+        "period": "2024-06",
+        "total_eur_minor": 69626524123
+      },
+      {
+        "grant_count": 4886,
+        "period": "2024-07",
+        "total_eur_minor": 32244854242
+      },
+      {
+        "grant_count": 2583,
+        "period": "2024-08",
+        "total_eur_minor": 5294870640
+      },
+      {
+        "grant_count": 3935,
+        "period": "2024-09",
+        "total_eur_minor": 59588203330
+      },
+      {
+        "grant_count": 3254,
+        "period": "2024-10",
+        "total_eur_minor": 15927773158
+      },
+      {
+        "grant_count": 3997,
+        "period": "2024-11",
+        "total_eur_minor": 17921053046
+      },
+      {
+        "grant_count": 2798,
+        "period": "2024-12",
+        "total_eur_minor": 18461722782
+      },
+      {
+        "grant_count": 2442,
+        "period": "2025-01",
+        "total_eur_minor": 22500877428
+      },
+      {
+        "grant_count": 1998,
+        "period": "2025-02",
+        "total_eur_minor": 10994005272
+      },
+      {
+        "grant_count": 4109,
+        "period": "2025-03",
+        "total_eur_minor": 17024153003
+      },
+      {
+        "grant_count": 2466,
+        "period": "2025-04",
+        "total_eur_minor": 14737330610
+      },
+      {
+        "grant_count": 2217,
+        "period": "2025-05",
+        "total_eur_minor": 25099479388
+      },
+      {
+        "grant_count": 2268,
+        "period": "2025-06",
+        "total_eur_minor": 39187909588
+      },
+      {
+        "grant_count": 1895,
+        "period": "2025-07",
+        "total_eur_minor": 13263198948
+      },
+      {
+        "grant_count": 1155,
+        "period": "2025-08",
+        "total_eur_minor": 10241938193
+      },
+      {
+        "grant_count": 1911,
+        "period": "2025-09",
+        "total_eur_minor": 44393871160
+      },
+      {
+        "grant_count": 1769,
+        "period": "2025-10",
+        "total_eur_minor": 9236035164
+      },
+      {
+        "grant_count": 1395,
+        "period": "2025-11",
+        "total_eur_minor": 6658775052
+      },
+      {
+        "grant_count": 1884,
+        "period": "2025-12",
+        "total_eur_minor": 13389208853
+      },
+      {
+        "grant_count": 667,
+        "period": "2026-01",
+        "total_eur_minor": 12473930413
+      },
+      {
+        "grant_count": 785,
+        "period": "2026-02",
+        "total_eur_minor": 5229722701
+      },
+      {
+        "grant_count": 856,
+        "period": "2026-03",
+        "total_eur_minor": 4332557864
+      },
+      {
+        "grant_count": 360,
+        "period": "2026-04",
+        "total_eur_minor": 1071530341
+      },
+      {
+        "grant_count": 230,
+        "period": "2026-05",
+        "total_eur_minor": 1124864560
+      },
+      {
+        "grant_count": 234,
+        "period": "2026-06",
+        "total_eur_minor": 1278379080
+      },
+      {
+        "grant_count": 91,
+        "period": "2026-07",
+        "total_eur_minor": 202110060
+      },
+      {
+        "grant_count": 1,
+        "period": "2026-10",
+        "total_eur_minor": 0
+      }
+    ],
+    "organisation_details": [
+      {
+        "charity_id": -24788,
+        "headquarters_country": "Netherlands",
+        "name": "Women Win",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24787,
+        "headquarters_country": "Switzerland",
+        "name": "Toni Piëch Foundation",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24786,
+        "headquarters_country": "United Kingdom",
+        "name": "Thomson Reuters Foundation",
+        "organization_type": "membership organization",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24785,
+        "headquarters_country": "United Kingdom",
+        "name": "The Social Change Nest",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24784,
+        "headquarters_country": "United States",
+        "name": "The Global Fund for Children",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24783,
+        "headquarters_country": null,
+        "name": "Suna and İnan Kıraç Foundation",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24781,
+        "headquarters_country": "Sweden",
+        "name": "Hidden Universe: Biodiversity Foundation (HUB)",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24780,
+        "headquarters_country": "Germany",
+        "name": "Andrea von Braun Stiftung",
+        "organization_type": "foundation",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24510,
+        "headquarters_country": "Ukraine",
+        "name": "Philanthropy in Ukraine",
+        "organization_type": "membership organization",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      },
+      {
+        "charity_id": -24509,
+        "headquarters_country": null,
+        "name": "Confederación Española de Cajas de Ahorros",
+        "organization_type": "philanthropy infrastructure organization",
+        "primary_source": "Philea",
+        "transaction_coverage": "organization_level_only"
+      }
+    ],
+    "overview_totals": [
+      {
+        "classified_grants": 302546,
+        "grant_count": 302546,
+        "mapped_grants": 104191,
+        "total_eur_minor": 2243598670770
+      }
+    ],
+    "programme_filter": [
+      {
+        "grant_count": 7368,
+        "total_eur_minor": 248473543343
+      }
+    ],
+    "programme_totals": [
+      {
+        "grant_count": 167843,
+        "programme_area": "Unclassified",
+        "represented_eur_minor": 786337497895
+      },
+      {
+        "grant_count": 41109,
+        "programme_area": "Education",
+        "represented_eur_minor": 400235015153
+      },
+      {
+        "grant_count": 40958,
+        "programme_area": "Health",
+        "represented_eur_minor": 647419873578
+      },
+      {
+        "grant_count": 39811,
+        "programme_area": "Youth/Children Development",
+        "represented_eur_minor": 270070988130
+      },
+      {
+        "grant_count": 17752,
+        "programme_area": "Arts & Culture",
+        "represented_eur_minor": 184431544131
+      },
+      {
+        "grant_count": 17234,
+        "programme_area": "Socio-economic Development, Poverty",
+        "represented_eur_minor": 119682815730
+      },
+      {
+        "grant_count": 7368,
+        "programme_area": "tech-enablement",
+        "represented_eur_minor": 248473543343
+      },
+      {
+        "grant_count": 6356,
+        "programme_area": "Sciences & Research",
+        "represented_eur_minor": 403415755556
+      },
+      {
+        "grant_count": 4451,
+        "programme_area": "Diversity & Inclusion",
+        "represented_eur_minor": 87084214363
+      },
+      {
+        "grant_count": 4379,
+        "programme_area": "Humanitarian & Disaster Relief",
+        "represented_eur_minor": 31594041182
+      },
+      {
+        "grant_count": 3357,
+        "programme_area": "Civil society, Voluntarism & Non-Profit Sector",
+        "represented_eur_minor": 27404067929
+      },
+      {
+        "grant_count": 3001,
+        "programme_area": "Citizenship, Social Justice & Public Affairs",
+        "represented_eur_minor": 46749881112
+      },
+      {
+        "grant_count": 2884,
+        "programme_area": "Environment/Climate",
+        "represented_eur_minor": 159586257722
+      },
+      {
+        "grant_count": 1740,
+        "programme_area": "Food, Agriculture & Nutrition",
+        "represented_eur_minor": 20923682687
+      },
+      {
+        "grant_count": 578,
+        "programme_area": "Human/Civil Rights",
+        "represented_eur_minor": 8409676106
+      },
+      {
+        "grant_count": 62,
+        "programme_area": "Peace & Conflict Resolution",
+        "represented_eur_minor": 645036856
+      }
+    ],
+    "recipient_filter": [
+      {
+        "grant_count": 6089,
+        "total_eur_minor": 434560511133
+      }
+    ],
+    "recipient_rankings": [
+      {
+        "grant_count": 576,
+        "identity": "name:university of oxford",
+        "name": "University Of Oxford",
+        "total_eur_minor": 79787774359
+      },
+      {
+        "grant_count": 1,
+        "identity": "name:wellcome leap inc",
+        "name": "Wellcome Leap Inc.",
+        "total_eur_minor": 55025784898
+      },
+      {
+        "grant_count": 423,
+        "identity": "name:university of cambridge",
+        "name": "University Of Cambridge",
+        "total_eur_minor": 53329684843
+      },
+      {
+        "grant_count": 427,
+        "identity": "name:university college london",
+        "name": "University College London",
+        "total_eur_minor": 44052184795
+      },
+      {
+        "grant_count": 521,
+        "identity": "name:king s college london",
+        "name": "King's College London",
+        "total_eur_minor": 31270966015
+      },
+      {
+        "grant_count": 937,
+        "identity": "name:guy s and st thomas nhs foundation trust",
+        "name": "Guy's and St Thomas' NHS Foundation Trust",
+        "total_eur_minor": 21964774747
+      },
+      {
+        "grant_count": 529,
+        "identity": "205846",
+        "name": "A la Ronde",
+        "total_eur_minor": 21957928322
+      },
+      {
+        "grant_count": 64,
+        "identity": "name:liverpool school of tropical medicine",
+        "name": "Liverpool School of Tropical Medicine",
+        "total_eur_minor": 21423882549
+      },
+      {
+        "grant_count": 292,
+        "identity": "name:university of edinburgh",
+        "name": "University of Edinburgh",
+        "total_eur_minor": 21363226773
+      },
+      {
+        "grant_count": 234,
+        "identity": "name:imperial college london",
+        "name": "Imperial College London",
+        "total_eur_minor": 20434525907
+      },
+      {
+        "grant_count": 107,
+        "identity": "name:university of dundee",
+        "name": "University of Dundee",
+        "total_eur_minor": 14960691907
+      },
+      {
+        "grant_count": 222,
+        "identity": "220949",
+        "name": "BRITISH RED CROSS SOCIETY",
+        "total_eur_minor": 14254727026
+      },
+      {
+        "grant_count": 114,
+        "identity": "name:london school of hygiene and tropical medicine",
+        "name": "LONDON SCHOOL OF HYGIENE AND TROPICAL MEDICINE",
+        "total_eur_minor": 12256849404
+      },
+      {
+        "grant_count": 82,
+        "identity": "name:uk community foundations",
+        "name": "UK Community Foundations",
+        "total_eur_minor": 10771526317
+      },
+      {
+        "grant_count": 1,
+        "identity": "name:london and quadrant housing trust",
+        "name": "London & Quadrant Housing Trust",
+        "total_eur_minor": 9612908030
+      },
+      {
+        "grant_count": 143,
+        "identity": "name:university of manchester",
+        "name": "University Of Manchester",
+        "total_eur_minor": 9074678403
+      },
+      {
+        "grant_count": 8,
+        "identity": "name:the sainsbury laboratory",
+        "name": "The Sainsbury Laboratory",
+        "total_eur_minor": 8643726866
+      },
+      {
+        "grant_count": 151,
+        "identity": "name:university of glasgow",
+        "name": "University of Glasgow",
+        "total_eur_minor": 8381509901
+      },
+      {
+        "grant_count": 95,
+        "identity": "name:university of exeter",
+        "name": "UNIVERSITY OF EXETER",
+        "total_eur_minor": 8222140269
+      },
+      {
+        "grant_count": 198,
+        "identity": "name:university of bristol",
+        "name": "UNIVERSITY OF BRISTOL",
+        "total_eur_minor": 7734488683
+      },
+      {
+        "grant_count": 2,
+        "identity": "name:boston university",
+        "name": "Boston University",
+        "total_eur_minor": 7123851236
+      },
+      {
+        "grant_count": 242,
+        "identity": "name:south london and maudsley nhs foundation trust",
+        "name": "South London and Maudsley NHS Foundation Trust",
+        "total_eur_minor": 6864800530
+      },
+      {
+        "grant_count": 111,
+        "identity": "name:university of birmingham",
+        "name": "University of Birmingham",
+        "total_eur_minor": 6723125608
+      },
+      {
+        "grant_count": 16,
+        "identity": "name:yale university",
+        "name": "Yale University",
+        "total_eur_minor": 6533875930
+      },
+      {
+        "grant_count": 15,
+        "identity": "name:embl - european bioinformatics institute",
+        "name": "EMBL - European Bioinformatics Institute",
+        "total_eur_minor": 6145008032
+      }
+    ],
+    "registry_search": [
+      {
+        "charity_number": "1010442",
+        "country_code": "GB",
+        "registered_name": "1 TO 1 SCRIPTURES TRUST",
+        "registration_status": "Removed",
+        "registry_id": "cc:1010442"
+      },
+      {
+        "charity_number": "1137030",
+        "country_code": "GB",
+        "registered_name": "10:10 TRUST",
+        "registration_status": "Removed",
+        "registry_id": "cc:4050549"
+      },
+      {
+        "charity_number": "1218470",
+        "country_code": "GB",
+        "registered_name": "1008 TIRTHANKAR SHRI SHANTINATH JINALAYA DIGAMBAR JAIN HARROW TRUST LONDON UK",
+        "registration_status": "Registered",
+        "registry_id": "cc:5286533"
+      },
+      {
+        "charity_number": "1113553",
+        "country_code": "GB",
+        "registered_name": "101 (CITY OF LONDON) ENGINEER REGIMENT (RICHMOND HILL) CHARITABLE TRUST",
+        "registration_status": "Registered",
+        "registry_id": "cc:3011102"
+      },
+      {
+        "charity_number": "294975",
+        "country_code": "GB",
+        "registered_name": "'1067 TRUST FUND'",
+        "registration_status": "Removed",
+        "registry_id": "cc:294975"
+      },
+      {
+        "charity_number": "254425",
+        "country_code": "GB",
+        "registered_name": "10TH PRINCESS MARY'S OWN GURKHA RIFLE REGIMENTAL TRUST",
+        "registration_status": "Removed",
+        "registry_id": "cc:254425"
+      },
+      {
+        "charity_number": "1033082",
+        "country_code": "GB",
+        "registered_name": "129 INNER WHEEL DISTRICT COMMITTEE TRUST FUND",
+        "registration_status": "Removed",
+        "registry_id": "cc:1033082"
+      },
+      {
+        "charity_number": "248816",
+        "country_code": "GB",
+        "registered_name": "12TH (ROYAL) LANCERS ASSOCIATION TRUST FUND",
+        "registration_status": "Removed",
+        "registry_id": "cc:21101"
+      },
+      {
+        "charity_number": "1158832",
+        "country_code": "GB",
+        "registered_name": "13:33 TRUST",
+        "registration_status": "Registered",
+        "registry_id": "cc:5046410"
+      },
+      {
+        "charity_number": "1161219",
+        "country_code": "GB",
+        "registered_name": "13 RIVERS TRUST",
+        "registration_status": "Registered",
+        "registry_id": "cc:5055214"
+      }
+    ],
+    "sankey": [
+      {
+        "amount_minor": 2239937979,
+        "currency": "GBP",
+        "funding_name": "Masonic Charitable Foundation",
+        "grant_count": 6837,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 129988282,
+        "currency": "GBP",
+        "funding_name": "R L Glasspool Charity Trust",
+        "grant_count": 4866,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 181605700,
+        "currency": "GBP",
+        "funding_name": "St. Martin-in-the-Fields Charity",
+        "grant_count": 4576,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 188509309,
+        "currency": "GBP",
+        "funding_name": "Hampton Fund",
+        "grant_count": 3825,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 331537079,
+        "currency": "GBP",
+        "funding_name": "Foundation Scotland",
+        "grant_count": 3004,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 361360997,
+        "currency": "GBP",
+        "funding_name": "Barnwood Trust",
+        "grant_count": 2560,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 31856759,
+        "currency": "GBP",
+        "funding_name": "Cloudesley",
+        "grant_count": 2535,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 206092500,
+        "currency": "GBP",
+        "funding_name": "The Teaching Staff Trust",
+        "grant_count": 2373,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 39854711,
+        "currency": "GBP",
+        "funding_name": "The Greggs Foundation",
+        "grant_count": 2023,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 368654494,
+        "currency": "GBP",
+        "funding_name": "Foothold",
+        "grant_count": 1484,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 114209611,
+        "currency": "GBP",
+        "funding_name": "Longleigh Foundation",
+        "grant_count": 1300,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 18140808016,
+        "currency": "GBP",
+        "funding_name": "Guy's and St Thomas' Charity",
+        "grant_count": 935,
+        "recipient_name": "Guy's and St Thomas' NHS Foundation Trust"
+      },
+      {
+        "amount_minor": 114997148,
+        "currency": "GBP",
+        "funding_name": "Wiltshire and Swindon Community Foundation",
+        "grant_count": 711,
+        "recipient_name": "Individual Recipient"
+      },
+      {
+        "amount_minor": 41061225,
+        "currency": "GBP",
+        "funding_name": "CareTech foundation",
+        "grant_count": 652,
+        "recipient_name": "Individual"
+      },
+      {
+        "amount_minor": 1423354035,
+        "currency": "GBP",
+        "funding_name": "Imperial Health Charity",
+        "grant_count": 575,
+        "recipient_name": "Imperial College Healthcare NHS Trust"
+      },
+      {
+        "amount_minor": 65531682563,
+        "currency": "GBP",
+        "funding_name": "The Wellcome Trust",
+        "grant_count": 498,
+        "recipient_name": "University of Oxford"
+      },
+      {
+        "amount_minor": 218391707,
+        "currency": "GBP",
+        "funding_name": "Imperial Health Charity",
+        "grant_count": 471,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 16316503,
+        "currency": "GBP",
+        "funding_name": "Somerset Community Foundation",
+        "grant_count": 387,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 300703631,
+        "currency": "GBP",
+        "funding_name": "The Paul Mellon Centre for Studies in British Art",
+        "grant_count": 380,
+        "recipient_name": "Unknown Recipient"
+      },
+      {
+        "amount_minor": 34563208,
+        "currency": "GBP",
+        "funding_name": "Two Ridings Community Foundation",
+        "grant_count": 343,
+        "recipient_name": "Individual Recipient"
+      },
+      {
+        "amount_minor": 31770815957,
+        "currency": "GBP",
+        "funding_name": "The Wellcome Trust",
+        "grant_count": 342,
+        "recipient_name": "University of Cambridge"
+      },
+      {
+        "amount_minor": 34502947967,
+        "currency": "GBP",
+        "funding_name": "The Wellcome Trust",
+        "grant_count": 333,
+        "recipient_name": "University College London"
+      },
+      {
+        "amount_minor": 90521469,
+        "currency": "GBP",
+        "funding_name": "Wiltshire and Swindon Community Foundation",
+        "grant_count": 313,
+        "recipient_name": "Grant to Individual"
+      },
+      {
+        "amount_minor": 67821800,
+        "currency": "GBP",
+        "funding_name": "Haberdashers' Company",
+        "grant_count": 273,
+        "recipient_name": "Unknown recipient"
+      },
+      {
+        "amount_minor": 17541810377,
+        "currency": "GBP",
+        "funding_name": "The Wellcome Trust",
+        "grant_count": 262,
+        "recipient_name": "University of Edinburgh"
+      }
+    ],
+    "score_components": {
+      "components": {
+        "funding_capacity_fit": {
+          "available": true,
+          "confidence": 0.9,
+          "score": 100.0,
+          "weight": 0.15,
+          "weighted_score": 15.0
+        },
+        "geographic_fit": {
+          "available": true,
+          "confidence": 0.95,
+          "score": 100.0,
+          "weight": 0.25,
+          "weighted_score": 25.0
+        },
+        "historical_grant_size_fit": {
+          "available": true,
+          "confidence": 0.9,
+          "score": 100.0,
+          "weight": 0.15,
+          "weighted_score": 15.0
+        },
+        "organization_type_fit": {
+          "available": true,
+          "confidence": 0.95,
+          "score": 100.0,
+          "weight": 0.1,
+          "weighted_score": 10.0
+        },
+        "thematic_fit": {
+          "available": true,
+          "confidence": 0.95,
+          "score": 100.0,
+          "weight": 0.35,
+          "weighted_score": 35.0
+        }
+      },
+      "confidence": 0.935,
+      "configuration_status": "experimental",
+      "data_completeness": 1.0,
+      "score": 100.0,
+      "score_version": "example-relevance-v2"
+    },
+    "yearly_trends": [
+      {
+        "grant_count": 1,
+        "period": "1991",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 9,
+        "period": "1995",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 7,
+        "period": "1996",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 92,
+        "period": "1997",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 311,
+        "period": "1998",
+        "total_eur_minor": 0
+      },
+      {
+        "grant_count": 420,
+        "period": "1999",
+        "total_eur_minor": 2473147464
+      },
+      {
+        "grant_count": 402,
+        "period": "2000",
+        "total_eur_minor": 3958566163
+      },
+      {
+        "grant_count": 506,
+        "period": "2001",
+        "total_eur_minor": 3382076147
+      },
+      {
+        "grant_count": 661,
+        "period": "2002",
+        "total_eur_minor": 9302059390
+      },
+      {
+        "grant_count": 867,
+        "period": "2003",
+        "total_eur_minor": 7523581713
+      },
+      {
+        "grant_count": 788,
+        "period": "2004",
+        "total_eur_minor": 8011806581
+      },
+      {
+        "grant_count": 668,
+        "period": "2005",
+        "total_eur_minor": 12289788410
+      },
+      {
+        "grant_count": 1084,
+        "period": "2006",
+        "total_eur_minor": 12355888271
+      },
+      {
+        "grant_count": 2152,
+        "period": "2007",
+        "total_eur_minor": 14210708712
+      },
+      {
+        "grant_count": 1157,
+        "period": "2008",
+        "total_eur_minor": 14413582711
+      },
+      {
+        "grant_count": 2317,
+        "period": "2009",
+        "total_eur_minor": 46046718633
+      },
+      {
+        "grant_count": 3356,
+        "period": "2010",
+        "total_eur_minor": 46497834943
+      },
+      {
+        "grant_count": 3035,
+        "period": "2011",
+        "total_eur_minor": 82986047722
+      },
+      {
+        "grant_count": 3730,
+        "period": "2012",
+        "total_eur_minor": 107155129463
+      },
+      {
+        "grant_count": 4242,
+        "period": "2013",
+        "total_eur_minor": 63976953969
+      },
+      {
+        "grant_count": 5196,
+        "period": "2014",
+        "total_eur_minor": 51164349104
+      },
+      {
+        "grant_count": 6805,
+        "period": "2015",
+        "total_eur_minor": 67690187588
+      },
+      {
+        "grant_count": 10251,
+        "period": "2016",
+        "total_eur_minor": 111339367091
+      },
+      {
+        "grant_count": 16157,
+        "period": "2017",
+        "total_eur_minor": 92265767956
+      },
+      {
+        "grant_count": 16976,
+        "period": "2018",
+        "total_eur_minor": 90968807040
+      },
+      {
+        "grant_count": 18239,
+        "period": "2019",
+        "total_eur_minor": 94321899605
+      },
+      {
+        "grant_count": 35363,
+        "period": "2020",
+        "total_eur_minor": 140050408613
+      },
+      {
+        "grant_count": 25976,
+        "period": "2021",
+        "total_eur_minor": 175581016258
+      },
+      {
+        "grant_count": 33118,
+        "period": "2022",
+        "total_eur_minor": 162157151485
+      },
+      {
+        "grant_count": 36522,
+        "period": "2023",
+        "total_eur_minor": 250032615477
+      },
+      {
+        "grant_count": 43405,
+        "period": "2024",
+        "total_eur_minor": 321003332583
+      },
+      {
+        "grant_count": 25509,
+        "period": "2025",
+        "total_eur_minor": 226726782659
+      },
+      {
+        "grant_count": 3224,
+        "period": "2026",
+        "total_eur_minor": 25713095019
+      }
+    ]
+  },
+  "source_sha256": "8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651"
+}

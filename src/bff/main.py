@@ -16,9 +16,17 @@ from bff.database import DatabaseManager, DatabaseSettings
 from bff.security import IdempotencyStore, SlidingWindowRateLimiter
 from bff.utils.logging import logger, pseudonymous_actor_id
 from observability.metrics import MetricsRegistry, load_observability_configuration
+from transition.runtime import load_transition_settings
+from transition.shadow import (
+    ComparisonPolicy,
+    ShadowComparisonCoordinator,
+    ShadowComparisonMiddleware,
+    StructuredLogEvidenceSink,
+)
 
 
-POSTGRESQL_ONLY_RUNTIME = SECURITY_SETTINGS.app_env in {"staging", "production"}
+TRANSITION_SETTINGS = load_transition_settings()
+POSTGRESQL_ONLY_RUNTIME = TRANSITION_SETTINGS.postgresql_authoritative
 if POSTGRESQL_ONLY_RUNTIME:
     from bff.postgres.admin_routes import router as admin_router
     from bff.postgres.audit_repository import PostgresAuditSink
@@ -37,6 +45,31 @@ else:
     from bff.charity import router as charity_router
     from bff.admin import router as admin_router
     from bff.repositories import get_charity_repository
+
+
+def _shadow_log(payload):
+    logger.info("shadow_comparison", extra={"shadow": payload})
+
+
+if TRANSITION_SETTINGS.shadow_enabled:
+    from transition.sqlite_source import SQLiteShadowReader, resolve_shadow_journey
+
+    SHADOW_COORDINATOR = ShadowComparisonCoordinator(
+        SQLiteShadowReader(str(TRANSITION_SETTINGS.shadow_sqlite_path)),
+        StructuredLogEvidenceSink(_shadow_log),
+        policy=ComparisonPolicy(
+            unordered_paths=frozenset(TRANSITION_SETTINGS.approved_unordered_paths),
+            ignored_paths=frozenset(TRANSITION_SETTINGS.ignored_operational_paths),
+            maximum_differences=TRANSITION_SETTINGS.maximum_recorded_differences,
+        ),
+        timeout_seconds=TRANSITION_SETTINGS.shadow_timeout_seconds,
+        maximum_pending=TRANSITION_SETTINGS.maximum_pending_comparisons,
+    )
+else:
+    SHADOW_COORDINATOR = None
+
+    def resolve_shadow_journey(method, path, query_string):
+        return None
 
 
 @asynccontextmanager
@@ -68,6 +101,8 @@ async def lifespan(application: FastAPI):
     try:
         yield
     finally:
+        if SHADOW_COORDINATOR is not None:
+            await SHADOW_COORDINATOR.drain()
         await application.state.database.close()
 
 
@@ -91,6 +126,13 @@ app.state.audit_sink = StructuredLogAuditSink()
 app.state.database = DatabaseManager(DatabaseSettings.from_env())
 app.state.observability_configuration = load_observability_configuration()
 app.state.metrics_registry = MetricsRegistry(app.state.observability_configuration)
+
+app.add_middleware(
+    ShadowComparisonMiddleware,
+    coordinator=SHADOW_COORDINATOR,
+    maximum_response_bytes=TRANSITION_SETTINGS.maximum_response_bytes,
+    journey_resolver=resolve_shadow_journey,
+)
 
 app.add_middleware(
     CORSMiddleware,
