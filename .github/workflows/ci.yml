@@ -46,7 +46,7 @@ jobs:
       - name: Backend tests and coverage
         env:
           GEMINI_API_KEY: "disabled-ci-placeholder"
-        run: pytest -q --cov=src --cov-report=xml --cov-report=term --cov-fail-under=70
+        run: python -m pytest -q --cov=src --cov-report=xml --cov-report=term --cov-fail-under=70
       - name: Generate and verify deterministic SBOMs
         run: |
           python scripts/generate_sbom.py
@@ -255,15 +255,15 @@ jobs:
         run: alembic upgrade head
       - name: PostgreSQL schema, pipeline and governance integration
         run: >-
-          pytest -q
+          python -m pytest -q
           src/tests/test_sqlite_to_postgres_migration.py
           src/tests/test_postgres_schema.py
           src/tests/test_durable_pipeline.py
           src/tests/test_governance_retention.py
       - name: API golden contract tests
-        run: pytest -q src/tests/test_api_golden.py
+        run: python -m pytest -q src/tests/test_api_golden.py
       - name: Performance smoke and pool isolation
-        run: pytest -q src/tests/test_ci_performance_smoke.py
+        run: python -m pytest -q src/tests/test_ci_performance_smoke.py
 
   required-gate:
     name: Required PR gate

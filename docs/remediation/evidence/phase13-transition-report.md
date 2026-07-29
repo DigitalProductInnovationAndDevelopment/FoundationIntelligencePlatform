@@ -31,7 +31,8 @@ No AWS resource, production traffic, external API, live news provider or Git
 remote was touched.
 
 Final regression evidence is 352 normal backend passes, 13 skips and eight
-subtests at 61% measured coverage; 55 combined PostgreSQL integration passes;
+subtests at 72.73% coverage across all `src` modules, passing the exact 70% CI
+gate; 55 combined PostgreSQL integration passes;
 17 mypy files; 13 frontend unit passes; and 8 Playwright/axe passes with four
 intentional skips. The first container E2E attempt used a stale local frontend
 image and failed eight tests. After rebuilding the current pinned image, the
@@ -42,3 +43,10 @@ The Phase-13 backend image is `sha256:101071…338ee`, 354,658,326 bytes and
 and `101:101`. Stack liveness/readiness and backend restart readiness pass.
 The frontend build and final deterministic install used only the explicitly
 approved `registry.npmjs.org` via `npm ci`; no arbitrary download occurred.
+
+The final acceptance replay also exposed and fixed a workflow-only invocation
+error: calling the installed `pytest` entry point with `PYTHONPATH=src` omitted
+the repository root and prevented four `scripts.*` imports. All workflow test
+steps now use `python -m pytest`; the offline workflow validator rejects a
+regression to the bare entry point. The corrected exact CI coverage command
+passes with the results above.

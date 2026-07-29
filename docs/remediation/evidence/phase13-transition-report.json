@@ -49,7 +49,8 @@
   },
   "final_local_checks": {
     "normal_backend_tests": {"passed": 352, "skipped": 13, "subtests_passed": 8},
-    "coverage_percent": 61,
+    "coverage_percent": 72.73,
+    "coverage_scope": "all src modules via the exact CI command",
     "postgresql_combined_tests": {"passed": 55, "failed": 0},
     "frontend_unit_tests": 13,
     "frontend_e2e_passed": 8,
@@ -78,8 +79,9 @@
   "expected_failures_recorded": [
     "two initial transition query attempts rejected string parameters for PostgreSQL date bindings",
     "the first rollback attempt rejected a stale hard-coded migration schema revision before switching datasets",
-    "integral PostgreSQL NUMERIC values initially produced representational type differences until exact integer normalization"
-    ,"the first container-backed E2E run used a stale local frontend image and failed 8 tests; rebuilding the current pinned image produced 8 passes and 4 intentional skips"
+    "integral PostgreSQL NUMERIC values initially produced representational type differences until exact integer normalization",
+    "the first container-backed E2E run used a stale local frontend image and failed 8 tests; rebuilding the current pinned image produced 8 passes and 4 intentional skips",
+    "the literal CI coverage command used a bare pytest entry point and failed four scripts imports; invoking python -m pytest restored the repository root and passed the 70 percent gate"
   ],
   "aws_cutover_performed": false,
   "production_cutover_performed": false,

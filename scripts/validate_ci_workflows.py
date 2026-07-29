@@ -65,6 +65,10 @@ def validate() -> dict[str, object]:
         raise ValueError("PR CI must not apply and no workflow may destroy infrastructure")
     if "--require-hashes" not in ci or "npm ci --ignore-scripts" not in ci:
         raise ValueError("Deterministic dependency installation is required")
+    if re.search(r"(?m)^\s*(?:run:\s*)?pytest\b", ci):
+        raise ValueError(
+            "Invoke pytest through python -m so the repository root remains importable"
+        )
 
     for action, reference in re.findall(r"uses:\s*([^@\s]+)@([^\s]+)", combined):
         if reference in {"main", "master", "latest"}:

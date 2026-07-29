@@ -222,6 +222,13 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 - Protected state/external boundary: SQLite and `docs/audits/` remain at baseline. The final frontend rebuild/install used only the explicitly approved npm registry through `npm ci`; no other download host, AWS, production traffic, paid/live API, upload or push occurred.
 - Gate result: Gate 13 `PASS` locally. AWS cutover, RDS restore and production execution remain `NOT TESTED`; production remains `NO-GO`.
 - Evidence files: `runtime-transition-guide.md`, `cutover-runbook.md`, `rollback-runbook.md`, `backup-restore-guide.md`, `evidence/phase13-transition-report.json` and `.md`.
+- Final CI replay: the literal workflow coverage command initially failed
+  during collection because the bare `pytest` entry point combined with
+  `PYTHONPATH=src` omitted the repository root and made four `scripts.*`
+  imports unavailable. Workflow test steps now invoke `python -m pytest`, and
+  the offline validator enforces that boundary. The exact corrected CI command
+  passes 352 tests, skips 13 explicit live cases, passes eight subtests and
+  measures 72.73% total `src` coverage against the 70% gate.
 
 ### Push checkpoint
 

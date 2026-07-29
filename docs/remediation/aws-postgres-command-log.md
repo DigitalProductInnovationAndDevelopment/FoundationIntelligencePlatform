@@ -1000,3 +1000,26 @@ through `npm ci`; 80 packages were installed locally on the final run. No other
 host was contacted. Backend image `sha256:101071f6c750...338ee` is 354,658,326
 bytes/non-root; frontend image `sha256:8f665856111e...9ad1a` is 56,241,904
 bytes/non-root. Stack start, liveness, readiness and backend restart pass.
+
+## Final acceptance — exact CI coverage replay
+
+```zsh
+PYTHONPATH=src venv/bin/pytest -q --cov=src --cov-report=term --cov-fail-under=70
+```
+
+Result: exit 2 during collection. Four tests importing `scripts.*` failed with
+`ModuleNotFoundError: No module named 'scripts'`. This reproduced the literal
+workflow invocation and identified that the installed `pytest` entry point did
+not retain the repository root when `PYTHONPATH=src` was set.
+
+The backend and PostgreSQL workflow steps were changed from bare `pytest` to
+`python -m pytest`. The offline workflow validator now rejects a bare pytest
+entry point. The corrected exact CI coverage gate was then run:
+
+```zsh
+PYTHONPATH=src venv/bin/python -m pytest -q --cov=src --cov-report=term --cov-fail-under=70
+```
+
+Result: exit 0; 352 passed, 13 skipped, eight subtests passed, 53 warnings and
+72.73% total coverage across `src`, above the required 70% floor. No network,
+AWS, database mutation, upload or push occurred.
