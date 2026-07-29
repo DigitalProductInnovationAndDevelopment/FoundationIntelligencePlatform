@@ -4,14 +4,19 @@
 
 The Phase-11 infrastructure definitions are complete for local code review:
 one reusable platform module and isolated dev/staging roots contain 26
-Terraform files, 101 resource blocks and 58 AWS resource types. The offline
-structure/security gate and all application regressions pass.
+Terraform files, 103 resource blocks and 58 AWS resource types. The offline
+structure/security gate and all application regressions pass. Terraform 1.9.8
+now parses and canonically formats the complete tree; `fmt -check -recursive`
+passes after correcting one invalid nested WAF block and applying `terraform
+fmt` to the files reported by the CLI.
 
-Provider-dependent Gate-11 execution remains **NOT TESTED**. Terraform is not
-installed, no local Terraform image exists, provider/scanner downloads are
-outside the approved network sources and AWS read access is not authorised.
-Accordingly `terraform fmt`, `init`, `validate`, security scanners and a
-non-destructive staging plan are not claimed.
+Provider-dependent Gate-11 execution remains **BLOCKED/NOT TESTED**. The pinned
+Docker Hub image is
+`hashicorp/terraform@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd`.
+Network-isolated `init -backend=false` installed the local module and stopped
+when the unavailable `hashicorp/aws` provider would have required
+`registry.terraform.io`; `validate` consequently reports the missing provider.
+Security scanners and a non-destructive staging plan are not claimed.
 
 ## Implemented definitions
 
@@ -33,5 +38,6 @@ non-destructive staging plan are not claimed.
 The normal backend suite passes 334 tests, skips 12 explicit live tests and
 passes eight subtests. The two dedicated Terraform contract tests, compile,
 blocking Flake8 and whitespace checks pass. SQLite and `docs/audits/` remain
-unchanged. No provider download, AWS call, state access, plan, apply, destroy,
-import, DNS/certificate action, upload or push occurred.
+unchanged. The Terraform CLI image was downloaded only from approved Docker
+Hub endpoints. No provider download, AWS call, state access, plan, apply,
+destroy, import, DNS/certificate action, upload or push occurred.

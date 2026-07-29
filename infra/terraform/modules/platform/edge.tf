@@ -92,12 +92,16 @@ resource "aws_wafv2_web_acl" "api" {
   description = "Managed-rule and bounded-rate protection for the API ALB"
   scope       = "REGIONAL"
 
-  default_action { allow {} }
+  default_action {
+    allow {}
+  }
 
   rule {
     name     = "aws-common-rules"
     priority = 10
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
@@ -114,7 +118,9 @@ resource "aws_wafv2_web_acl" "api" {
   rule {
     name     = "known-bad-inputs"
     priority = 20
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
@@ -131,7 +137,9 @@ resource "aws_wafv2_web_acl" "api" {
   rule {
     name     = "per-ip-rate-limit"
     priority = 30
-    action { block {} }
+    action {
+      block {}
+    }
     statement {
       rate_based_statement {
         aggregate_key_type = "IP"

@@ -160,11 +160,11 @@ PYTHONPATH=src venv/bin/python scripts/validate_terraform_static.py
 PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_terraform_contract.py
 ```
 
-Once Terraform/provider downloads and an isolated non-AWS validation context
-are approved, run for each environment:
+Terraform 1.9.8 parsing and `fmt -check -recursive` have now passed in a
+network-isolated container. Once the AWS provider source and an isolated
+non-AWS validation context are approved, continue for each environment:
 
 ```zsh
-terraform fmt -recursive infra/terraform
 terraform fmt -check -recursive infra/terraform
 terraform -chdir=infra/terraform/environments/staging init -backend=false
 terraform -chdir=infra/terraform/environments/staging validate

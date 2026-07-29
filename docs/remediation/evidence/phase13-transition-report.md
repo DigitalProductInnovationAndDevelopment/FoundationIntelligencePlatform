@@ -50,3 +50,11 @@ the repository root and prevented four `scripts.*` imports. All workflow test
 steps now use `python -m pytest`; the offline workflow validator rejects a
 regression to the bare entry point. The corrected exact CI coverage command
 passes with the results above.
+
+The approved Docker Hub pull of Terraform 1.9.8 resolved manifest digest
+`sha256:18f998…28cd`. The real parser exposed one invalid nested WAF block;
+after correction and canonical formatting, network-isolated
+`fmt -check -recursive` passes. A temporary, network-isolated
+`init -backend=false` installed the local module and stopped at the unavailable,
+unauthorised `registry.terraform.io/hashicorp/aws` provider; `validate` remains
+blocked on that provider and no plan or AWS action occurred.

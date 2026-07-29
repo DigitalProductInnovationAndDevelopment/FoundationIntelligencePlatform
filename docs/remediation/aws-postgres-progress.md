@@ -183,14 +183,16 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 11 — Terraform AWS infrastructure definitions
 
-- Status: `COMPLETED_LOCAL`; provider-dependent validation is `NOT TESTED` because the authorised environment has no Terraform/provider/scanner tooling.
+- Status: `COMPLETED_LOCAL`; native parsing/formatting passes, while
+  provider-dependent validation remains blocked because the AWS provider and
+  scanners are outside the authorised/available tool boundary.
 - Execution restriction: no apply/destroy/import/state mutation or AWS resource change.
-- Definitions: 26 `.tf` files, 101 resource blocks and 58 AWS resource types implement shared platform infrastructure plus isolated dev/staging roots. Coverage includes network tiers/NAT/endpoints/security groups, KMS, five private data buckets, CloudFront/WAF, ECR, ECS API/workers/ALB/autoscaling, private RDS/backups/PITR/managed secret, SQS/DLQ, disabled scheduler, Step Functions, logs/dashboard/15 alarms/budgets, least-privilege task roles, GitHub OIDC/deployment role and fail-closed ACM/DNS points.
+- Definitions: 26 `.tf` files, 103 resource blocks and 58 AWS resource types implement shared platform infrastructure plus isolated dev/staging roots. Coverage includes network tiers/NAT/endpoints/security groups, KMS, five private data buckets, CloudFront/WAF, ECR, ECS API/workers/ALB/autoscaling, private RDS/backups/PITR/managed secret, SQS/DLQ, disabled scheduler, Step Functions, logs/dashboard/15 alarms/budgets, least-privilege task roles, GitHub OIDC/deployment role and fail-closed ACM/DNS points.
 - Security: RDS is private, encrypted, deletion-protected and `prevent_destroy`; data buckets block public access, enforce ownership/KMS and define transitions without expiration; ECS requires digest images, non-root/read-only tasks and private IPs; schedules and DNS remain disabled; no long-lived AWS keys exist.
 - Runtime integration: ECS injects the RDS-managed password through Secrets Manager; the database manager now accepts this runtime-only secret interface as well as the local secret-file contract, without logging it.
 - Documentation: four Mermaid diagrams, security/data/deployment boundaries, exact offline/provider validation procedure and dev/staging cost envelopes (not live price claims).
-- Tests executed: offline validator passes 26 files/101 resources/58 types; 2/2 Terraform contract tests; 334 normal backend tests, 12 explicit live skips and 8 subtests; compile, blocking Flake8 and diff checks.
-- Exact blocker: `terraform version` returns `command not found`; no local HashiCorp Terraform image or Terraform/security scanner exists. `registry.terraform.io` is outside approved sources, and AWS read/plan access is not approved. Therefore fmt/init/validate/security scan/provider lock/plan are explicitly `NOT TESTED`.
+- Tests executed: offline validator passes 26 files/103 resources/58 types; 2/2 Terraform contract tests; native Terraform 1.9.8 parse/format and final `fmt -check -recursive` pass; 334 normal backend tests, 12 explicit live skips and 8 subtests; compile, blocking Flake8 and diff checks.
+- Exact blocker: the approved Docker Hub CLI image is pinned by digest. Network-isolated `init -backend=false` installs the local module but stops because `registry.terraform.io/hashicorp/aws` is outside approved sources; `validate` reports that provider missing. Security scanners are absent, and AWS read/plan access is not approved. Provider lock/validate/security scan/plan remain `BLOCKED` or `NOT TESTED`.
 - Evidence files: `terraform-aws-infrastructure.md`, `terraform-validation.md`, `evidence/phase11-terraform-report.json` and `evidence/phase11-terraform-report.md`.
 - Gate result: infrastructure code review contract `PASS`; provider-dependent Gate-11 validation remains blocked/`NOT TESTED`, so production remains `NO-GO`.
 - Next exact action: implement complete PR and protected staging workflow definitions, generate local backend/frontend SBOM evidence with already installed tools, and validate workflow contracts without executing any deployment.

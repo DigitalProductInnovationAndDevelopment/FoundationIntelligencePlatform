@@ -1023,3 +1023,28 @@ PYTHONPATH=src venv/bin/python -m pytest -q --cov=src --cov-report=term --cov-fa
 Result: exit 0; 352 passed, 13 skipped, eight subtests passed, 53 warnings and
 72.73% total coverage across `src`, above the required 70% floor. No network,
 AWS, database mutation, upload or push occurred.
+
+## Final acceptance — native Terraform formatting
+
+The approved Docker Hub-only pull resolved
+`hashicorp/terraform:1.9.8` to manifest digest
+`sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd`
+and local image ID
+`sha256:97aaea908f872c3c60b75e9bffd6eeae34386c0e9671d6b2a1e30418ea702269`.
+
+```zsh
+docker run --rm --network none -v '<repository>:/workspace:ro' -w /workspace hashicorp/terraform:1.9.8 fmt -check -recursive infra/terraform
+```
+
+The first run failed on `edge.tf`: Terraform rejects nested `allow`, `none`
+and `block` blocks written inside a single-line parent block. After expanding
+those blocks, the parser listed 15 additional files requiring canonical
+formatting. The pinned CLI formatted those files with no network, and the final
+identical `fmt -check -recursive` exits 0.
+
+In an exact temporary copy, still with `--network none`,
+`terraform init -backend=false -input=false` installed the local platform
+module and then exited nonzero because `registry.terraform.io/hashicorp/aws`
+could not be reached. `terraform validate` then reported `Missing required
+provider`. The exact temporary directory was removed. No provider, AWS API,
+state, plan, apply, destroy, upload or Git remote was accessed.

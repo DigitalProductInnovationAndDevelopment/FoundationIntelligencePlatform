@@ -42,13 +42,13 @@ output "schedules_enabled" {
 
 output "release_gate" {
   value = {
-    cluster_name         = aws_ecs_cluster.this.name
-    task_definition_arn  = aws_ecs_task_definition.release_gate.arn
-    application_subnets  = values(aws_subnet.application)[*].id
-    security_group_id    = aws_security_group.ecs.id
-    frontend_bucket      = aws_s3_bucket.data["frontend"].id
-    cloudfront_id        = aws_cloudfront_distribution.frontend.id
-    api_task_definition  = aws_ecs_task_definition.api.arn
+    cluster_name           = aws_ecs_cluster.this.name
+    task_definition_arn    = aws_ecs_task_definition.release_gate.arn
+    application_subnets    = values(aws_subnet.application)[*].id
+    security_group_id      = aws_security_group.ecs.id
+    frontend_bucket        = aws_s3_bucket.data["frontend"].id
+    cloudfront_id          = aws_cloudfront_distribution.frontend.id
+    api_task_definition    = aws_ecs_task_definition.api.arn
     worker_task_definition = aws_ecs_task_definition.worker.arn
   }
 }

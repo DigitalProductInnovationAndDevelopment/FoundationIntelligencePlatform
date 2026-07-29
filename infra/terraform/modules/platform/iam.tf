@@ -21,7 +21,7 @@ resource "aws_iam_role_policy" "ecs_execution" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid = "PullImages"
+        Sid    = "PullImages"
         Effect = "Allow"
         Action = [
           "ecr:GetAuthorizationToken",
@@ -29,7 +29,7 @@ resource "aws_iam_role_policy" "ecs_execution" {
         Resource = "*"
       },
       {
-        Sid = "ReadImageLayers"
+        Sid    = "ReadImageLayers"
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",
@@ -42,7 +42,7 @@ resource "aws_iam_role_policy" "ecs_execution" {
         ]
       },
       {
-        Sid = "WriteTaskLogs"
+        Sid    = "WriteTaskLogs"
         Effect = "Allow"
         Action = [
           "logs:CreateLogStream",
@@ -129,7 +129,7 @@ resource "aws_iam_role" "worker_task" {
   name_prefix = "${local.name}-worker-task-"
 
   assume_role_policy = aws_iam_role.api_task.assume_role_policy
-  tags              = local.common_tags
+  tags               = local.common_tags
 }
 
 resource "aws_iam_role" "release_gate_task" {

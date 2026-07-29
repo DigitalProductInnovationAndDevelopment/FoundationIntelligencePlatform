@@ -1,94 +1,94 @@
 locals {
   custom_alarms = {
     readiness-failure = {
-      metric      = "readiness_success"
-      comparison  = "LessThanThreshold"
-      threshold   = 1
-      periods     = 2
-      period      = 60
-      statistic   = "Minimum"
-      runbook     = "readiness-failure"
+      metric     = "readiness_success"
+      comparison = "LessThanThreshold"
+      threshold  = 1
+      periods    = 2
+      period     = 60
+      statistic  = "Minimum"
+      runbook    = "readiness-failure"
     }
     api-5xx-budget = {
-      metric      = "api_errors_total"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 5
-      periods     = 5
-      period      = 60
-      statistic   = "Sum"
-      runbook     = "bad-deployment"
+      metric     = "api_errors_total"
+      comparison = "GreaterThanThreshold"
+      threshold  = 5
+      periods    = 5
+      period     = 60
+      statistic  = "Sum"
+      runbook    = "bad-deployment"
     }
     api-latency-budget = {
-      metric      = "api_request_duration_ms"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 1000
-      periods     = 5
-      period      = 60
-      statistic   = "p95"
-      runbook     = "bad-deployment"
+      metric     = "api_request_duration_ms"
+      comparison = "GreaterThanThreshold"
+      threshold  = 1000
+      periods    = 5
+      period     = 60
+      statistic  = "p95"
+      runbook    = "bad-deployment"
     }
     stale-data = {
-      metric      = "dataset_age_seconds"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 691200
-      periods     = 2
-      period      = 3600
-      statistic   = "Maximum"
-      runbook     = "stale-dataset"
+      metric     = "dataset_age_seconds"
+      comparison = "GreaterThanThreshold"
+      threshold  = 691200
+      periods    = 2
+      period     = 3600
+      statistic  = "Maximum"
+      runbook    = "stale-dataset"
     }
     pipeline-failure = {
-      metric      = "pipeline_failures_total"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 0
-      periods     = 1
-      period      = 300
-      statistic   = "Sum"
-      runbook     = "ingestion-failure"
+      metric     = "pipeline_failures_total"
+      comparison = "GreaterThanThreshold"
+      threshold  = 0
+      periods    = 1
+      period     = 300
+      statistic  = "Sum"
+      runbook    = "ingestion-failure"
     }
     reconciliation-mismatch = {
-      metric      = "reconciliation_mismatch_count"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 0
-      periods     = 1
-      period      = 300
-      statistic   = "Maximum"
-      runbook     = "migration-failure"
+      metric     = "reconciliation_mismatch_count"
+      comparison = "GreaterThanThreshold"
+      threshold  = 0
+      periods    = 1
+      period     = 300
+      statistic  = "Maximum"
+      runbook    = "migration-failure"
     }
     conversion-gap-increase = {
-      metric      = "conversion_gap_count"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 432
-      periods     = 1
-      period      = 3600
-      statistic   = "Maximum"
-      runbook     = "stale-dataset"
+      metric     = "conversion_gap_count"
+      comparison = "GreaterThanThreshold"
+      threshold  = 432
+      periods    = 1
+      period     = 3600
+      statistic  = "Maximum"
+      runbook    = "stale-dataset"
     }
     programme-coverage-decrease = {
-      metric      = "programme_coverage_ratio"
-      comparison  = "LessThanThreshold"
-      threshold   = 0.44
-      periods     = 1
-      period      = 3600
-      statistic   = "Minimum"
-      runbook     = "stale-dataset"
+      metric     = "programme_coverage_ratio"
+      comparison = "LessThanThreshold"
+      threshold  = 0.44
+      periods    = 1
+      period     = 3600
+      statistic  = "Minimum"
+      runbook    = "stale-dataset"
     }
     geography-coverage-decrease = {
-      metric      = "geography_coverage_ratio"
-      comparison  = "LessThanThreshold"
-      threshold   = 0.34
-      periods     = 1
-      period      = 3600
-      statistic   = "Minimum"
-      runbook     = "stale-dataset"
+      metric     = "geography_coverage_ratio"
+      comparison = "LessThanThreshold"
+      threshold  = 0.34
+      periods    = 1
+      period     = 3600
+      statistic  = "Minimum"
+      runbook    = "stale-dataset"
     }
     cost-threshold = {
-      metric      = "estimated_cost_usd"
-      comparison  = "GreaterThanThreshold"
-      threshold   = 500
-      periods     = 1
-      period      = 86400
-      statistic   = "Maximum"
-      runbook     = "cost-spike"
+      metric     = "estimated_cost_usd"
+      comparison = "GreaterThanThreshold"
+      threshold  = 500
+      periods    = 1
+      period     = 86400
+      statistic  = "Maximum"
+      runbook    = "cost-spike"
     }
   }
 
@@ -221,10 +221,10 @@ resource "aws_cloudwatch_dashboard" "platform" {
   dashboard_body = jsonencode({
     widgets = [
       {
-        type = "metric"
-        x = 0
-        y = 0
-        width = 12
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
         height = 6
         properties = {
           title  = "API readiness, errors and latency"
@@ -237,10 +237,10 @@ resource "aws_cloudwatch_dashboard" "platform" {
         }
       },
       {
-        type = "metric"
-        x = 12
-        y = 0
-        width = 12
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
         height = 6
         properties = {
           title  = "RDS health"
@@ -253,10 +253,10 @@ resource "aws_cloudwatch_dashboard" "platform" {
         }
       },
       {
-        type = "metric"
-        x = 0
-        y = 6
-        width = 24
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 24
         height = 6
         properties = {
           title  = "Pipeline queue and DLQ"
@@ -285,11 +285,11 @@ resource "aws_budgets_budget" "monthly" {
   }
 
   notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 80
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_sns_topic_arns  = [aws_sns_topic.operations.arn]
+    comparison_operator       = "GREATER_THAN"
+    threshold                 = 80
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "FORECASTED"
+    subscriber_sns_topic_arns = [aws_sns_topic.operations.arn]
   }
 
   notification {

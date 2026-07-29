@@ -27,8 +27,8 @@ locals {
     }
   }
 
-  nat_gateway_keys = var.single_nat_gateway ? ["0"] : sort(keys(local.public_subnets))
-  storage_classes  = toset(["raw", "validated", "curated", "exports", "frontend"])
+  nat_gateway_keys         = var.single_nat_gateway ? ["0"] : sort(keys(local.public_subnets))
+  storage_classes          = toset(["raw", "validated", "curated", "exports", "frontend"])
   pipeline_storage_classes = toset(["raw", "validated", "curated", "exports"])
   versioned_storage_classes = toset([
     "raw",

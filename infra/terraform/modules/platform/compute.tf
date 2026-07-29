@@ -352,12 +352,12 @@ resource "aws_ecs_service" "api" {
 }
 
 resource "aws_ecs_service" "worker" {
-  name                  = "worker"
-  cluster               = aws_ecs_cluster.this.id
-  task_definition       = aws_ecs_task_definition.worker.arn
-  desired_count         = var.worker_desired_count
-  launch_type           = "FARGATE"
-  platform_version      = "1.4.0"
+  name                   = "worker"
+  cluster                = aws_ecs_cluster.this.id
+  task_definition        = aws_ecs_task_definition.worker.arn
+  desired_count          = var.worker_desired_count
+  launch_type            = "FARGATE"
+  platform_version       = "1.4.0"
   enable_execute_command = false
 
   network_configuration {

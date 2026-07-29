@@ -4,7 +4,7 @@ module "platform" {
   environment = "staging"
   aws_region  = var.aws_region
 
-  availability_zones        = ["${var.aws_region}a", "${var.aws_region}b"]
+  availability_zones         = ["${var.aws_region}a", "${var.aws_region}b"]
   vpc_cidr                   = "10.50.0.0/16"
   public_subnet_cidrs        = ["10.50.0.0/24", "10.50.1.0/24"]
   application_subnet_cidrs   = ["10.50.10.0/24", "10.50.11.0/24"]
@@ -12,11 +12,11 @@ module "platform" {
   single_nat_gateway         = false
   enable_interface_endpoints = true
 
-  api_image                     = var.api_image
-  worker_image                  = var.worker_image
+  api_image                    = var.api_image
+  worker_image                 = var.worker_image
   frontend_origin_image_digest = var.frontend_origin_image_digest
-  api_desired_count             = 2
-  worker_desired_count          = 2
+  api_desired_count            = 2
+  worker_desired_count         = 2
 
   rds_instance_class        = "db.t4g.medium"
   rds_allocated_storage_gib = 100

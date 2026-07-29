@@ -5,15 +5,15 @@ resource "aws_kms_key_policy" "platform" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "AccountAdministration"
-        Effect   = "Allow"
+        Sid       = "AccountAdministration"
+        Effect    = "Allow"
         Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root" }
-        Action   = "kms:*"
-        Resource = "*"
+        Action    = "kms:*"
+        Resource  = "*"
       },
       {
-        Sid      = "CloudFrontReadFrontendObjects"
-        Effect   = "Allow"
+        Sid       = "CloudFrontReadFrontendObjects"
+        Effect    = "Allow"
         Principal = { Service = "cloudfront.amazonaws.com" }
         Action = [
           "kms:Decrypt",
@@ -27,8 +27,8 @@ resource "aws_kms_key_policy" "platform" {
         }
       },
       {
-        Sid      = "OperationalNotificationEncryption"
-        Effect   = "Allow"
+        Sid       = "OperationalNotificationEncryption"
+        Effect    = "Allow"
         Principal = { Service = "sns.amazonaws.com" }
         Action = [
           "kms:Decrypt",

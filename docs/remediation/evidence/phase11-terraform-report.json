@@ -5,17 +5,17 @@
   "terraform": {
     "environments": ["dev", "staging"],
     "files": 26,
-    "resource_blocks": 101,
+    "resource_blocks": 103,
     "resource_types": 58,
     "provider": "hashicorp/aws ~> 5.90",
     "remote_backend_declared": false,
     "schedules_enabled": false,
-    "terraform_cli": "not_installed",
-    "local_terraform_image": "not_present",
+    "terraform_cli": "docker hashicorp/terraform 1.9.8",
+    "local_terraform_image": "hashicorp/terraform@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd",
     "provider_lock": "not_generated",
-    "fmt": "not_tested",
-    "init_backend_false": "not_tested",
-    "validate": "not_tested",
+    "fmt": "passed",
+    "init_backend_false": "blocked_missing_unauthorised_aws_provider",
+    "validate": "blocked_missing_unauthorised_aws_provider",
     "security_scanner": "not_installed",
     "plan": "not_tested",
     "apply": "prohibited_not_run"
@@ -57,8 +57,6 @@
     "live_pricing_claimed": false
   },
   "blockers": [
-    "terraform executable is not installed",
-    "no local Terraform container image is present",
     "Terraform providers cannot be fetched from the currently approved package sources",
     "tflint/checkov/tfsec/trivy/semgrep are not installed",
     "AWS read access and plan generation are not approved",

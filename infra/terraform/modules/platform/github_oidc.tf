@@ -62,7 +62,7 @@ resource "aws_iam_role_policy" "github_deployment" {
         Resource = "*"
       },
       {
-        Sid = "PublishImmutableImages"
+        Sid    = "PublishImmutableImages"
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",
@@ -75,7 +75,7 @@ resource "aws_iam_role_policy" "github_deployment" {
         Resource = [aws_ecr_repository.api.arn, aws_ecr_repository.worker.arn]
       },
       {
-        Sid = "InspectAndDeployServices"
+        Sid    = "InspectAndDeployServices"
         Effect = "Allow"
         Action = [
           "ecs:DescribeServices",
@@ -104,9 +104,9 @@ resource "aws_iam_role_policy" "github_deployment" {
         }
       },
       {
-        Sid      = "PassExactTaskRoles"
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
+        Sid    = "PassExactTaskRoles"
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
         Resource = [
           aws_iam_role.ecs_execution.arn,
           aws_iam_role.api_task.arn,
@@ -137,9 +137,9 @@ resource "aws_iam_role_policy" "github_deployment" {
         }
       },
       {
-        Sid      = "PublishFrontend"
-        Effect   = "Allow"
-        Action   = ["s3:DeleteObject", "s3:GetObject", "s3:ListBucket", "s3:PutObject"]
+        Sid    = "PublishFrontend"
+        Effect = "Allow"
+        Action = ["s3:DeleteObject", "s3:GetObject", "s3:ListBucket", "s3:PutObject"]
         Resource = [
           aws_s3_bucket.data["frontend"].arn,
           "${aws_s3_bucket.data["frontend"].arn}/*",

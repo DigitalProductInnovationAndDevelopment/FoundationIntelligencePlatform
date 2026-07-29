@@ -80,6 +80,14 @@ Local pull verification selected the `linux/arm64` variants. The pinned values
 are manifest-list digests; `docker-bake.hcl` declares both `linux/amd64` and
 `linux/arm64` targets.
 
+### Local Terraform validation tool
+
+The approved Docker Hub pull of `hashicorp/terraform:1.9.8` resolved manifest
+digest `sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd`
+and local arm64 image ID
+`sha256:97aaea908f872c3c60b75e9bffd6eeae34386c0e9671d6b2a1e30418ea702269`.
+It was run with `--network none`; no Terraform provider was downloaded.
+
 ## Phase-4 rebuild record
 
 The Phase-4 backend rebuild reused the unchanged hashed Python locks and the

@@ -100,9 +100,9 @@ data "aws_iam_policy_document" "bucket_transport" {
   dynamic "statement" {
     for_each = each.key == "frontend" ? [1] : []
     content {
-      sid     = "AllowCloudFrontOriginAccess"
-      effect  = "Allow"
-      actions = ["s3:GetObject"]
+      sid       = "AllowCloudFrontOriginAccess"
+      effect    = "Allow"
+      actions   = ["s3:GetObject"]
       resources = ["${each.value.arn}/*"]
 
       principals {

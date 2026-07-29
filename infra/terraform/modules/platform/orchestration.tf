@@ -86,7 +86,7 @@ resource "aws_iam_role_policy" "step_functions" {
         Resource = [aws_iam_role.ecs_execution.arn, aws_iam_role.worker_task.arn]
       },
       {
-        Sid = "ManageSynchronousTaskEvents"
+        Sid    = "ManageSynchronousTaskEvents"
         Effect = "Allow"
         Action = [
           "events:PutRule",
@@ -109,7 +109,7 @@ resource "aws_iam_role_policy" "step_functions" {
         }
       },
       {
-        Sid = "WriteExecutionLogs"
+        Sid    = "WriteExecutionLogs"
         Effect = "Allow"
         Action = [
           "logs:CreateLogDelivery",
@@ -140,10 +140,10 @@ resource "aws_sfn_state_machine" "pipeline" {
         Type     = "Task"
         Resource = "arn:${data.aws_partition.current.partition}:states:::ecs:runTask.sync"
         Parameters = {
-          LaunchType         = "FARGATE"
-          Cluster            = aws_ecs_cluster.this.arn
-          TaskDefinition     = aws_ecs_task_definition.worker.arn
-          PlatformVersion    = "1.4.0"
+          LaunchType           = "FARGATE"
+          Cluster              = aws_ecs_cluster.this.arn
+          TaskDefinition       = aws_ecs_task_definition.worker.arn
+          PlatformVersion      = "1.4.0"
           EnableExecuteCommand = false
           NetworkConfiguration = {
             AwsvpcConfiguration = {

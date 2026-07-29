@@ -4,19 +4,19 @@ module "platform" {
   environment = "dev"
   aws_region  = var.aws_region
 
-  availability_zones       = ["${var.aws_region}a", "${var.aws_region}b"]
-  vpc_cidr                  = "10.40.0.0/16"
-  public_subnet_cidrs       = ["10.40.0.0/24", "10.40.1.0/24"]
-  application_subnet_cidrs  = ["10.40.10.0/24", "10.40.11.0/24"]
-  database_subnet_cidrs     = ["10.40.20.0/24", "10.40.21.0/24"]
-  single_nat_gateway        = true
+  availability_zones         = ["${var.aws_region}a", "${var.aws_region}b"]
+  vpc_cidr                   = "10.40.0.0/16"
+  public_subnet_cidrs        = ["10.40.0.0/24", "10.40.1.0/24"]
+  application_subnet_cidrs   = ["10.40.10.0/24", "10.40.11.0/24"]
+  database_subnet_cidrs      = ["10.40.20.0/24", "10.40.21.0/24"]
+  single_nat_gateway         = true
   enable_interface_endpoints = false
 
   api_image                    = var.api_image
   worker_image                 = var.worker_image
   frontend_origin_image_digest = var.frontend_origin_image_digest
-  api_desired_count             = 1
-  worker_desired_count          = 1
+  api_desired_count            = 1
+  worker_desired_count         = 1
 
   rds_instance_class        = "db.t4g.small"
   rds_allocated_storage_gib = 30
