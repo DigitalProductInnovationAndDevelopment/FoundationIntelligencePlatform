@@ -1048,3 +1048,9 @@ module and then exited nonzero because `registry.terraform.io/hashicorp/aws`
 could not be reached. `terraform validate` then reported `Missing required
 provider`. The exact temporary directory was removed. No provider, AWS API,
 state, plan, apply, destroy, upload or Git remote was accessed.
+
+The final evidence review corrected one report-only field: both environment
+roots declare an intentionally coordinate-free S3 backend configuration point,
+so `remote_backend_declared` is `true` while
+`remote_backend_coordinates_committed` is `false`. No backend was initialized
+and no state was read or changed.
