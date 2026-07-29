@@ -518,3 +518,77 @@ the aggregate audit checksum remains
 `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`.
 No packages or images were downloaded in Phase 5. No AWS, paid/live API,
 scraper/model, upload or push action occurred.
+
+## Phase 6 — performance and concurrency
+
+### Baseline, migration and materialization
+
+All PostgreSQL access remained on `127.0.0.1:55432` or through the retained local Compose container. Commands used the local password file; its value was never printed.
+
+```zsh
+PYTHONPATH=src DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/python scripts/benchmark_postgres.py --samples 1 --concurrency 2
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic upgrade head
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -Atc "SELECT refresh_analytics_materializations('<active-dataset>')"
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic downgrade 0003_grant_award_timestamp
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder venv/bin/alembic upgrade head
+```
+
+The first `0004` upgrade rolled back transactionally because SQLAlchemy treated a colon in a function string literal as a bind marker. Removing that punctuation resolved the parser collision. After adding country connections and two grant source-ID indexes, the full `0004 -> 0003 -> 0004` cycle passed and the active materialization refreshed to 204,220 rows. No active dataset changed.
+
+The diagnostic single-sample baseline measured health 2.66 ms, organization list 324.29 ms, map 2,003.54 ms, trends 413.14 ms, themes 1,092.86 ms, summary 4,347.61 ms, dashboard 8,941.12 ms, two concurrent dashboards 16,025.45 ms, exact registry 15,038.99 ms, text registry 16,841.02 ms and country funders 800.02 ms. These values drove the aggregate/index work and are not represented as percentile evidence.
+
+### Static, PostgreSQL and performance tests
+
+```zsh
+PYTHONPATH=src venv/bin/python -m py_compile src/bff/postgres/base.py src/bff/postgres/analytics_repository.py src/bff/postgres/funder_repository.py src/bff/postgres/registry_repository.py src/bff/postgres/routes.py src/migration/sqlite_to_postgres.py src/tests/test_postgres_application.py src/tests/test_postgres_performance.py src/tests/test_postgres_schema.py scripts/benchmark_postgres.py scripts/load_test_api.py alembic/versions/0004_versioned_analytics_materializations.py
+venv/bin/python -m flake8 src alembic scripts/benchmark_postgres.py scripts/load_test_api.py --count --select=E9,F63,F7,F82 --show-source --statistics
+git diff --check
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_postgres_performance.py
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_postgres_performance.py src/tests/test_postgres_application.py
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_postgres_application.py src/tests/test_postgres_schema.py src/tests/test_sqlite_to_postgres_migration.py
+```
+
+The dedicated gate finishes 5/5, performance plus application finishes 10/10, and application/schema/migration finishes 15/15. The latter exercises real candidate activation, materialization, rollback and cleanup. Static compilation, blocking Flake8 and diff whitespace checks pass.
+
+Recorded diagnostic failures were resolved and repeated:
+
+- An invocation with `TEST_DATABASE_URL=postgresql+asyncpg://foundation_app@127.0.0.1:55432/...` omitted the password and produced four authentication failures; the prescribed `RUN_POSTGRES_INTEGRATION=1` plus secret-file configuration then passed.
+- The schema fixture attempted to insert a second active dataset. It now transactionally marks the prior dataset `rolled_back`, creates the fixture, deletes it and restores the exact prior active status; the repeated test passes.
+- Ten simultaneous health requests alongside a heavy query exceeded the five-connection pool by construction. The isolation gate now matches the bounded five-request pool workload and passes below 100 ms.
+- One combined run observed a 4,006 ms single cold dashboard outlier and 1,110.944 ms instrumented search plan. Cold dashboard evidence now uses 20 independent cache-cleared samples and checks p95; `EXPLAIN` retains index verification while endpoint p95 independently enforces the 1-second search SLO.
+- A no-results search fixture contained common English tokens and legitimately produced trigram matches. A high-entropy token now verifies the corrected nonzero overall `registry_count` on an empty result page.
+
+### Final benchmark and authenticated in-process API load
+
+```zsh
+PYTHONPATH=src APP_ENV=test DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_POOL_SIZE=5 DATABASE_MAX_OVERFLOW=5 DATABASE_POOL_TIMEOUT_SECONDS=5 DATABASE_CONNECT_TIMEOUT_SECONDS=5 DATABASE_STATEMENT_TIMEOUT_MS=30000 venv/bin/python scripts/benchmark_postgres.py --samples 10 --concurrency 5
+PYTHONPATH=src APP_ENV=production DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_POOL_SIZE=5 DATABASE_MAX_OVERFLOW=5 DATABASE_POOL_TIMEOUT_SECONDS=5 DATABASE_CONNECT_TIMEOUT_SECONDS=5 DATABASE_STATEMENT_TIMEOUT_MS=30000 venv/bin/python scripts/load_test_api.py --samples 20 --concurrency 5
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -At -F '|' -c '<version, active dataset, materialization and aggregate count queries>'
+shasum -a 256 src/data/charities.db
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+The first API-load attempt used the normal 140-request application rate limit and correctly received HTTP 429 before the concurrent dashboard section. The local test harness was changed to 10,000 requests for this bounded run only and uses a generated in-memory RSA/JWKS/JWT plus `MemoryAuditSink`; it makes no identity, network or persistent audit calls. A missing `.venv/bin/python` invocation failed before execution and was repeated with the repository's existing `venv/bin/python`.
+
+Final repository cold-dashboard p95 is 255.31 ms. Final production-mode API p95 values are health 3.70 ms, organization list 245.73 ms, map 4.95 ms, lazy map connections 6.04 ms, overview 43.45 ms, yearly trends 5.09 ms, exact registry 18.01 ms, text registry 83.93 ms and country funder ranking 19.20 ms. Five concurrent dashboards complete in 472.80 ms at 10.575/s with zero errors. Endpoint error rates are all zero; cache hit ratio is 0.8333 and no pool connection remains checked out.
+
+The catalog query reports PostgreSQL 16.14, Alembic `0004_versioned_analytics`, exactly one active dataset and 204,220 controlled aggregate rows. It also reports 39 validated FKs, zero unvalidated FKs and 136 checks. Protected checksums remain `8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651` and `d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`.
+
+No dependency/image download, AWS access, paid/live external call, scraper/model invocation, upload or push occurred in Phase 6.
+
+### Final normal suite and container rebuild
+
+```zsh
+PYTHONPATH=src venv/bin/python -m pytest -q
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config DOCKER_HOST=unix:///Users/manuelgrabmayer/.docker/run/docker.sock docker build --pull=false --target backend-runtime -t foundation-intelligence-backend:local .
+```
+
+The normal suite passes 311 tests, skips nine explicit live-environment tests, passes eight route subtests and emits the same 53 dependency/test-client deprecation warnings. The first Docker request was rejected before process creation because the execution service's usage/approval limit had been reached. After the user explicitly reconfirmed the exact local action, the same command succeeded. The pinned base and hash-locked dependency layers all reported `Using cache`; no pull, package download or dependency resolution occurred. The final local arm64 image is 354,456,439 bytes, runs as `10001:10001` and has image ID `sha256:cf71388a8fc83cdc32632ea2cf8ea9b7b27d4d68b164f848cd6e97b49905af8a`.
+
+The scoped local checkpoint was then attempted:
+
+```zsh
+git add <explicit Phase-6 file list>
+```
+
+The ordinary sandbox failed with `Unable to create .git/index.lock: Operation not permitted`. The required escalated repetition was rejected before process creation by the same execution-service usage/approval limit. No index lock remained and no indirect `.git` write was attempted. The user then explicitly reconfirmed targeted staging and the local Phase-6 commit, while continuing to prohibit broad staging and push.

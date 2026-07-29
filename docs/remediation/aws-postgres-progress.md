@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 6 — performance and concurrency
+- Current phase: Phase 7 — frontend remediation
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -109,7 +109,19 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 6 — Performance and concurrency
 
-- Status: `PENDING`
+- Status: `COMPLETED`
+- Runtime changes: default map, monthly/yearly trends, programme themes, network rankings, country funders and top-recipient relationships read dataset-versioned PostgreSQL aggregates. Country connections are a separate lazy endpoint capped at 250 rows. Filtered journeys retain bounded fact-table queries instead of returning stale aggregate results.
+- Cache and pool controls: the in-process serving cache is dataset-keyed, TTL-bounded, copy-safe and single-flight. Activation/rollback changes the dataset key and stale entries are pruned. The async SQLAlchemy pool remains bounded at size 5 plus overflow 5; statement, pool and connect timeouts remain explicit. Cancellation releases the connection and a subsequent query succeeds.
+- Performance evidence: 20 application-cache-cold repository dashboards have p50 `157.56 ms`, p95 `255.31 ms` and p99 `539.80 ms`. Production-mode API p95 is `3.70 ms` health, `245.73 ms` organization list, `4.95 ms` map, `43.45 ms` overview, `6.04 ms` lazy connections, `18.01 ms` exact registry and `83.93 ms` text registry. Five concurrent dashboards complete in `472.80 ms` at `10.575` dashboards/s with zero errors.
+- Query-plan evidence: `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` proves the default map uses `analytics_country_aggregates`, exact registry lookup uses `ix_registry_current_normalized_name`, and ranked text lookup uses a registry GIN/trigram index. The default paths no longer scan `grant_overview_facts` for every request.
+- Materialization evidence: Alembic head `0004_versioned_analytics` contains nine aggregate tables and one transactional refresh function. The active `sqlite-v7-8fc0cce61c81-r2` materialization contains 204,220 rows; candidate activation builds it before switching the single active dataset, and rollback builds a missing prior materialization before reactivation.
+- Tests executed: 311 passing normal tests, 9 explicit live-environment skips, 8 passing route subtests and 53 known warnings; five dedicated performance/cache/plan/concurrency/timeout tests; five PostgreSQL application tests; combined 15/15 PostgreSQL application/schema/migration tests; production-mode API load test and repository benchmark. All final measured request error rates are zero, the pool has zero checked-out connections after each run, and the final cache hit ratio is `0.8333` at the API layer.
+- Resolved failures: the baseline default map, summary, dashboard and registry paths took 2–17 seconds. A first load script hit the application rate limit, an early test invocation omitted the database password, the schema fixture assumed an empty active-dataset state, and one cold timing/plan run exposed p95-versus-single-sample measurement ambiguity. The final harness uses local OIDC credentials, a test-only high request allowance, correct secret-file configuration, state restoration and percentile-based cold measurements.
+- Evidence files: `evidence/phase6-performance-report.json` and `evidence/phase6-performance-report.md`.
+- Protected state: active SQLite and aggregate `docs/audits/` checksums remain exactly at baseline. No dependency or image download, AWS call, paid/live API, scraper/model call, upload or push occurred. The final data-free backend rebuild succeeded with `--pull=false`; every dependency layer was cached. The local arm64 image is 354,456,439 bytes, runs as `10001:10001` and has ID `sha256:cf71388a8fc83cdc32632ea2cf8ea9b7b27d4d68b164f848cd6e97b49905af8a`.
+- Gate result: `PASS`.
+- Commit hash: the scoped Phase-6 commit containing this ledger and evidence.
+- Next exact action: remove frontend request duplication and hook warnings, isolate loading/error states, implement responsive/accessibility fixes and split the oversized bundle without changing visual identity.
 
 ### Phase 7 — Frontend remediation
 

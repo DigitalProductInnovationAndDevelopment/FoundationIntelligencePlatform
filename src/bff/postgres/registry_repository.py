@@ -12,7 +12,12 @@ from typing import Any, Optional, Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bff.postgres.base import PostgresRepository, iso_value, number_value
+from bff.postgres.base import (
+    ANALYTICS_CACHE,
+    PostgresRepository,
+    iso_value,
+    number_value,
+)
 
 
 _SEARCH_SQL = text(
@@ -49,6 +54,7 @@ _SEARCH_SQL = text(
                 @@ websearch_to_tsquery('simple'::regconfig, :query)
             OR registry.normalized_name % :normalized_query
         )
+          AND registry.is_current_source_record
           AND (CAST(:registration_status AS text) IS NULL
                OR registry.registration_status = CAST(:registration_status AS text))
     )
@@ -176,6 +182,25 @@ class RegistryRepository(PostgresRepository):
         payload = json.dumps(filters, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(payload.encode()).hexdigest()[:20]
 
+    async def _registry_count(self, dataset_version: str) -> int:
+        async def load() -> int:
+            async with self.sessions() as session:
+                count = await session.scalar(
+                    text(
+                        """
+                        SELECT COUNT(*) FROM charity_registry_organizations
+                        WHERE dataset_version=:dataset_version
+                          AND is_current_source_record
+                        """
+                    ),
+                    {"dataset_version": dataset_version},
+                )
+            return int(count or 0)
+
+        return await ANALYTICS_CACHE.get_or_create(
+            (dataset_version, "registry_count"), load
+        )
+
     async def page(
         self,
         *,
@@ -214,6 +239,30 @@ class RegistryRepository(PostgresRepository):
             "has_grant_data": has_grant_data,
             "sort": sort,
         }
+        advanced_filters = any(
+            value is not None
+            for value in (
+                charity_number,
+                income_min,
+                income_max,
+                expenditure_min,
+                expenditure_max,
+                country,
+                region,
+                beneficiary_geography,
+                has_enriched_profile,
+                has_grant_data,
+            )
+        )
+        if normalized_query and not advanced_filters and sort == "name":
+            return await self._search_page(
+                query=str(query),
+                normalized_query=normalized_query,
+                status=status,
+                cursor=cursor,
+                limit=limit,
+                filters=filters,
+            )
         signature = self._filter_signature(filters)
         decoded = RegistryPageCursor.decode(cursor, signature) if cursor else None
         offset = decoded.offset if decoded else 0
@@ -321,15 +370,7 @@ class RegistryRepository(PostgresRepository):
                 dict(row)
                 for row in (await session.execute(sql, parameters)).mappings()
             ]
-            registry_count = await session.scalar(
-                text(
-                    """
-                    SELECT COUNT(*) FROM charity_registry_organizations
-                    WHERE dataset_version=:dataset_version AND is_current_source_record
-                    """
-                ),
-                {"dataset_version": dataset_version},
-            )
+        registry_count = await self._registry_count(dataset_version)
         has_more = len(rows) > limit
         page_rows = rows[:limit]
         results = [
@@ -355,6 +396,150 @@ class RegistryRepository(PostgresRepository):
             "search_strategy": (
                 "postgresql_tsvector_trigram" if normalized_query else "postgresql_indexed_filters"
             ),
+        }
+
+    async def _search_page(
+        self,
+        *,
+        query: str,
+        normalized_query: str,
+        status: Optional[str],
+        cursor: Optional[str],
+        limit: int,
+        filters: dict[str, Any],
+    ) -> dict[str, Any]:
+        limit = min(max(int(limit), 1), 100)
+        async with self.sessions() as session:
+            dataset_version = await self.active_dataset(session)
+            exact_rows = [
+                dict(row)
+                for row in (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT registry_id, charity_number, linked_charity_number,
+                                   registered_name, registration_status, income,
+                                   expenditure, city, administrative_region,
+                                   country_code, 1.0::numeric AS search_rank
+                            FROM charity_registry_organizations
+                            WHERE dataset_version=:dataset_version
+                              AND is_current_source_record
+                              AND normalized_name=:normalized_query
+                              AND (CAST(:status AS text) IS NULL
+                                   OR registration_status=CAST(:status AS text))
+                            ORDER BY registry_id LIMIT :limit
+                            """
+                        ),
+                        {
+                            "dataset_version": dataset_version,
+                            "normalized_query": normalized_query,
+                            "status": status,
+                            "limit": limit + 1,
+                        },
+                    )
+                ).mappings()
+            ]
+        if exact_rows and cursor:
+            raise ValueError("Exact registry results do not accept a continuation cursor")
+        if exact_rows:
+            candidates = exact_rows[:limit]
+            next_cursor = None
+            has_more = len(exact_rows) > limit
+            strategy = "postgresql_exact_normalized_name"
+        else:
+            search_result = await RegistrySearchRepository(self.sessions).search(
+                query,
+                registration_status=status,
+                cursor=cursor,
+                limit=limit,
+            )
+            candidates = list(search_result["items"])
+            next_cursor = search_result["next_cursor"]
+            has_more = next_cursor is not None
+            strategy = "postgresql_tsvector_trigram_ranked"
+        candidate_ids = [str(row["registry_id"]) for row in candidates]
+        registry_count = await self._registry_count(dataset_version)
+        if not candidate_ids:
+            return {
+                "results": [],
+                "next_cursor": None,
+                "has_more": False,
+                "applied_filters": filters,
+                "page_size": 0,
+                "registry_count": registry_count,
+                "search_strategy": strategy,
+            }
+        async with self.sessions() as session:
+            rows = [
+                dict(row)
+                for row in (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT registry.registry_id, registry.charity_number,
+                                   registry.registered_name,
+                                   registry.registration_status, registry.income,
+                                   registry.expenditure, registry.city,
+                                   registry.administrative_region,
+                                   registry.country_code,
+                                   registry.source_record_updated_at,
+                                   EXISTS (
+                                       SELECT 1 FROM organization_registry_links AS link
+                                       WHERE link.dataset_version=registry.dataset_version
+                                         AND link.registry_id=registry.registry_id
+                                         AND link.match_status='accepted'
+                                   ) AS has_enriched_profile,
+                                   EXISTS (
+                                       SELECT 1 FROM grants AS grant_row
+                                       WHERE grant_row.dataset_version=registry.dataset_version
+                                         AND (
+                                           grant_row.funding_org_source_id=
+                                               'GB-CHC-' || registry.charity_number
+                                           OR grant_row.recipient_org_source_id=
+                                               'GB-CHC-' || registry.charity_number
+                                         )
+                                   ) AS has_grant_data,
+                                   EXISTS (
+                                       SELECT 1 FROM organization_registry_links AS link
+                                       JOIN charities AS profile
+                                         ON profile.dataset_version=link.dataset_version
+                                        AND profile.charity_id=link.enriched_organization_id
+                                       WHERE link.dataset_version=registry.dataset_version
+                                         AND link.registry_id=registry.registry_id
+                                         AND link.match_status='accepted'
+                                         AND profile.primary_source='Philea'
+                                   ) AS has_philea_data
+                            FROM charity_registry_organizations AS registry
+                            WHERE registry.dataset_version=:dataset_version
+                              AND registry.registry_id=ANY(CAST(:ids AS text[]))
+                            """
+                        ),
+                        {"dataset_version": dataset_version, "ids": candidate_ids},
+                    )
+                ).mappings()
+            ]
+        by_id = {str(row["registry_id"]): row for row in rows}
+        results = []
+        for registry_id in candidate_ids:
+            row = by_id[registry_id]
+            results.append(
+                {
+                    **row,
+                    "income": number_value(row.get("income")),
+                    "expenditure": number_value(row.get("expenditure")),
+                    "source_record_updated_at": iso_value(
+                        row.get("source_record_updated_at")
+                    ),
+                }
+            )
+        return {
+            "results": results,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "applied_filters": filters,
+            "page_size": len(results),
+            "registry_count": int(registry_count or 0),
+            "search_strategy": strategy,
         }
 
     async def detail(self, registry_id: str) -> Optional[dict[str, Any]]:

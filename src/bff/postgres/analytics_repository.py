@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from decimal import Decimal
 from typing import Any, Optional, Sequence
 
 from sqlalchemy import text
 
-from bff.postgres.base import PostgresRepository, iso_value, number_value, utc_now
+from bff.postgres.base import (
+    ANALYTICS_CACHE,
+    MaterializationUnavailable,
+    PostgresRepository,
+    iso_value,
+    number_value,
+    utc_now,
+)
 
 
 VALID_ORIGINAL = "fact.original_amount_status NOT IN ('negative','invalid','missing')"
-VALID_EUR = "fact.eur_amount_status NOT IN ('missing','invalid')"
+VALID_EUR = "fact.eur_amount_status NOT IN ('negative','missing','invalid')"
 
 
 def _amount_policy(maximum: Optional[float] = None) -> dict[str, Any]:
@@ -34,6 +42,48 @@ def _scope() -> dict[str, str]:
 
 
 class AnalyticsRepository(PostgresRepository):
+    _MATERIALIZED_FILTERS = {
+        "date_from",
+        "date_to",
+        "beneficiary_geographies",
+        "programme_areas",
+        "donor",
+        "recipient",
+        "sources",
+        "foundation_regions",
+        "min_annual_giving",
+        "min_avg_grant_size",
+    }
+
+    @classmethod
+    def _can_use_materializations(cls, filters: dict[str, Any]) -> bool:
+        return not any(filters.get(name) for name in cls._MATERIALIZED_FILTERS)
+
+    @staticmethod
+    def _basis(currency: Optional[str]) -> tuple[str, str]:
+        selected = str(currency or "").upper()
+        return ("original", selected) if selected else ("eur_converted", "EUR")
+
+    @staticmethod
+    async def _require_materialization(session, dataset_version: str) -> None:
+        available = await session.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM materialization_versions
+                    WHERE dataset_version=:dataset_version
+                      AND materialization_name='dashboard_analytics'
+                      AND is_active AND status='active'
+                )
+                """
+            ),
+            {"dataset_version": dataset_version},
+        )
+        if not available:
+            raise MaterializationUnavailable(
+                f"Dataset {dataset_version!r} has no active dashboard materialization"
+            )
+
     @staticmethod
     def _filtered_scope(filters: dict[str, Any]) -> tuple[str, dict[str, Any], str, str]:
         conditions = ["fact.dataset_version=:dataset_version"]
@@ -97,13 +147,14 @@ class AnalyticsRepository(PostgresRepository):
     async def beneficiary_geographies(self) -> list[str]:
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
+            await self._require_materialization(session, dataset_version)
             rows = await session.execute(
                 text(
                     """
-                    SELECT DISTINCT country_name
-                    FROM grant_beneficiary_countries
+                    SELECT value FROM analytics_filter_values
                     WHERE dataset_version=:dataset_version
-                    ORDER BY country_name
+                      AND dimension='beneficiary_country'
+                    ORDER BY value
                     """
                 ),
                 {"dataset_version": dataset_version},
@@ -111,6 +162,8 @@ class AnalyticsRepository(PostgresRepository):
         return [str(row[0]) for row in rows if row[0]]
 
     async def map(self, **filters: Any) -> dict[str, Any]:
+        if self._can_use_materializations(filters):
+            return await self._materialized_map(**filters)
         conditions, parameters, amount_minor, selected_currency = self._filtered_scope(filters)
         valid = VALID_ORIGINAL if parameters["currency"] else VALID_EUR
         async with self.sessions() as session:
@@ -243,6 +296,212 @@ class AnalyticsRepository(PostgresRepository):
             },
         }
 
+    async def _materialized_map(self, **filters: Any) -> dict[str, Any]:
+        basis, selected_currency = self._basis(filters.get("currency"))
+        async with self.sessions() as session:
+            dataset_version = await self.active_dataset(session)
+        await ANALYTICS_CACHE.retain_dataset(dataset_version)
+        key = (
+            dataset_version,
+            "map",
+            basis,
+            selected_currency,
+            float(filters.get("min_coverage") or 0.30),
+        )
+
+        async def load() -> dict[str, Any]:
+            async with self.sessions() as session:
+                await self._require_materialization(session, dataset_version)
+                rows = [
+                    dict(row)
+                    for row in (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT country_code, country_name, grant_count,
+                                       total_amount_minor / 100.0 AS total_amount,
+                                       distinct_funders, distinct_recipients,
+                                       association_count, multi_country_count,
+                                       invalid_amount_count
+                                FROM analytics_country_aggregates
+                                WHERE dataset_version=:dataset_version
+                                  AND amount_basis=:basis AND currency=:currency
+                                ORDER BY total_amount_minor DESC, country_name,
+                                         country_code LIMIT 500
+                                """
+                            ),
+                            {
+                                "dataset_version": dataset_version,
+                                "basis": basis,
+                                "currency": selected_currency,
+                            },
+                        )
+                    ).mappings()
+                ]
+                totals = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT * FROM analytics_scope_totals
+                            WHERE dataset_version=:dataset_version
+                              AND amount_basis=:basis AND currency=:currency
+                            """
+                        ),
+                        {
+                            "dataset_version": dataset_version,
+                            "basis": basis,
+                            "currency": selected_currency,
+                        },
+                    )
+                ).mappings().first()
+                currencies = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='currency'
+                        ORDER BY value
+                        """
+                    ),
+                    {"dataset_version": dataset_version},
+                )
+                sources = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='source'
+                        ORDER BY value
+                        """
+                    ),
+                    {"dataset_version": dataset_version},
+                )
+            if totals is None:
+                raise MaterializationUnavailable(
+                    f"Materialized currency scope {basis}/{selected_currency} is unavailable"
+                )
+            total_grants = int(totals["total_grants"])
+            known_grants = int(totals["known_geography_grants"])
+            items = [
+                {
+                    "region_or_country_code": row["country_code"],
+                    "region_or_country_name": str(row["country_name"]),
+                    "grant_count": int(row["grant_count"]),
+                    "total_amount": number_value(row["total_amount"]),
+                    "currency": selected_currency,
+                    "distinct_funders": int(row["distinct_funders"]),
+                    "distinct_recipients": int(row["distinct_recipients"]),
+                    "top_programme_areas": [],
+                    "top_funders": [],
+                    "top_recipients": [],
+                    "original_geographies": [str(row["country_name"])],
+                    "funding_grant_count": int(row["grant_count"]),
+                    "excluded_multi_country_grant_count": int(row["multi_country_count"]),
+                    "excluded_invalid_amount_grant_count": int(row["invalid_amount_count"]),
+                }
+                for row in rows
+            ]
+            return {
+                "status": "available" if items else "no_transactions_found",
+                "geographic_dimension": "beneficiary_country",
+                "items": items,
+                "known_geography_count": known_grants,
+                "unknown_geography_count": max(0, total_grants - known_grants),
+                "coverage_percentage": (
+                    round(known_grants / total_grants * 100, 2) if total_grants else 0.0
+                ),
+                "currencies": [str(row[0]) for row in currencies],
+                "selected_currency": selected_currency,
+                "funding_status": "available",
+                "funding_mode_available": True,
+                "grant_country_association_count": sum(
+                    int(row["association_count"]) for row in rows
+                ),
+                "multi_country_grant_count": int(totals["multi_country_grants"]),
+                "funding_excluded_multi_country_count": 0,
+                "funding_excluded_multi_country_amount": 0.0,
+                "funding_excluded_currency_count": 0,
+                "funding_excluded_invalid_amount_count": int(
+                    totals["invalid_amount_grants"]
+                ),
+                "connections": [],
+                "connection_grant_count": 0,
+                "connection_excluded_no_headquarters_count": 0,
+                "connection_same_country_count": 0,
+                "minimum_coverage_threshold": float(
+                    filters.get("min_coverage") or 0.30
+                ),
+                "metadata": {
+                    "data_mode": "postgresql_versioned_country_aggregates",
+                    "source": [str(row[0]) for row in sources],
+                    "generated_at": iso_value(totals["refreshed_at"]),
+                    "record_count": total_grants,
+                    "derivation": "versioned analytics_country_aggregates",
+                    "coverage": known_grants / total_grants if total_grants else 0.0,
+                    "limitations": [
+                        "Country connections are a bounded lazy secondary journey."
+                    ],
+                },
+            }
+
+        return await ANALYTICS_CACHE.get_or_create(key, load)
+
+    async def map_connections(
+        self, *, currency: Optional[str] = None, limit: int = 100
+    ) -> dict[str, Any]:
+        basis, selected_currency = self._basis(currency)
+        limit = min(max(int(limit), 1), 250)
+        async with self.sessions() as session:
+            dataset_version = await self.active_dataset(session)
+            await self._require_materialization(session, dataset_version)
+            rows = [
+                dict(row)
+                for row in (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT origin_country_code, origin_country_name,
+                                   destination_country_code,
+                                   destination_country_name, grant_count,
+                                   origin_sources
+                            FROM analytics_country_connections
+                            WHERE dataset_version=:dataset_version
+                              AND amount_basis=:basis AND currency=:currency
+                            ORDER BY grant_count DESC, origin_country_code,
+                                     destination_country_code LIMIT :limit
+                            """
+                        ),
+                        {
+                            "dataset_version": dataset_version,
+                            "basis": basis,
+                            "currency": selected_currency,
+                            "limit": limit,
+                        },
+                    )
+                ).mappings()
+            ]
+        return {
+            "status": "available" if rows else "no_transactions_found",
+            "connections": [
+                {
+                    "origin_country_code": row["origin_country_code"],
+                    "origin_country_name": row["origin_country_name"],
+                    "destination_country_code": row["destination_country_code"],
+                    "destination_country_name": row["destination_country_name"],
+                    "grant_count": int(row["grant_count"]),
+                    "top_funders": [],
+                    "origin_sources": list(row["origin_sources"] or []),
+                }
+                for row in rows
+            ],
+            "connection_grant_count": sum(int(row["grant_count"]) for row in rows),
+            "selected_currency": selected_currency,
+            "limit": limit,
+            "metadata": {
+                "data_mode": "postgresql_versioned_country_connections",
+                "loading_mode": "lazy_bounded_secondary_request",
+                "dataset_version": dataset_version,
+            },
+        }
+
     async def suggestions(
         self,
         *,
@@ -250,6 +509,57 @@ class AnalyticsRepository(PostgresRepository):
         limit: int,
     ) -> dict[str, Any]:
         limit = min(max(int(limit), 1), 5000)
+        if not sources:
+            async with self.sessions() as session:
+                dataset_version = await self.active_dataset(session)
+                await self._require_materialization(session, dataset_version)
+                parameters = {
+                    "dataset_version": dataset_version,
+                    "limit": limit,
+                }
+                donors = await session.execute(
+                    text(
+                        """
+                        SELECT organization_name, grant_count
+                        FROM analytics_entity_rankings
+                        WHERE dataset_version=:dataset_version
+                          AND amount_basis='eur_converted' AND currency='EUR'
+                          AND entity_role='funder'
+                        ORDER BY grant_count DESC, organization_name, entity_key
+                        LIMIT :limit
+                        """
+                    ),
+                    parameters,
+                )
+                recipients = await session.execute(
+                    text(
+                        """
+                        SELECT organization_name, grant_count
+                        FROM analytics_entity_rankings
+                        WHERE dataset_version=:dataset_version
+                          AND amount_basis='eur_converted' AND currency='EUR'
+                          AND entity_role='recipient'
+                        ORDER BY grant_count DESC, organization_name, entity_key
+                        LIMIT :limit
+                        """
+                    ),
+                    parameters,
+                )
+            return {
+                "status": "available",
+                "donors": [
+                    {"name": str(row[0]), "grant_count": int(row[1])}
+                    for row in donors
+                ],
+                "recipients": [
+                    {"name": str(row[0]), "grant_count": int(row[1])}
+                    for row in recipients
+                ],
+                "metadata": {
+                    "data_mode": "postgresql_versioned_entity_rankings",
+                    "bounded_limit": limit,
+                },
+            }
         source_condition = (
             "AND source_namespace=ANY(CAST(:sources AS text[]))" if sources else ""
         )
@@ -292,6 +602,8 @@ class AnalyticsRepository(PostgresRepository):
         }
 
     async def trends(self, **filters: Any) -> dict[str, Any]:
+        if self._can_use_materializations(filters):
+            return await self._materialized_trends(**filters)
         months = min(max(int(filters.get("months") or 120), 1), 120)
         conditions, parameters, amount_minor, selected_currency = self._filtered_scope(filters)
         valid = VALID_ORIGINAL if parameters["currency"] else VALID_EUR
@@ -409,7 +721,155 @@ class AnalyticsRepository(PostgresRepository):
             "scope": _scope(),
         }
 
+    async def _materialized_trends(self, **filters: Any) -> dict[str, Any]:
+        basis, selected_currency = self._basis(filters.get("currency"))
+        granularity = "yearly" if filters.get("granularity") == "yearly" else "monthly"
+        months = (
+            min(max(int(filters.get("months") or 120), 1), 120)
+            if "months" in filters else None
+        )
+        async with self.sessions() as session:
+            dataset_version = await self.active_dataset(session)
+        await ANALYTICS_CACHE.retain_dataset(dataset_version)
+        key = (
+            dataset_version,
+            "trends",
+            basis,
+            selected_currency,
+            granularity,
+            months,
+        )
+
+        async def load() -> dict[str, Any]:
+            month_condition = (
+                "AND period_start >= CURRENT_DATE "
+                "- CAST(:months AS integer) * INTERVAL '1 month'"
+                if months is not None else ""
+            )
+            parameters = {
+                "dataset_version": dataset_version,
+                "basis": basis,
+                "currency": selected_currency,
+                "granularity": granularity,
+                "months": months,
+            }
+            async with self.sessions() as session:
+                await self._require_materialization(session, dataset_version)
+                rows = [
+                    dict(row)
+                    for row in (
+                        await session.execute(
+                            text(
+                                f"""
+                                SELECT period_start, source_record_count, grant_count,
+                                       total_amount_minor / 100.0 AS total_amount,
+                                       mapped_grant_count, unmapped_grant_count
+                                FROM analytics_period_aggregates
+                                WHERE dataset_version=:dataset_version
+                                  AND amount_basis=:basis AND currency=:currency
+                                  AND granularity=:granularity {month_condition}
+                                ORDER BY period_start
+                                """
+                            ),
+                            parameters,
+                        )
+                    ).mappings()
+                ]
+                totals = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT * FROM analytics_scope_totals
+                            WHERE dataset_version=:dataset_version
+                              AND amount_basis=:basis AND currency=:currency
+                            """
+                        ),
+                        parameters,
+                    )
+                ).mappings().first()
+                currencies = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='currency'
+                        ORDER BY value
+                        """
+                    ),
+                    parameters,
+                )
+                sources = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='source'
+                        ORDER BY value
+                        """
+                    ),
+                    parameters,
+                )
+            if totals is None:
+                raise MaterializationUnavailable(
+                    f"Materialized currency scope {basis}/{selected_currency} is unavailable"
+                )
+            first_date = iso_value(totals["first_award_date"])
+            latest_date = iso_value(totals["latest_award_date"])
+            format_period = (
+                (lambda value: value.strftime("%Y"))
+                if granularity == "yearly"
+                else (lambda value: value.strftime("%Y-%m"))
+            )
+            return {
+                "status": "available" if rows else "no_transactions_found",
+                "currency": selected_currency,
+                "available_currencies": [str(row[0]) for row in currencies],
+                "date_basis": "award_date",
+                "granularity": granularity,
+                "period": {
+                    "from": format_period(rows[0]["period_start"]),
+                    "to": format_period(rows[-1]["period_start"]),
+                    "months": len(rows),
+                    "anchor": "observed_award_dates",
+                } if rows else None,
+                "items": [
+                    {
+                        "month": format_period(row["period_start"]),
+                        "grant_count": int(row["grant_count"]),
+                        "source_record_count": int(row["source_record_count"]),
+                        "total_amount": number_value(row["total_amount"]),
+                        "coverage_status": "observed",
+                        "mapped_grant_count": int(row["mapped_grant_count"]),
+                        "unmapped_grant_count": int(row["unmapped_grant_count"]),
+                    }
+                    for row in rows
+                ],
+                "excluded": {
+                    "missing_date": int(totals["missing_date_grants"]),
+                    "invalid_date": 0,
+                    "missing_amount": int(totals["invalid_amount_grants"]),
+                    "invalid_amount": int(totals["invalid_amount_grants"]),
+                    "negative_amount": int(totals["negative_amount_grants"]),
+                    "unsupported_currency": 0,
+                    "currency_filtered": 0,
+                    "unsupported_source": 0,
+                    "outside_period": 0,
+                },
+                "zero_amount_count": int(totals["zero_amount_grants"]),
+                "latest_award_date": latest_date,
+                "last_refreshed_at": iso_value(totals["refreshed_at"]),
+                "source": [str(row[0]) for row in sources],
+                "data_mode": "postgresql_versioned_period_aggregates",
+                "amount_policy": _amount_policy(
+                    number_value(totals["maximum_amount_minor"]) / 100
+                    if totals["maximum_amount_minor"] is not None else None
+                ),
+                "scope": _scope(),
+            }
+
+        return await ANALYTICS_CACHE.get_or_create(key, load)
+
     async def themes(self, *, currency: Optional[str] = None, **filters: Any) -> dict[str, Any]:
+        if self._can_use_materializations(filters):
+            return await self._materialized_themes(currency=currency)
         filters = {**filters, "currency": currency}
         conditions, parameters, amount_minor, selected_currency = self._filtered_scope(filters)
         valid = VALID_ORIGINAL if parameters["currency"] else VALID_EUR
@@ -557,77 +1017,324 @@ class AnalyticsRepository(PostgresRepository):
             "scope": _scope(),
         }
 
+    async def _materialized_themes(
+        self, *, currency: Optional[str]
+    ) -> dict[str, Any]:
+        basis, selected_currency = self._basis(currency)
+        async with self.sessions() as session:
+            dataset_version = await self.active_dataset(session)
+        await ANALYTICS_CACHE.retain_dataset(dataset_version)
+        key = (dataset_version, "themes", basis, selected_currency)
+
+        async def load() -> dict[str, Any]:
+            parameters = {
+                "dataset_version": dataset_version,
+                "basis": basis,
+                "currency": selected_currency,
+            }
+            async with self.sessions() as session:
+                await self._require_materialization(session, dataset_version)
+                rows = [
+                    dict(row)
+                    for row in (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT programme_area, distinct_grant_count,
+                                       weighted_grant_count,
+                                       allocated_amount_minor / 100.0 AS allocated_amount,
+                                       source_classified_count,
+                                       inferred_classified_count
+                                FROM analytics_programme_aggregates
+                                WHERE dataset_version=:dataset_version
+                                  AND amount_basis=:basis AND currency=:currency
+                                ORDER BY allocated_amount_minor DESC, programme_area
+                                """
+                            ),
+                            parameters,
+                        )
+                    ).mappings()
+                ]
+                totals = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT * FROM analytics_scope_totals
+                            WHERE dataset_version=:dataset_version
+                              AND amount_basis=:basis AND currency=:currency
+                            """
+                        ),
+                        parameters,
+                    )
+                ).mappings().first()
+                currencies = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='currency'
+                        ORDER BY value
+                        """
+                    ),
+                    parameters,
+                )
+                sources = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='source'
+                        ORDER BY value
+                        """
+                    ),
+                    parameters,
+                )
+            if totals is None:
+                raise MaterializationUnavailable(
+                    f"Materialized currency scope {basis}/{selected_currency} is unavailable"
+                )
+            qualifying = int(totals["total_grants"] - totals["invalid_amount_grants"])
+            classified = int(totals["classified_grants"])
+            source_count = int(totals["source_classified_grants"])
+            inferred_count = int(totals["inferred_classified_grants"])
+            items = [
+                {
+                    "programme_area": str(row["programme_area"]),
+                    "distinct_grant_count": int(row["distinct_grant_count"]),
+                    "weighted_grant_count": round(
+                        float(row["weighted_grant_count"]), 4
+                    ),
+                    "allocated_amount": round(float(row["allocated_amount"]), 2),
+                    "source_classified_grant_count": int(
+                        row["source_classified_count"]
+                    ),
+                    "inferred_classified_grant_count": int(
+                        row["inferred_classified_count"]
+                    ),
+                    "unclassified_grant_count": 0,
+                }
+                for row in rows
+            ]
+            allocated = round(sum(item["allocated_amount"] for item in items), 2)
+            return {
+                "status": "available" if qualifying else "no_transactions_found",
+                "currency": selected_currency,
+                "available_currencies": [str(row[0]) for row in currencies],
+                "allocation_method": "equal_split_across_available_categories",
+                "classification_precedence": ["source", "inferred", "unclassified"],
+                "inference_confidence_threshold": 0.65,
+                "items": items,
+                "classification_coverage": {
+                    "qualifying_grant_count": qualifying,
+                    "classified_grant_count": classified,
+                    "unclassified_grant_count": int(totals["unclassified_grants"]),
+                    "classified_percentage": (
+                        round(classified / qualifying * 100, 2) if qualifying else 0.0
+                    ),
+                    "source_classified_grant_count": source_count,
+                    "inferred_classified_grant_count": inferred_count,
+                    "source_percentage": (
+                        round(source_count / qualifying * 100, 2) if qualifying else 0.0
+                    ),
+                    "inferred_percentage": (
+                        round(inferred_count / qualifying * 100, 2) if qualifying else 0.0
+                    ),
+                    "multiple_programme_area_grant_count": int(
+                        totals["multiple_programme_grants"]
+                    ),
+                    "invalid_source_label_count": int(
+                        totals["invalid_source_label_grants"]
+                    ),
+                    "low_confidence_inference_count": int(
+                        totals["low_confidence_grants"]
+                    ),
+                },
+                "qualifying_amount": round(
+                    float(totals["total_amount_minor"]) / 100, 2
+                ),
+                "allocated_amount": allocated,
+                "excluded": {
+                    "missing_date": 0,
+                    "invalid_date": 0,
+                    "missing_amount": int(totals["invalid_amount_grants"]),
+                    "invalid_amount": int(totals["invalid_amount_grants"]),
+                    "negative_amount": int(totals["negative_amount_grants"]),
+                    "unsupported_currency": 0,
+                    "currency_filtered": 0,
+                    "unsupported_source": 0,
+                    "outside_period": 0,
+                },
+                "zero_amount_count": int(totals["zero_amount_grants"]),
+                "last_refreshed_at": iso_value(totals["refreshed_at"]),
+                "source": [str(row[0]) for row in sources],
+                "data_mode": "postgresql_versioned_programme_aggregates",
+                "amount_policy": _amount_policy(
+                    number_value(totals["maximum_amount_minor"]) / 100
+                    if totals["maximum_amount_minor"] is not None else None
+                ),
+                "scope": _scope(),
+            }
+
+        return await ANALYTICS_CACHE.get_or_create(key, load)
+
     async def summary(self) -> dict[str, Any]:
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
+        await ANALYTICS_CACHE.retain_dataset(dataset_version)
+        key = (dataset_version, "network_summary")
+
+        async def load() -> dict[str, Any]:
             parameters = {"dataset_version": dataset_version}
-            total = await session.scalar(
-                text("SELECT COUNT(*) FROM grants WHERE dataset_version=:dataset_version"),
-                parameters,
-            )
-            currencies = await session.execute(
-                text(
-                    """
-                    SELECT DISTINCT currency FROM grants
-                    WHERE dataset_version=:dataset_version AND currency IS NOT NULL
-                    ORDER BY currency
-                    """
-                ),
-                parameters,
-            )
-            donor_rows = await session.execute(
-                text(
-                    """
-                    SELECT funding_charity_id, funding_name, currency,
-                           SUM(amount) AS total_amount, COUNT(*) AS grant_count
-                    FROM grants WHERE dataset_version=:dataset_version
-                      AND amount>0 AND currency IS NOT NULL
-                    GROUP BY funding_charity_id, funding_name, currency
-                    ORDER BY total_amount DESC NULLS LAST, funding_name LIMIT 10
-                    """
-                ),
-                parameters,
-            )
-            recipient_rows = await session.execute(
-                text(
-                    """
-                    SELECT recipient_charity_id, recipient_name, currency,
-                           SUM(amount) AS total_amount, COUNT(*) AS grant_count
-                    FROM grants WHERE dataset_version=:dataset_version
-                      AND amount>0 AND currency IS NOT NULL
-                    GROUP BY recipient_charity_id, recipient_name, currency
-                    ORDER BY total_amount DESC NULLS LAST, recipient_name LIMIT 10
-                    """
-                ),
-                parameters,
-            )
-        ranking = lambda rows: [
-            {
-                "organization_id": row[0],
-                "organization_name": str(row[1] or "Unknown"),
-                "total_amount": float(row[3] or 0),
-                "currency": str(row[2]),
-                "grant_count": int(row[4]),
+            async with self.sessions() as session:
+                await self._require_materialization(session, dataset_version)
+                total = await session.scalar(
+                    text(
+                        """
+                        SELECT total_grants FROM analytics_scope_totals
+                        WHERE dataset_version=:dataset_version
+                          AND amount_basis='eur_converted' AND currency='EUR'
+                        """
+                    ),
+                    parameters,
+                )
+                currencies = await session.execute(
+                    text(
+                        """
+                        SELECT value FROM analytics_filter_values
+                        WHERE dataset_version=:dataset_version AND dimension='currency'
+                        ORDER BY value
+                        """
+                    ),
+                    parameters,
+                )
+                donor_rows = await session.execute(
+                    text(
+                        """
+                        SELECT organization_id, organization_name,
+                               total_amount_minor / 100.0, grant_count
+                        FROM analytics_entity_rankings
+                        WHERE dataset_version=:dataset_version
+                          AND amount_basis='eur_converted' AND currency='EUR'
+                          AND entity_role='funder'
+                        ORDER BY total_amount_minor DESC, entity_key LIMIT 10
+                        """
+                    ),
+                    parameters,
+                )
+                recipient_rows = await session.execute(
+                    text(
+                        """
+                        SELECT organization_id, organization_name,
+                               total_amount_minor / 100.0, grant_count
+                        FROM analytics_entity_rankings
+                        WHERE dataset_version=:dataset_version
+                          AND amount_basis='eur_converted' AND currency='EUR'
+                          AND entity_role='recipient'
+                        ORDER BY total_amount_minor DESC, entity_key LIMIT 10
+                        """
+                    ),
+                    parameters,
+                )
+            ranking = lambda rows: [
+                {
+                    "organization_id": row[0],
+                    "organization_name": str(row[1] or "Unknown"),
+                    "total_amount": float(row[2] or 0),
+                    "currency": "EUR",
+                    "grant_count": int(row[3]),
+                }
+                for row in rows
+            ]
+            return {
+                "status": "available" if total else "no_transactions_found",
+                "total_grant_count": int(total or 0),
+                "currencies": [str(row[0]) for row in currencies],
+                "largest_donors": ranking(donor_rows),
+                "largest_recipients": ranking(recipient_rows),
+                "metadata": {
+                    "data_mode": "postgresql_versioned_entity_rankings",
+                    "source": ["360Giving"],
+                    "generated_at": utc_now(),
+                    "record_count": int(total or 0),
+                    "derivation": "versioned analytics_entity_rankings",
+                    "limitations": ["Default rankings use converted EUR facts."],
+                },
             }
-            for row in rows
-        ]
-        return {
-            "status": "available" if total else "no_transactions_found",
-            "total_grant_count": int(total or 0),
-            "currencies": [str(row[0]) for row in currencies],
-            "largest_donors": ranking(donor_rows),
-            "largest_recipients": ranking(recipient_rows),
-            "metadata": {
-                "data_mode": "postgresql_active_dataset",
-                "source": ["360Giving"],
-                "generated_at": utc_now(),
-                "record_count": int(total or 0),
-                "derivation": "stored grant transactions",
-                "limitations": ["Rankings are currency-separated."],
-            },
-        }
+
+        return await ANALYTICS_CACHE.get_or_create(key, load)
 
     async def overview(self, **filters: Any) -> dict[str, Any]:
+        if self._can_use_materializations(filters):
+            basis, selected_currency = self._basis(filters.get("currency"))
+            async with self.sessions() as session:
+                dataset_version = await self.active_dataset(session)
+                await self._require_materialization(session, dataset_version)
+                parameters = {
+                    "dataset_version": dataset_version,
+                    "basis": basis,
+                    "currency": selected_currency,
+                }
+                totals = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT total_grants, total_amount_minor,
+                                   first_award_date, latest_award_date
+                            FROM analytics_scope_totals
+                            WHERE dataset_version=:dataset_version
+                              AND amount_basis=:basis AND currency=:currency
+                            """
+                        ),
+                        parameters,
+                    )
+                ).mappings().first()
+                entity_counts = dict(
+                    (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT entity_role, COUNT(*)
+                                FROM analytics_entity_rankings
+                                WHERE dataset_version=:dataset_version
+                                  AND amount_basis=:basis AND currency=:currency
+                                GROUP BY entity_role
+                                """
+                            ),
+                            parameters,
+                        )
+                    ).all()
+                )
+            if totals is None:
+                raise MaterializationUnavailable(
+                    f"Materialized currency scope {basis}/{selected_currency} is unavailable"
+                )
+            map_payload, trend_payload, theme_payload = await asyncio.gather(
+                self.map(**filters),
+                self.trends(**filters),
+                self.themes(
+                    currency=filters.get("currency"),
+                    **{key: value for key, value in filters.items() if key != "currency"},
+                ),
+            )
+            return {
+                "status": "available" if totals["total_grants"] else "no_transactions_found",
+                "kpis": {
+                    "grant_count": int(totals["total_grants"]),
+                    "funder_count": int(entity_counts.get("funder", 0)),
+                    "recipient_count": int(entity_counts.get("recipient", 0)),
+                    "total_amount": float(totals["total_amount_minor"]) / 100,
+                    "currency": selected_currency,
+                },
+                "map": map_payload,
+                "trends": trend_payload,
+                "themes": theme_payload,
+                "available_date_range": {
+                    "from": iso_value(totals["first_award_date"]),
+                    "to": iso_value(totals["latest_award_date"]),
+                },
+                "applied_filters": filters,
+                "metadata": {
+                    "data_mode": "postgresql_versioned_dashboard_aggregates"
+                },
+            }
         conditions, parameters, amount_minor, selected_currency = self._filtered_scope(filters)
         valid = VALID_ORIGINAL if parameters["currency"] else VALID_EUR
         async with self.sessions() as session:

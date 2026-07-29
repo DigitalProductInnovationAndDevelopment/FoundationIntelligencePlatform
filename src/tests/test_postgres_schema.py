@@ -127,6 +127,7 @@ class TestPostgreSQLSchemaIntegration(unittest.TestCase):
         configured_url = os.getenv("TEST_DATABASE_URL") or DatabaseSettings.from_env().sqlalchemy_url()
         engine = create_async_engine(configured_url, pool_pre_ping=True)
         dataset_version = f"schema-test-{uuid.uuid4()}"
+        prior_active = None
         try:
             async with engine.connect() as connection:
                 table_rows = await connection.execute(
@@ -143,8 +144,20 @@ class TestPostgreSQLSchemaIntegration(unittest.TestCase):
                     text("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_trgm')")
                 )
                 self.assertTrue(extension)
+                prior_active = await connection.scalar(
+                    text("SELECT dataset_version FROM dataset_versions WHERE is_active")
+                )
 
             async with engine.begin() as connection:
+                if prior_active:
+                    await connection.execute(
+                        text(
+                            "UPDATE dataset_versions "
+                            "SET is_active=FALSE, status='rolled_back' "
+                            "WHERE dataset_version=:version"
+                        ),
+                        {"version": prior_active},
+                    )
                 await connection.execute(
                     text(
                         """
@@ -200,6 +213,15 @@ class TestPostgreSQLSchemaIntegration(unittest.TestCase):
                         text("DELETE FROM dataset_versions WHERE dataset_version=:version"),
                         {"version": dataset_version},
                     )
+                    if prior_active:
+                        await connection.execute(
+                            text(
+                                "UPDATE dataset_versions "
+                                "SET is_active=TRUE, status='active' "
+                                "WHERE dataset_version=:version"
+                            ),
+                            {"version": prior_active},
+                        )
             finally:
                 await engine.dispose()
 

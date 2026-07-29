@@ -289,6 +289,15 @@ async def grant_map(
     )
 
 
+@router.get("/grants/map/connections", response_model=dict[str, Any])
+async def grant_map_connections(
+    currency: Optional[str] = Query(default=None, min_length=3, max_length=4),
+    limit: int = Query(default=100, ge=1, le=250),
+    repository: AnalyticsRepository = Depends(_analytics),
+):
+    return await repository.map_connections(currency=currency, limit=limit)
+
+
 @router.get("/grants/overview", response_model=dict[str, Any])
 async def grant_overview(
     currency: Optional[str] = Query(default=None, min_length=3, max_length=4),

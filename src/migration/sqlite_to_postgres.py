@@ -25,7 +25,7 @@ from bff.database import DatabaseSettings
 
 
 GIB = 1024**3
-MIGRATION_SCHEMA_VERSION = "0003_grant_award_timestamp"
+MIGRATION_SCHEMA_VERSION = "0004_versioned_analytics"
 EXPECTED_COUNTS = {
     "charities": 373,
     "charity_registry_organizations": 397_469,
@@ -972,6 +972,9 @@ async def _activate(
                         staged_global_columns[table],
                         records,
                     )
+        await connection.fetchval(
+            "SELECT refresh_analytics_materializations($1)", dataset_version
+        )
         previous = await connection.fetchval(
             "SELECT dataset_version FROM dataset_versions WHERE is_active FOR UPDATE"
         )
@@ -1162,6 +1165,22 @@ async def rollback_dataset(target_dataset_version: str) -> dict[str, Optional[st
                 return {"from": current, "to": target_dataset_version}
             if target["status"] not in ("approved", "rolled_back"):
                 raise MigrationError("Rollback target is not an approved prior dataset")
+            materialized = await connection.fetchval(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM materialization_versions
+                    WHERE dataset_version=$1
+                      AND materialization_name='dashboard_analytics'
+                      AND is_active
+                )
+                """,
+                target_dataset_version,
+            )
+            if not materialized:
+                await connection.fetchval(
+                    "SELECT refresh_analytics_materializations($1)",
+                    target_dataset_version,
+                )
             if current:
                 await connection.execute(
                     """

@@ -109,6 +109,15 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Decision: production security audit events are awaited and persisted to the append-only PostgreSQL table with actual HTTP status. Development/test may use structured-log or memory sinks without creating a production fallback.
 - Consequence: production startup selects PostgreSQL application/admin routers before legacy modules can import and fails when PostgreSQL connection settings are incomplete. Legacy SQLite modules remain test/migration compatibility code, not a production route.
 
+## ADR-017 — Dataset-versioned serving aggregates and lazy relationships
+
+- Decision: the unfiltered dashboard reads transactionally refreshed, dataset-versioned scope, country, period, programme, entity and country-funder aggregates. Filtered requests continue to query versioned facts so an aggregate is never silently applied outside its declared dimensions.
+- Decision: country-to-country and funder-to-recipient relationships are independent secondary journeys. Country connections are capped at 250 rows; each funder stores only its top 50 recipients and returns at most 25 in detail. The primary dashboard never waits for either relationship graph.
+- Decision: the small application cache is TTL- and size-bounded, uses one in-flight loader per key, returns defensive copies and prefixes every key with the active dataset version. Dataset activation therefore invalidates by identity without mutable global flush coordination.
+- Decision: candidate migration builds all aggregates and the materialization control row in the same transaction that activates the candidate. Rollback refuses an unapproved target and creates a missing target materialization before changing active status.
+- Performance contract: local gates measure repository and authenticated production-mode API p50/p95/p99, cold dashboard p95, concurrent throughput/error count, cache hit ratio, pool recovery, timeout/cancellation and index-backed `EXPLAIN ANALYZE` plans. Performance claims are evidence, not substitutes for later production telemetry.
+- Consequence: PostgreSQL remains the source of truth; the cache is disposable and no response depends on filesystem state or an external cache service.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

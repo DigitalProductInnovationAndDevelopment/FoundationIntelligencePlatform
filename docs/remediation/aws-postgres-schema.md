@@ -1,7 +1,7 @@
 # PostgreSQL Schema Contract
 
 Status: implemented by Alembic revisions `0001_postgresql_foundation` through
-`0003_grant_award_timestamp` on 2026-07-29.
+`0004_versioned_analytics` on 2026-07-29.
 
 ## Version and activation model
 
@@ -32,9 +32,10 @@ transaction after reconciliation.
 | Jobs | `job_runs`, `job_events`, `source_ingestion_runs`; bounded statuses, timestamp ordering, idempotency and event sequence constraints. |
 | Audit/control | append-only `audit_events` and durable `idempotency_records`. |
 | Quality/governance | `data_quality_issues`, `materialization_versions`, `retention_actions`, `export_jobs`; quarantines retain original JSON values while queryable control fields remain relational. |
+| Versioned analytics | `analytics_scope_totals`, `analytics_country_aggregates`, `analytics_country_connections`, `analytics_period_aggregates`, `analytics_programme_aggregates`, `analytics_entity_rankings`, `analytics_country_funder_rankings`, `analytics_funder_relationships`, `analytics_filter_values`; every row is dataset-scoped and deleted by cascade with its dataset. |
 
 Every relationship declares update/delete behavior. The local catalog contains
-30 validated foreign keys and 119 check constraints. PostgreSQL enforces these
+39 validated foreign keys and 136 check constraints. PostgreSQL enforces these
 server-side for every connection; there is no connection-local equivalent to a
 SQLite FK pragma.
 
@@ -77,6 +78,14 @@ journeys are ported. Unported staging/production journeys are intentionally
 absent rather than receiving a hidden SQLite fallback; Phase 5 must complete
 all route/domain implementations before production becomes a GO.
 
+## Serving materialization contract
+
+Revision `0004_versioned_analytics` creates `refresh_analytics_materializations(dataset_version)`. It deletes and deterministically rebuilds only the named dataset's aggregates, then upserts the `dashboard_analytics` materialization control row. The migration activation transaction calls the function before changing the single active dataset. Rollback verifies the approved target and builds its aggregate set if absent before reactivation.
+
+The active local snapshot contains 204,220 aggregate rows: 10 scope totals, 241 countries, 176 country connections, 1,191 monthly/yearly periods, 68 programmes, 187,995 ranked entities, 1,155 country funders, 13,245 bounded funder-recipient relationships and 139 filter values. Original-currency scopes remain separate from converted EUR. Negative, missing and invalid monetary facts are counted for disclosure and excluded from additive totals.
+
+Default map, trend, theme, summary and funder queries use these tables. Arbitrarily filtered requests retain fact-table execution. Heavy country relationships are exposed through a separate endpoint capped at 250; funder-recipient materialization is capped at 50 per funder. Exact current-registry lookup adds a dataset/name/ID B-tree index, while text search retains the stored-vector/trigram GIN strategy.
+
 ## Local gate evidence
 
 - Host-venv `alembic upgrade head` succeeded.
@@ -84,8 +93,8 @@ all route/domain implementations before production becomes a GO.
   upgrade succeeded again.
 - The non-root, read-only Compose migration service independently upgraded from
   base to head.
-- The catalog reports revision `0003_grant_award_timestamp`, 25 application
-  tables, 30 validated FKs, zero unvalidated FKs, 119 checks, `pg_trgm` and all
-  three required search indexes.
+- The catalog reports revision `0004_versioned_analytics`, 34 application
+  tables, 39 validated FKs, zero unvalidated FKs, 136 checks, `pg_trgm`, the
+  three original search indexes and the exact-current-name B-tree index.
 - A real asyncpg integration test demonstrates FK rejection, full-text search,
   deterministic tie-breaking and cursor continuation.

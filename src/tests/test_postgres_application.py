@@ -54,7 +54,13 @@ class TestPostgreSQLRouteParity(unittest.TestCase):
         from bff.charity import router as legacy_router
         from bff.postgres.routes import router as postgresql_router
 
-        self.assertEqual(_route_contract(legacy_router), _route_contract(postgresql_router))
+        legacy = _route_contract(legacy_router)
+        postgresql = _route_contract(postgresql_router)
+        self.assertTrue(legacy.issubset(postgresql))
+        self.assertEqual(
+            postgresql - legacy,
+            {("/api/charities/grants/map/connections", ("GET",))},
+        )
 
     def test_production_startup_fails_without_postgresql_configuration(self):
         script = """
@@ -237,6 +243,11 @@ with TestClient(app) as client:
 
             page = await registry.page(limit=2)
             RegistryDirectoryPage.model_validate(page)
+            empty_page = await registry.page(
+                query="qzxjkvbpygfwmuqzxjkvbpygfwmu", limit=2
+            )
+            self.assertEqual(empty_page["results"], [])
+            self.assertGreater(empty_page["registry_count"], 0)
             RegistryOrganizationDetail.model_validate(await registry.detail(str(registry_id)))
 
             self.assertIsInstance(await analytics.beneficiary_geographies(), list)

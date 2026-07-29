@@ -14,6 +14,21 @@ from bff.postgres.base import PostgresRepository, iso_value, number_value, utc_n
 
 class SourceFunderRepository(PostgresRepository):
     @staticmethod
+    def _can_use_materialization(filters: dict[str, Any]) -> bool:
+        return not any(
+            filters.get(name)
+            for name in (
+                "date_from",
+                "date_to",
+                "beneficiary_geographies",
+                "programme_areas",
+                "donor",
+                "recipient",
+                "sources",
+            )
+        )
+
+    @staticmethod
     def _item(row: dict[str, Any], rank: Optional[int] = None) -> dict[str, Any]:
         linked_profile = row.get("effective_profile_id")
         link_status = "linked" if linked_profile is not None else "observed_only"
@@ -153,6 +168,16 @@ class SourceFunderRepository(PostgresRepository):
         page: int = 1,
         page_size: int = 25,
     ) -> dict[str, Any]:
+        if self._can_use_materialization(locals()):
+            return await self._materialized_list(
+                beneficiary_country=beneficiary_country,
+                currency=currency,
+                search=search,
+                profile_status=profile_status,
+                sort=sort,
+                page=page,
+                page_size=page_size,
+            )
         page = max(int(page), 1)
         page_size = min(max(int(page_size), 1), 100)
         filters = locals().copy()
@@ -345,6 +370,215 @@ class SourceFunderRepository(PostgresRepository):
             },
         }
 
+    async def _materialized_list(
+        self,
+        *,
+        beneficiary_country: str,
+        currency: Optional[str],
+        search: Optional[str],
+        profile_status: str,
+        sort: str,
+        page: int,
+        page_size: int,
+    ) -> dict[str, Any]:
+        page = max(int(page), 1)
+        page_size = min(max(int(page_size), 1), 100)
+        basis = "original" if currency else "eur_converted"
+        selected_currency = str(currency or "EUR").upper()
+        profile_condition = {
+            "all": "TRUE",
+            "linked": "effective_profile_id IS NOT NULL",
+            "observed_only": "effective_profile_id IS NULL",
+        }.get(profile_status)
+        if not profile_condition:
+            raise ValueError("Unsupported profile status")
+        order = {
+            "largest_observed_funding": (
+                "selected_amount_minor DESC, source_funder_key"
+            ),
+            "most_grants": "grant_count DESC, source_funder_key",
+            "most_recently_active": (
+                "latest_award_date DESC NULLS LAST, source_funder_key"
+            ),
+            "most_active": (
+                "grant_count DESC, latest_award_date DESC NULLS LAST, "
+                "source_funder_key"
+            ),
+            "most_recent": (
+                "latest_award_date DESC NULLS LAST, source_funder_key"
+            ),
+        }.get(sort)
+        if not order:
+            raise ValueError("Unsupported source-funder sort")
+        search_condition = (
+            "AND (ranking.display_name ILIKE :search "
+            "OR ranking.source_funder_key ILIKE :search)"
+            if search else ""
+        )
+        parameters = {
+            "beneficiary_country": beneficiary_country.upper(),
+            "basis": basis,
+            "currency": selected_currency,
+            "search": f"%{str(search or '').strip()}%",
+            "limit": page_size,
+            "offset": (page - 1) * page_size,
+        }
+        cte = f"""
+            WITH effective AS (
+                SELECT ranking.*,
+                       override.link_mode AS override_mode,
+                       override.revision AS override_revision,
+                       CASE
+                           WHEN override.link_mode IN ('observed_only','unlink','blocked')
+                               THEN NULL
+                           WHEN override.link_mode='link_profile'
+                               THEN override.target_profile_id
+                           ELSE ranking.observed_profile_id
+                       END AS effective_profile_id
+                FROM analytics_country_funder_rankings AS ranking
+                LEFT JOIN source_funder_link_overrides AS override
+                  ON override.source_namespace=ranking.source_namespace
+                 AND override.source_organization_id=ranking.override_identifier
+                WHERE ranking.dataset_version=:dataset_version
+                  AND ranking.amount_basis=:basis AND ranking.currency=:currency
+                  AND ranking.country_code=:beneficiary_country
+                  {search_condition}
+            )
+        """
+        async with self.sessions() as session:
+            dataset_version = await self.active_dataset(session)
+            parameters["dataset_version"] = dataset_version
+            materialized = await session.scalar(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM materialization_versions
+                        WHERE dataset_version=:dataset_version
+                          AND materialization_name='dashboard_analytics'
+                          AND is_active AND status='active'
+                    )
+                    """
+                ),
+                parameters,
+            )
+            if not materialized:
+                raise RuntimeError("Active dashboard materialization is unavailable")
+            total = await session.scalar(
+                text(f"{cte} SELECT COUNT(*) FROM effective WHERE {profile_condition}"),
+                parameters,
+            )
+            rows = [
+                dict(row)
+                for row in (
+                    await session.execute(
+                        text(
+                            f"""
+                            {cte}
+                            SELECT effective.*,
+                                   effective.selected_amount_minor / 100.0
+                                       AS selected_amount,
+                                   effective.fallback_amount_minor / 100.0
+                                       AS fallback_amount,
+                                   effective.currency AS selected_currency,
+                                   profile.name AS profile_name
+                            FROM effective
+                            LEFT JOIN charities AS profile
+                              ON profile.dataset_version=:dataset_version
+                             AND profile.charity_id=effective.effective_profile_id
+                            WHERE {profile_condition}
+                            ORDER BY {order} LIMIT :limit OFFSET :offset
+                            """
+                        ),
+                        parameters,
+                    )
+                ).mappings()
+            ]
+            range_row = (
+                await session.execute(
+                    text(
+                        f"""
+                        {cte}
+                        SELECT MIN(first_award_date), MAX(latest_award_date)
+                        FROM effective
+                        """
+                    ),
+                    parameters,
+                )
+            ).one()
+            currency_rows = await session.execute(
+                text(
+                    """
+                    SELECT value FROM analytics_filter_values
+                    WHERE dataset_version=:dataset_version AND dimension='currency'
+                    ORDER BY value
+                    """
+                ),
+                parameters,
+            )
+            country_name = await session.scalar(
+                text(
+                    """
+                    SELECT MIN(country_name) FROM analytics_country_funder_rankings
+                    WHERE dataset_version=:dataset_version
+                      AND country_code=:beneficiary_country
+                    """
+                ),
+                parameters,
+            )
+        items = [
+            self._item(row, parameters["offset"] + index + 1)
+            for index, row in enumerate(rows)
+        ]
+        total_items = int(total or 0)
+        linked_count = sum(1 for item in items if not item["source_only"])
+        return {
+            "status": "available" if total_items else "no_transactions_found",
+            "country": {
+                "code": beneficiary_country.upper(),
+                "name": str(country_name or beneficiary_country.upper()),
+            },
+            "summary": {
+                "matching_funder_count": total_items,
+                "matching_grant_count": sum(
+                    item["activity"]["grant_count"] for item in items
+                ),
+                "source_only_funder_count": len(items) - linked_count,
+                "linked_directory_funder_count": linked_count,
+            },
+            "items": items,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": math.ceil(total_items / page_size) if total_items else 0,
+            },
+            "available_date_range": {
+                "from": iso_value(range_row[0]),
+                "to": iso_value(range_row[1]),
+            },
+            "available_currencies": [str(row[0]) for row in currency_rows],
+            "available_sort_modes": [
+                "largest_observed_funding",
+                "most_grants",
+                "most_recently_active",
+                "most_active",
+                "most_recent",
+            ],
+            "applied_filters": {
+                "beneficiary_country": beneficiary_country.upper(),
+                "currency": currency,
+                "search": search,
+                "profile_status": profile_status,
+                "sort": sort,
+            },
+            "metadata": {
+                "data_mode": "postgresql_versioned_country_funder_rankings",
+                "identity_boundary": (
+                    "source funders remain distinct from directory profiles"
+                ),
+            },
+        }
+
     async def detail(
         self,
         source_funder_key: str,
@@ -373,21 +607,25 @@ class SourceFunderRepository(PostgresRepository):
             return None
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
+            basis = "original" if filters.get("currency") else "eur_converted"
+            selected_currency = str(filters.get("currency") or "EUR").upper()
             parameters = {
                 "dataset_version": dataset_version,
                 "key": key,
                 "country": str(filters["beneficiary_country"]).upper(),
+                "basis": basis,
+                "currency": selected_currency,
             }
             recipient_rows = await session.execute(
                 text(
                     """
-                    SELECT recipient_name, COUNT(DISTINCT grant_id) AS grant_count,
-                           SUM(CASE WHEN eur_amount_status NOT IN ('missing','invalid')
-                                    THEN eur_amount_minor ELSE 0 END) / 100.0 AS amount
-                    FROM grant_source_funder_facts
-                    WHERE dataset_version=:dataset_version AND source_funder_key=:key
-                      AND country_code=:country
-                    GROUP BY recipient_name ORDER BY amount DESC, recipient_name LIMIT 25
+                    SELECT recipient_name, grant_count,
+                           total_amount_minor / 100.0 AS amount
+                    FROM analytics_funder_relationships
+                    WHERE dataset_version=:dataset_version
+                      AND amount_basis=:basis AND currency=:currency
+                      AND source_funder_key=:key AND country_code=:country
+                    ORDER BY rank_within_funder LIMIT 25
                     """
                 ),
                 parameters,
@@ -410,7 +648,12 @@ class SourceFunderRepository(PostgresRepository):
                 parameters,
             )
         recipients = [
-            {"name": str(row[0]), "grant_count": int(row[1]), "amount": number_value(row[2]), "currency": "EUR"}
+            {
+                "name": str(row[0]),
+                "grant_count": int(row[1]),
+                "amount": number_value(row[2]),
+                "currency": selected_currency,
+            }
             for row in recipient_rows
         ]
         funder_node = f"funder:{key}"
@@ -424,7 +667,7 @@ class SourceFunderRepository(PostgresRepository):
                     "source": funder_node,
                     "target": node_id,
                     "value": float(recipient["amount"] or 0),
-                    "currency": "EUR",
+                    "currency": selected_currency,
                     "grant_count": recipient["grant_count"],
                 }
             )
