@@ -7,9 +7,11 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from bff.postgres.job_repository import PIPELINE_JOB_TYPES, PostgresJobRepository
-from bff.schemas import PipelineStatus, PipelineTrigger
+from bff.postgres.pipeline_repository import PipelineRepository
+from bff.schemas import PipelineStatus, PipelineTrigger, SourceScheduleUpdate
 from bff.security import Role, require_roles
 from bff.utils.logging import redact_text
+from pipelines.durable import redacted_configuration
 
 
 router = APIRouter(
@@ -26,6 +28,10 @@ def _jobs(request: Request) -> PostgresJobRepository:
 def _actor(request: Request) -> str:
     principal = getattr(request.state, "principal", None)
     return principal.actor_id if principal else "unknown"
+
+
+def _pipelines(request: Request) -> PipelineRepository:
+    return PipelineRepository(request.app.state.database.sessions())
 
 
 @router.get("/pipeline/status", response_model=PipelineStatus)
@@ -57,7 +63,7 @@ async def trigger_pipeline(
         idempotency_key=str(request.headers.get("idempotency-key") or "").strip(),
     )
     return {
-        "status": "running",
+        "status": job["status"],
         "started_at": job["requested_at"],
         "finished_at": None,
         "last_run_source": payload.source,
@@ -83,5 +89,40 @@ async def get_pipeline_logs(
     repository: PostgresJobRepository = Depends(_jobs),
 ):
     events = await repository.events(limit=limit)
-    encoded = json.dumps(events, sort_keys=True, default=str)
-    return {"logs": redact_text(encoded), "events": events}
+    encoded = redact_text(json.dumps(events, sort_keys=True, default=str))
+    redacted_events = json.loads(encoded)
+    return {"logs": encoded, "events": redacted_events}
+
+
+@router.get("/pipeline/sources")
+async def get_pipeline_sources(
+    repository: PipelineRepository = Depends(_pipelines),
+):
+    return {
+        "sources": [
+            redacted_configuration(source) for source in await repository.sources()
+        ]
+    }
+
+
+@router.put(
+    "/pipeline/sources/{source_name}/schedule",
+    dependencies=[
+        Depends(
+            require_roles(
+                Role.ADMINISTRATOR,
+                action="pipeline.schedule.update",
+                idempotent=True,
+            )
+        )
+    ],
+)
+async def update_pipeline_source_schedule(
+    source_name: str,
+    payload: SourceScheduleUpdate,
+    repository: PipelineRepository = Depends(_pipelines),
+):
+    try:
+        return await repository.set_source_enabled(source_name, enabled=payload.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

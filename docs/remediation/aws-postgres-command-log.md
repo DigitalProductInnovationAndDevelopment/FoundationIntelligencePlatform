@@ -717,3 +717,57 @@ secondary journeys are skipped. The Overview journey runs at 320, 390, 768,
 1024, 1440 and 1920 pixels; the Donor/Registry journey additionally runs at
 320 and 1024 pixels. Every executed page reports zero axe violations, browser
 console errors, runtime errors and unexpected API requests.
+
+## Phase 8 — durable pipelines and storage contracts
+
+All execution remained local. No source scraper, news/model call, dependency
+download, AWS API, S3/SQS/EventBridge/Step Functions action, upload or push
+occurred.
+
+### Static and contract gates
+
+```zsh
+PYTHONPATH=src venv/bin/python -m py_compile alembic/versions/0005_durable_pipeline.py src/pipelines/durable.py src/pipelines/durable_worker.py src/bff/postgres/idempotency_repository.py src/bff/postgres/job_repository.py src/bff/postgres/pipeline_repository.py src/bff/postgres/admin_routes.py src/bff/security.py src/bff/main.py src/tests/test_durable_pipeline.py
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_durable_pipeline.py
+venv/bin/python -m flake8 src/bff/postgres/idempotency_repository.py src/bff/postgres/job_repository.py src/bff/postgres/pipeline_repository.py src/pipelines/durable.py src/pipelines/durable_worker.py src/tests/test_durable_pipeline.py alembic/versions/0005_durable_pipeline.py --count --select=E9,F63,F7,F82 --show-source --statistics
+venv/bin/python -m json.tool config/source-pipelines.json
+git diff --check
+```
+
+The first contract run correctly exposed two test-only expectation defects:
+the immutable-store negative test supplied a differently sized payload and
+therefore reached the length guard before its expected checksum guard, and a
+text scan matched the explanatory word `subprocess` in a docstring. The
+fixture now uses equal-length changed bytes and the coordination test checks
+imports/calls rather than prose. The repeated local gate passes seven tests
+with the one PostgreSQL-only test intentionally skipped. Python compilation,
+blocking Flake8, JSON parsing and whitespace checks pass.
+
+### Local PostgreSQL migration and integration
+
+```zsh
+docker-compose ps
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_durable_pipeline.py
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic downgrade 0004_versioned_analytics
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+PYTHONPATH=src venv/bin/python -m pytest -q
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_durable_pipeline.py src/tests/test_postgres_application.py src/tests/test_postgres_schema.py
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -At -F '|' -c '<revision, table, FK, check, active-dataset and source-control counts>'
+```
+
+The retained PostgreSQL 16.14 container was already healthy; no image pull or
+build occurred. Initial upgrade, `0005 -> 0004 -> 0005` and the repeated real
+integration all pass. The dedicated run passes 8/8 and the combined
+Phase-8/application/schema run passes 18/18. The normal suite passes 318
+tests, skips ten explicit live-environment tests, passes eight route subtests
+and emits the existing 53 dependency/test-client deprecation warnings.
+
+The first catalog command omitted the Compose password-file variable and was
+rejected by Compose before `psql` started; it was repeated with the existing
+local secret-file path. Final catalog evidence is Alembic
+`0005_durable_pipeline`, 40 application tables, 49 FKs, 161 checks, active
+dataset `sqlite-v7-8fc0cce61c81-r2`, eight source configurations, zero enabled
+schedules and eight governance blocks. Test transactions roll back their job,
+idempotency, ingestion and object fixtures. The production-startup integration
+persists only the authoritative eight disabled source-control rows.

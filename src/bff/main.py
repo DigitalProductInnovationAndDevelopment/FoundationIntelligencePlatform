@@ -21,7 +21,10 @@ POSTGRESQL_ONLY_RUNTIME = SECURITY_SETTINGS.app_env in {"staging", "production"}
 if POSTGRESQL_ONLY_RUNTIME:
     from bff.postgres.admin_routes import router as admin_router
     from bff.postgres.audit_repository import PostgresAuditSink
+    from bff.postgres.idempotency_repository import PostgresIdempotencyStore
+    from bff.postgres.pipeline_repository import PipelineRepository
     from bff.postgres.routes import router as charity_router
+    from pipelines.durable import load_source_configurations
 else:
     # The legacy SQLite repository is restricted to development/test while the
     # remaining domain journeys are ported in Phase 5.
@@ -40,7 +43,12 @@ async def lifespan(application: FastAPI):
         # connection and all production repositories use the same manager.
         sessions = application.state.database.sessions()
         application.state.audit_sink = PostgresAuditSink(sessions)
+        application.state.idempotency_store = PostgresIdempotencyStore(sessions)
+        synchronized_sources = await PipelineRepository(sessions).synchronize_sources(
+            load_source_configurations()
+        )
         logger.info("PostgreSQL repository runtime initialized.")
+        logger.info("Synchronized %s governance-gated source configurations.", synchronized_sources)
     else:
         get_charity_repository()
         logger.info(
@@ -76,7 +84,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(SECURITY_SETTINGS.cors_origins),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=[
         "Accept",
         "Authorization",
@@ -148,9 +156,11 @@ async def log_requests(request: Request, call_next):
     record_key = getattr(request.state, "idempotency_record_key", None)
     if record_key:
         if response.status_code < 400 or response.status_code >= 500:
-            app.state.idempotency_store.complete(record_key)
+            completion = app.state.idempotency_store.complete(record_key)
         else:
-            app.state.idempotency_store.release(record_key)
+            completion = app.state.idempotency_store.release(record_key)
+        if inspect.isawaitable(completion):
+            await completion
     if hasattr(request.state, "audit_action"):
         error_class = None if response.status_code < 400 else f"http_{response.status_code}"
         audit_result = app.state.audit_sink.record(

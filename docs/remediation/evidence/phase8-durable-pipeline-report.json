@@ -1,0 +1,51 @@
+{
+  "phase": 8,
+  "status": "passed",
+  "generated_on": "2026-07-29",
+  "alembic_revision": "0005_durable_pipeline",
+  "catalog": {
+    "application_tables": 40,
+    "foreign_keys": 49,
+    "check_constraints": 161,
+    "active_dataset": "sqlite-v7-8fc0cce61c81-r2"
+  },
+  "source_configuration": {
+    "configured_sources": 8,
+    "enabled_sources": 0,
+    "governance_blocked_sources": 8,
+    "unresolved_status_preserved": true
+  },
+  "local_checks": {
+    "phase8_contract_tests": { "passed": 7, "failed": 0, "skipped": 1 },
+    "phase8_postgresql_tests": { "passed": 8, "failed": 0 },
+    "combined_postgresql_tests": { "passed": 18, "failed": 0 },
+    "normal_backend_tests": { "passed": 318, "failed": 0, "skipped": 10 },
+    "normal_backend_subtests": 8,
+    "migration_downgrade_upgrade": "passed",
+    "blocking_flake8": "passed",
+    "python_compile": "passed"
+  },
+  "contracts": {
+    "postgresql_request_idempotency": true,
+    "transactional_dispatch_outbox": true,
+    "worker_lease_and_heartbeat": true,
+    "retry_and_dead_letter_state": true,
+    "immutable_raw_object_descriptor": true,
+    "append_only_ingestion_manifest": true,
+    "last_good_dataset_preservation": true,
+    "api_subprocess_execution": false,
+    "production_local_lock_coordination": false
+  },
+  "aws_execution": {
+    "s3": false,
+    "sqs": false,
+    "dlq": false,
+    "eventbridge": false,
+    "step_functions": false
+  },
+  "push_performed": false,
+  "protected_checksums": {
+    "sqlite_sha256": "8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651",
+    "docs_audits_aggregate_sha256": "d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a"
+  }
+}

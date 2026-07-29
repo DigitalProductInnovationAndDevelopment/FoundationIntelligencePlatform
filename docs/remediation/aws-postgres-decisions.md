@@ -118,6 +118,20 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Performance contract: local gates measure repository and authenticated production-mode API p50/p95/p99, cold dashboard p95, concurrent throughput/error count, cache hit ratio, pool recovery, timeout/cancellation and index-backed `EXPLAIN ANALYZE` plans. Performance claims are evidence, not substitutes for later production telemetry.
 - Consequence: PostgreSQL remains the source of truth; the cache is disposable and no response depends on filesystem state or an external cache service.
 
+## ADR-018 — Transactional job outbox and PostgreSQL worker leases
+
+- Status: accepted and implemented locally in Phase 8.
+- Decision: every API-triggered job, initial event and queue envelope are committed atomically in PostgreSQL. Workers claim with row locks, maintain bounded leases/heartbeats and persist retry/dead-letter transitions. Staging/production request idempotency also uses PostgreSQL.
+- Reason: horizontally scaled API and worker tasks cannot coordinate reliably through filesystem locks or process-local dictionaries, and direct queue publication cannot be atomic with a database write.
+- Consequences: a separate dispatcher publishes the durable outbox envelope to SQS by job-ID deduplication. The API never starts pipeline subprocesses. Actual SQS/DLQ execution remains deployment-gated and unclaimed.
+
+## ADR-019 — Immutable source objects and fail-closed schedules
+
+- Status: accepted and implemented locally in Phase 8.
+- Decision: raw/validated/curated/export objects have versioned descriptors and checksums; raw descriptors and ingestion manifests are immutable. Source schedules are configuration-as-code and cannot be enabled while legal/licence status is unresolved or governance-blocked.
+- Reason: reproducible ingestion requires byte identity, watermarks and counts, while unknown source rights must never be converted into implicit approval.
+- Consequences: corrections create new objects/manifests. All current schedules remain disabled until owners approve governance. S3 is the production adapter, but no AWS object operation is part of this decision's local evidence.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

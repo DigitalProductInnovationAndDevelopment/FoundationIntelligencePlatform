@@ -49,6 +49,8 @@ Status: implemented security contract. Role inheritance is `administrator > oper
 | POST | `/api/admin/pipeline/trigger` | operator action | operator | Required `Idempotency-Key`; bounded mode validation; security audit event. |
 | GET | `/api/admin/pipeline/jobs` | operator action/read | operator | Bounded durable PostgreSQL job history. |
 | GET | `/api/admin/pipeline/logs` | administrator action/read | administrator | Last 100 structured PostgreSQL job events; output redacted; security audit event. |
+| GET | `/api/admin/pipeline/sources` | operator action/read | operator | Reads governance-gated source schedules; credential references are masked. |
+| PUT | `/api/admin/pipeline/sources/{source_name}/schedule` | administrator action | administrator | Required `Idempotency-Key`; unresolved legal/licence state blocks enablement. |
 | GET | `/api/news/{foundation_name}/summary` | authenticated resource-intensive read | analyst | Bounded parameters/timeouts; live paid-provider use remains separately approval-gated. |
 | GET | `/api/news/{foundation_name}/summary/stream` | authenticated resource-intensive read | analyst | Same restrictions as the JSON endpoint. |
 | configured allowlist only | `/api/core/{path}` | proxy action | administrator | Disabled by default; fixed destination host, exact/prefix path allowlist, method allowlist, request/response header allowlists, no browser credential forwarding, no redirects, timeout, request ID and idempotency for enabled mutations. Hidden from OpenAPI. |
@@ -57,4 +59,11 @@ There is no internal-service route in the current application. Queue/task callba
 
 ## Phase boundary
 
-Production/staging application data, job state, link overrides, profile caches and audit records now use PostgreSQL. Manual refresh routes only enqueue durable jobs and return a job ID; workers are introduced in Phase 8. The request-level reservation remains process-local until Phase 8, while the job-table uniqueness constraint already makes enqueue idempotency durable. Production audit events are append-only PostgreSQL rows; local unit tests may replace the sink with deterministic memory state. Edge/distributed rate limiting remains a Terraform and deployment concern.
+Production/staging application data, job state, request idempotency, link
+overrides, profile caches and audit records use PostgreSQL. Manual refresh
+routes only enqueue durable jobs and return a job ID. Phase-8 workers claim
+through PostgreSQL leases and the transactional outbox supplies the SQS
+delivery contract; neither path uses a production local lock or API
+subprocess. Production audit events are append-only PostgreSQL rows; local
+unit tests may replace the sink with deterministic memory state.
+Edge/distributed rate limiting remains a Terraform and deployment concern.

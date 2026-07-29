@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 import hashlib
 import hmac
+import inspect
 import json
 import threading
 import time
@@ -91,7 +92,7 @@ class _IdempotencyRecord:
 
 
 class IdempotencyStore:
-    """Thread-safe at-most-once guard, replaced by PostgreSQL durable state in Phase 8."""
+    """Thread-safe local/test at-most-once guard."""
 
     def __init__(self, ttl_seconds: int = 86_400):
         self.ttl_seconds = ttl_seconds
@@ -111,12 +112,9 @@ class IdempotencyStore:
                 del self._records[candidate]
             existing = self._records.get(record_key)
             if existing:
-                detail = (
-                    "Idempotency-Key was already used with a different request."
-                    if existing.fingerprint != fingerprint
-                    else "Idempotency-Key has already been processed."
+                raise IdempotencyConflict(
+                    different_request=existing.fingerprint != fingerprint
                 )
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
             self._records[record_key] = _IdempotencyRecord(fingerprint, "reserved", now)
         return record_key
 
@@ -135,6 +133,18 @@ class IdempotencyStore:
     def clear(self) -> None:
         with self._lock:
             self._records.clear()
+
+
+class IdempotencyConflict(RuntimeError):
+    """A durable or local key already exists for the same actor/action."""
+
+    def __init__(self, *, different_request: bool):
+        self.different_request = different_request
+        super().__init__(
+            "Idempotency-Key was already used with a different request."
+            if different_request
+            else "Idempotency-Key has already been processed."
+        )
 
 
 class OIDCVerifier:
@@ -368,12 +378,20 @@ async def reserve_idempotency(request: Request, principal: Principal, action: st
     fingerprint = hashlib.sha256(
         request.method.encode("ascii") + b"\0" + request.url.path.encode("utf-8") + b"\0" + body
     ).hexdigest()
-    record_key = _idempotency_store_for(request).reserve(
-        principal.actor_id,
-        action,
-        key,
-        fingerprint,
-    )
+    try:
+        record_key = _idempotency_store_for(request).reserve(
+            principal.actor_id,
+            action,
+            key,
+            fingerprint,
+        )
+        if inspect.isawaitable(record_key):
+            record_key = await record_key
+    except IdempotencyConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     request.state.idempotency_record_key = record_key
 
 

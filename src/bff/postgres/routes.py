@@ -249,7 +249,7 @@ async def enrich_registry(
         idempotency_key=_idempotency_key(request),
     )
     return {
-        "status": "running",
+        "status": job["status"],
         "started_at": job["requested_at"],
         "finished_at": None,
         "last_run_source": "registry_enrichment",
@@ -404,7 +404,7 @@ async def enrich_funders(
         idempotency_key=_idempotency_key(request),
     )
     return {
-        "status": "running",
+        "status": job["status"],
         "started_at": job["requested_at"],
         "finished_at": None,
         "last_run_source": "source_funder_enrichment",

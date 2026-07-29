@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 8 — pipelines, S3 and durable jobs (not started)
+- Current phase: Phase 9 — governance and retention (next)
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -140,7 +140,18 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 8 — Pipelines, S3 and durable jobs
 
-- Status: `PENDING`
+- Status: `COMPLETED`
+- Durable coordination: production/staging request idempotency is PostgreSQL-backed. Manual triggers transactionally create a job, first event and versioned dispatch-outbox envelope; API requests never launch a scraper or subprocess. Workers claim with `FOR UPDATE SKIP LOCKED`, publish leases/heartbeats and record bounded retry, timeout, success, failure and dead-letter transitions.
+- Storage contract: `raw`, `validated`, `curated` and `export` object descriptors retain object version, SHA-256, byte length, content type and source/run ownership. Raw descriptors and canonical ingestion manifests are database-enforced immutable; corrections create new versions.
+- Source controls: eight versioned configurations cover 360Giving, Charity Commission, Philea, Hinchilla, ECB, Google News RSS, bounded article content and optional Anthropic summaries. All legal/licence states remain `unresolved`; all schedules are disabled and governance-blocked. Application and database validation prevent activation before approval.
+- Last-good preservation: jobs and ingestion runs retain the active dataset at enqueue/start. The retry/failure integration leaves `sqlite-v7-8fc0cce61c81-r2` active and never activates candidate data.
+- Migration evidence: transactional `0005 -> 0004 -> 0005` cycle passes. The final catalog reports Alembic `0005_durable_pipeline`, 40 application tables, 49 FKs, 161 checks, eight source configs, zero enabled schedules and eight governance blocks.
+- Tests executed: 318 passing normal tests, 10 explicit live-environment skips and 8 passing subtests; 8/8 dedicated Phase-8 PostgreSQL tests; 18/18 combined Phase-8/application/schema PostgreSQL tests; Python compile, blocking Flake8 and diff checks.
+- AWS boundary: S3/SQS/DLQ/EventBridge/Step Functions interfaces and state contracts exist, but no AWS execution or deployment occurred and none is claimed.
+- Evidence files: `pipeline-storage-contract.md`, `evidence/phase8-durable-pipeline-report.json` and `evidence/phase8-durable-pipeline-report.md`.
+- Protected state: active SQLite and aggregate `docs/audits/` checksums remain exactly at baseline. No dependency download, live external call, paid API, upload or push occurred.
+- Gate result: `PASS` for local code readiness; real AWS execution remains `NOT TESTED` by design.
+- Next exact action: implement Phase-9 governance, explicit field exposure, configurable retention dry-run, holds, export expiry and auditable deletion manifests without enabling destructive deletion.
 
 ### Phase 9 — Governance and retention
 

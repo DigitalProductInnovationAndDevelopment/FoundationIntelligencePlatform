@@ -1,7 +1,7 @@
 # PostgreSQL Schema Contract
 
 Status: implemented by Alembic revisions `0001_postgresql_foundation` through
-`0004_versioned_analytics` on 2026-07-29.
+`0005_durable_pipeline` on 2026-07-29.
 
 ## Version and activation model
 
@@ -29,13 +29,14 @@ transaction after reconciliation.
 | Serving facts | `grant_overview_facts`, `grant_source_funder_facts`; dataset/revision provenance and minor-unit money facts remain explicit. |
 | Curated links | `organization_registry_links`, `source_funder_link_overrides`, `source_funder_profile_cache`; accepted links, overrides and revision sequence are constrained. |
 | Currency | `exchange_rates`; ISO-style currency/date primary key, positive high-precision rate and typed retrieval timestamp. |
-| Jobs | `job_runs`, `job_events`, `source_ingestion_runs`; bounded statuses, timestamp ordering, idempotency and event sequence constraints. |
+| Jobs | `job_runs`, `job_events`, `source_ingestion_runs`, `job_dispatch_outbox`, `worker_heartbeats`; bounded statuses, durable idempotency, leases, retry/dead-letter state and event sequence constraints. |
+| Pipeline storage/configuration | `source_configurations`, `storage_objects`, `ingestion_run_manifests`; fail-closed schedules, immutable raw object descriptors, version/checksum ownership and append-only run evidence. |
 | Audit/control | append-only `audit_events` and durable `idempotency_records`. |
 | Quality/governance | `data_quality_issues`, `materialization_versions`, `retention_actions`, `export_jobs`; quarantines retain original JSON values while queryable control fields remain relational. |
 | Versioned analytics | `analytics_scope_totals`, `analytics_country_aggregates`, `analytics_country_connections`, `analytics_period_aggregates`, `analytics_programme_aggregates`, `analytics_entity_rankings`, `analytics_country_funder_rankings`, `analytics_funder_relationships`, `analytics_filter_values`; every row is dataset-scoped and deleted by cascade with its dataset. |
 
 Every relationship declares update/delete behavior. The local catalog contains
-39 validated foreign keys and 136 check constraints. PostgreSQL enforces these
+40 application tables, 49 validated foreign keys and 161 check constraints. PostgreSQL enforces these
 server-side for every connection; there is no connection-local equivalent to a
 SQLite FK pragma.
 

@@ -622,7 +622,7 @@ class ScoreResponse(BaseModel):
     not_a_prediction: bool = True
 
 class PipelineStatus(BaseModel):
-    status: str = Field(..., description="idle, running, success, failed")
+    status: str = Field(..., description="idle, queued, running, success, failed")
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     last_run_source: Optional[str] = None
@@ -636,6 +636,10 @@ class PipelineTrigger(BaseModel):
     search_term: Optional[str] = None
     reg_numbers: Optional[List[int]] = None
     skip_contact_crawler: Optional[bool] = False
+
+
+class SourceScheduleUpdate(BaseModel):
+    enabled: bool
 
 
 class SourceFunderEnrichmentRequest(BaseModel):
