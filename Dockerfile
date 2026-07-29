@@ -54,12 +54,17 @@ RUN python -m pip install --no-index --find-links=/wheels /wheels/* \
 WORKDIR /app
 COPY --chown=10001:10001 src/bff /app/src/bff
 COPY --chown=10001:10001 src/data/*.py /app/src/data/
+COPY --chown=10001:10001 src/governance /app/src/governance
 COPY --chown=10001:10001 src/migration /app/src/migration
+COPY --chown=10001:10001 src/observability /app/src/observability
 COPY --chown=10001:10001 src/pipelines /app/src/pipelines
 COPY --chown=10001:10001 src/preprocessing /app/src/preprocessing
 COPY --chown=10001:10001 src/scoring /app/src/scoring
 COPY --chown=10001:10001 src/scrapers /app/src/scrapers
 COPY --chown=10001:10001 config/scoring.example.json /app/config/scoring.example.json
+COPY --chown=10001:10001 config/data-governance.json /app/config/data-governance.json
+COPY --chown=10001:10001 config/observability.json /app/config/observability.json
+COPY --chown=10001:10001 config/source-pipelines.json /app/config/source-pipelines.json
 COPY --chown=10001:10001 alembic.ini /app/alembic.ini
 COPY --chown=10001:10001 alembic /app/alembic
 

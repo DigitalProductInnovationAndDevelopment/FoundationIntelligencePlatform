@@ -409,6 +409,7 @@ def _raw_date_value(column: str, value: Any) -> Optional[str]:
 
 def convert_value(table: str, column: str, value: Any) -> Any:
     identity = (table, column)
+    converted: Any
     if identity in JSON_COLUMNS:
         converted = _json_value(table, column, value)
     elif identity in BOOLEAN_COLUMNS:
@@ -1092,7 +1093,7 @@ async def migrate(
             staged_global_columns,
         )
         completed_at = datetime.now(timezone.utc)
-        report = {
+        report: dict[str, Any] = {
             "migration_run_id": str(migration_run_id),
             "source_database_checksum": preflight.checksum,
             "source_schema_version": preflight.schema_version,

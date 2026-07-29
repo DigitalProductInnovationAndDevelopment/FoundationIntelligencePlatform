@@ -1,65 +1,284 @@
-name: Philea CI Pipeline
+name: Pull Request Quality Gate
 
 on:
-  push:
-    branches: [ main, dev ]
   pull_request:
-    branches: [ main, dev ]
+    branches: [main, dev]
+  push:
+    branches: [main, dev, 91-clean-up-code-for-aws-integration]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  PYTHONPATH: src
 
 jobs:
-  backend:
+  backend-quality:
+    name: Backend compile, lint, type, test and coverage
     runs-on: ubuntu-latest
-
+    timeout-minutes: 25
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install hash-locked Python dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-locking.txt
+          python -m pip install --require-hashes -r requirements.txt
+          python -m pip check
+      - name: Compile
+        run: python -m compileall -q src scripts
+      - name: Blocking Flake8
+        run: flake8 src scripts --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Typed production contracts
+        run: mypy --config-file mypy.ini
+      - name: Backend tests and coverage
+        env:
+          GEMINI_API_KEY: "disabled-ci-placeholder"
+        run: pytest -q --cov=src --cov-report=xml --cov-report=term --cov-fail-under=70
+      - name: Generate and verify deterministic SBOMs
+        run: |
+          python scripts/generate_sbom.py
+          git diff --exit-code -- docs/remediation/evidence/sbom
+      - name: Licence policy
+        run: python scripts/check_licenses.py --node-modules frontend/node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-quality-evidence
+          path: |
+            coverage.xml
+            docs/remediation/evidence/sbom/backend.cdx.json
+            docs/remediation/evidence/sbom/frontend.cdx.json
+          if-no-files-found: error
+          retention-days: 14
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
-
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Run Linter (Flake8)
-      run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Syntax Compile Check (Build)
-      run: |
-        python -m compileall src/
-
-    - name: Run Unit Tests
-      env:
-        GEMINI_API_KEY: "dummy_key"
-      run: |
-        PYTHONPATH=src pytest src/tests --cov=bff --cov-fail-under=70
-
-  frontend:
+  frontend-quality:
+    name: Frontend lint, test, build, Playwright and accessibility
     runs-on: ubuntu-latest
-
+    timeout-minutes: 25
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Deterministic install
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm test
+      - name: Frontend production build and bundle budget
+        working-directory: frontend
+        run: npm run build
+      - name: Playwright journeys and axe accessibility
+        working-directory: frontend
+        env:
+          PHASE7_CHROME_PATH: /usr/bin/google-chrome
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist
+          if-no-files-found: error
+          retention-days: 14
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
+  dependency-security:
+    name: Dependency, secret and licence scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Python dependency vulnerability scan
+        uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          inputs: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm dependency vulnerability scan
+        working-directory: frontend
+        run: npm audit --audit-level=high --ignore-scripts
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Install Frontend Dependencies
-      working-directory: frontend
-      run: npm ci
+  codeql:
+    name: CodeQL SAST (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
 
-    - name: Build Frontend
-      working-directory: frontend
-      run: npm run build
+  container-security:
+    name: Container build, scan and runtime contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build digest-pinned data-free backend
+        run: docker build --target backend-runtime --tag foundation-intelligence-backend:ci .
+      - name: Non-root, health, size and no-data assertions
+        env:
+          MAXIMUM_IMAGE_BYTES: "524288000"
+        run: scripts/verify_container_image.sh foundation-intelligence-backend:ci
+      - name: Generate container SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: foundation-intelligence-backend:ci
+          format: cyclonedx-json
+          output-file: container.cdx.json
+      - name: Container vulnerability scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: foundation-intelligence-backend:ci
+          format: sarif
+          output: trivy-container.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-container.sarif
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-security-evidence
+          path: |
+            container.cdx.json
+            trivy-container.sarif
+          if-no-files-found: error
+          retention-days: 14
+
+  terraform-security:
+    name: Terraform formatting, validation and security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Offline structure and security contract
+        run: PYTHONPATH=src python scripts/validate_terraform_static.py
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Terraform formatting
+        run: terraform fmt -check -recursive infra/terraform
+      - name: Require reviewed provider locks
+        run: |
+          test -f infra/terraform/environments/dev/.terraform.lock.hcl
+          test -f infra/terraform/environments/staging/.terraform.lock.hcl
+      - name: Terraform init and validate without backends
+        run: |
+          terraform -chdir=infra/terraform/environments/dev init -backend=false -lockfile=readonly -input=false
+          terraform -chdir=infra/terraform/environments/dev validate
+          terraform -chdir=infra/terraform/environments/staging init -backend=false -lockfile=readonly -input=false
+          terraform -chdir=infra/terraform/environments/staging validate
+      - name: Terraform security scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: config
+          scan-ref: infra/terraform
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  postgresql-migration:
+    name: Empty PostgreSQL, Alembic and reconciliation
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: foundation_intelligence
+          POSTGRES_USER: foundation_app
+          POSTGRES_PASSWORD: local-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foundation_app -d foundation_intelligence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      RUN_POSTGRES_INTEGRATION: "1"
+      DATABASE_URL: postgresql+asyncpg://foundation_app:local-ci-password@127.0.0.1:5432/foundation_intelligence
+      DATABASE_STATEMENT_TIMEOUT_MS: "120000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install hash-locked Python dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-locking.txt
+          python -m pip install --require-hashes -r requirements.txt
+      - name: Alembic empty-database migration
+        run: alembic upgrade head
+      - name: PostgreSQL schema, pipeline and governance integration
+        run: >-
+          pytest -q
+          src/tests/test_sqlite_to_postgres_migration.py
+          src/tests/test_postgres_schema.py
+          src/tests/test_durable_pipeline.py
+          src/tests/test_governance_retention.py
+      - name: API golden contract tests
+        run: pytest -q src/tests/test_api_golden.py
+      - name: Performance smoke and pool isolation
+        run: pytest -q src/tests/test_ci_performance_smoke.py
+
+  required-gate:
+    name: Required PR gate
+    if: always()
+    needs:
+      - backend-quality
+      - frontend-quality
+      - dependency-security
+      - codeql
+      - container-security
+      - terraform-security
+      - postgresql-migration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every gate
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: test "$RESULTS" = "success,success,success,success,success,success,success"

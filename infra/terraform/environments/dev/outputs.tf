@@ -6,3 +6,7 @@ output "deployment_contract" {
     schedules       = module.platform.schedules_enabled
   }
 }
+
+output "release_gate" {
+  value = module.platform.release_gate
+}

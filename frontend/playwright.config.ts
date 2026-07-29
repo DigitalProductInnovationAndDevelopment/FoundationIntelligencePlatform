@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
 import { defineConfig } from "@playwright/test";
 
-const defaultChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const defaultChrome = process.platform === "darwin"
+  ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  : "/usr/bin/google-chrome";
 const chromeExecutable = process.env.PHASE7_CHROME_PATH || defaultChrome;
+const externalBaseURL = process.env.PHASE7_BASE_URL;
 
 if (!existsSync(chromeExecutable)) {
   throw new Error(`Local Chrome executable not found at ${chromeExecutable}. Set PHASE7_CHROME_PATH to an installed Chrome/Chromium binary.`);
@@ -18,7 +21,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:4174",
+    baseURL: externalBaseURL || "http://127.0.0.1:4174",
     browserName: "chromium",
     headless: true,
     launchOptions: {
@@ -39,7 +42,7 @@ export default defineConfig({
     name: `chrome-${width}`,
     use: { viewport: { width, height: 1000 } },
   })),
-  webServer: {
+  webServer: externalBaseURL ? undefined : {
     command: "npm run preview -- --host 127.0.0.1 --port 4174 --strictPort",
     url: "http://127.0.0.1:4174",
     reuseExistingServer: false,

@@ -4,7 +4,7 @@ Date: 2026-07-29
 
 ## Local result
 
-- Terraform configuration: 26 `.tf` files, 101 resource blocks and 58 AWS
+- Terraform configuration: 26 `.tf` files, 103 resource blocks and 58 AWS
   resource types across one platform module plus dev/staging roots.
 - Offline bracket/string/comment structure check: `PASS`.
 - Offline required-resource and environment coverage check: `PASS`.

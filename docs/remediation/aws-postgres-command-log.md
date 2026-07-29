@@ -885,3 +885,47 @@ buckets without expiration, non-root/private/digest ECS, disabled schedules,
 OIDC subject/audience and bounded wildcard contexts. The full regression
 passes 334 tests with 12 explicit live skips, eight subtests and the existing
 53 dependency/test-client warnings.
+
+## Phase 12 — CI/CD and supply chain
+
+Approved network activity was restricted to PyPI/files.pythonhosted.org for
+the exact mypy lock/install and registry.npmjs.org for `npm audit`. No other
+host, GitHub workflow, AWS API, image registry push or upload was used.
+
+```zsh
+venv/bin/pip index versions mypy --index-url=https://pypi.org/simple
+venv/bin/pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url --index-url=https://pypi.org/simple --output-file=requirements.txt requirements.in
+venv/bin/python -m pip install --require-hashes -r requirements.txt
+PYTHONPATH=src venv/bin/mypy --config-file mypy.ini
+PYTHONPATH=src venv/bin/python scripts/generate_sbom.py
+PYTHONPATH=src venv/bin/python scripts/check_licenses.py
+ruby -e '<parse each workflow with stdlib YAML>' .github/workflows/*.yml
+PYTHONPATH=src venv/bin/python scripts/validate_ci_workflows.py
+PYTHONPATH=src venv/bin/python scripts/validate_terraform_static.py
+PYTHONPATH=src venv/bin/python -m pytest -q '<focused Phase-12 contract tests>'
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_ci_performance_smoke.py
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m migration.release_gate
+cd frontend && npm run lint && npm test && npm run build
+cd frontend && npm run test:e2e
+PYTHONPATH=src venv/bin/python -m pytest -q
+DOCKER_CONFIG=/private/tmp/docker-config-no-creds DOCKER_HOST=unix:///Users/manuelgrabmayer/.docker/run/docker.sock docker build --pull=false --target backend-runtime --tag foundation-intelligence-backend:phase12 .
+DOCKER_CONFIG=/private/tmp/docker-config-no-creds DOCKER_HOST=unix:///Users/manuelgrabmayer/.docker/run/docker.sock scripts/verify_container_image.sh foundation-intelligence-backend:phase12
+DOCKER_CONFIG=/private/tmp/docker-config-no-creds DOCKER_HOST=unix:///Users/manuelgrabmayer/.docker/run/docker.sock docker run --rm --network none --entrypoint python foundation-intelligence-backend:phase12 -c '<runtime contract imports>'
+cd frontend && npm audit --audit-level=high --ignore-scripts --registry=https://registry.npmjs.org
+```
+
+PyPI resolved `mypy==2.3.0` plus `ast-serialize==0.6.0`, `librt==0.13.0`,
+`mypy-extensions==1.1.0` and `pathspec==1.1.1`; every hash is in
+`requirements.txt` and no existing version changed. SBOM output is 70 Python
+and 128 npm components. Licence scanning covers 155 installed components with
+zero unknown/forbidden declarations. npm reports zero vulnerabilities.
+
+The first local Playwright attempt was blocked before tests by sandbox
+`listen EPERM` on `127.0.0.1:4174`; the approved local-port repeat passes 8
+tests with 4 intentional skips. The first image import one-liner used the wrong
+test attribute after successfully importing modules; the corrected isolated
+smoke reports 14 governance policies, 21 metrics and eight sources.
+
+Final normal regression: 342 passing, 13 explicit live skips and eight
+subtests. The data-free non-root image is 354,624,742 bytes with ID
+`sha256:172dab7c1c7842b0b34f0991d97f8ae34391d36e6ece628db4a63672c36781e9`.

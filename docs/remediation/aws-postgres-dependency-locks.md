@@ -21,6 +21,16 @@ Python version and accepted artifact hash. `pip 26.1.2` was rejected after a
 local resolver attempt because it is incompatible with `pip-tools 7.5.2`;
 the bootstrap lock pins the compatible `pip 25.3` release.
 
+### Phase-12 type-check additions
+
+The approved PyPI-only resolution added `mypy==2.3.0` to the development
+input. `pip-compile` retained every existing version and added only mypy plus
+its locked transitive packages: `ast-serialize==0.6.0`, `librt==0.13.0`,
+`mypy-extensions==1.1.0` and `pathspec==1.1.1`. Every accepted platform wheel
+and source archive SHA-256 is recorded in `requirements.txt`; local
+installation used `pip install --require-hashes`. No runtime/container lock
+changed, because the type checker is not a production dependency.
+
 ## npm
 
 - Lock: `frontend/package-lock.json`, lockfile version 3.

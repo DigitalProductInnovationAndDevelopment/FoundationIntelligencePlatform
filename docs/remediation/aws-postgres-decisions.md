@@ -164,6 +164,15 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Reason: environment isolation and deny-by-default switches preserve deployability without fabricating DNS, owner, secret, legal/source schedule or cloud execution approval.
 - Consequences: the absent Terraform/provider/scanner toolchain blocks fmt/validate/plan evidence but not independent CI/CD definition work. Apply, state, DNS and AWS execution remain prohibited.
 
+## ADR-024 — Required PR gate and two-stage protected staging promotion
+
+- Status: accepted and implemented as unexecuted workflow definitions in Phase 12.
+- Decision: one aggregate PR gate requires backend/frontend quality, security/dependency/licence/SAST, SBOM/container controls, locked Terraform validation and empty-PostgreSQL migration/integration/golden/performance evidence. Missing Terraform provider locks fail closed.
+- Decision: staging separates immutable image publication/plan into protected `staging-publish` and exact-plan apply/deployment into independently protected `staging`. Both use exact-environment GitHub OIDC. Serving task definitions change only after private Alembic succeeds.
+- Decision: a private release task checks schema, one active dataset, reconciliation, materialization, active quality blocks and DLQ. Prior task definitions are retained as rollback evidence. Production workflow remains hard-disabled.
+- Reason: plan review must occur after digest resolution but before infrastructure/service mutation, and schema/data gates must precede traffic promotion.
+- Consequences: GitHub branch/environment settings, action SHA pins, OIDC trust and staging execution remain external blockers. Workflow presence is not evidence of deployment success.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 12 — CI/CD (next)
+- Current phase: Phase 13 — shadow comparison and cutover preparation (next)
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -197,7 +197,16 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 12 — CI/CD
 
-- Status: `PENDING`
+- Status: `COMPLETED_LOCAL`; remote GitHub/AWS workflow execution is `NOT TESTED`.
+- PR workflow: seven parallel jobs plus one aggregate required gate cover backend compile/blocking lint/mypy/test/coverage, frontend lint/test/build/Playwright/axe, secret/dependency/licence/SAST scans, backend/frontend/container SBOMs, container build/Trivy/non-root/size/no-data, Terraform offline/fmt/locked-init/validate/security and empty-PostgreSQL/Alembic/integration/reconciliation/golden/performance checks.
+- Deployment workflow: exact manual confirmation, `staging-publish` approval before ECR mutation/plan, separate `staging` approval before applying the exact plan, private Alembic/reconciliation tasks, digest service update, frontend sync, smoke/load/E2E/security and rollback-readiness gates. OIDC only; no access-key inputs. Production is hard-disabled.
+- Supply chain: added hash-locked `mypy==2.3.0` plus four transitives; 13 typed files pass. Deterministic CycloneDX SBOMs contain 70 Python and 128 npm components; 155 installed licence records have zero unknown/forbidden declarations; npm audit reports zero vulnerabilities.
+- Runtime image: `--pull=false` build and contract pass at 354,624,742 bytes, `10001:10001`, healthchecked/data-free. Network-isolated imports prove 14 governance policies, 21 metrics, eight sources and release-gate schema `0006_governance_retention` are present. Image ID `sha256:172dab7c1c7842b0b34f0991d97f8ae34391d36e6ece628db4a63672c36781e9`.
+- Tests executed: YAML parse and 24-marker workflow validator; mypy 13 files; 10 focused tests; 342 normal backend tests, 13 live skips and 8 subtests; local PostgreSQL performance/release gates; frontend lint, 13 unit tests, build/budget, 8 E2E/axe passes and 4 intentional skips; blocking Flake8/diff checks.
+- External/tool blockers: provider locks, Terraform/Python/container/config scanners, branch protection, environment reviewers, OIDC trust, action commit-SHA resolution and actual GitHub workflow execution are unavailable/unapproved. The Terraform PR job deliberately fails closed until locks exist.
+- Evidence files: `ci-cd-guide.md`, `evidence/phase12-cicd-report.json`, `evidence/phase12-cicd-report.md` and the two `evidence/sbom/*.cdx.json` files.
+- Gate result: workflow definitions and available local checks `PASS`; remote PR/staging execution remains `NOT TESTED`, so production remains `NO-GO`.
+- Next exact action: implement asynchronous, non-latency shadow comparison and complete domain golden fixtures, then prove local PostgreSQL restore/rollback and finish cutover/rollback runbooks without AWS execution.
 
 ### Phase 13 — Shadow comparison and cutover preparation
 

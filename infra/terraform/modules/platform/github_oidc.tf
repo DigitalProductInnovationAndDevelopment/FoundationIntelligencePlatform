@@ -88,6 +88,7 @@ resource "aws_iam_role_policy" "github_deployment" {
           aws_ecs_service.worker.id,
           aws_ecs_task_definition.api.arn,
           aws_ecs_task_definition.worker.arn,
+          aws_ecs_task_definition.release_gate.arn,
         ]
       },
       {
@@ -110,7 +111,30 @@ resource "aws_iam_role_policy" "github_deployment" {
           aws_iam_role.ecs_execution.arn,
           aws_iam_role.api_task.arn,
           aws_iam_role.worker_task.arn,
+          aws_iam_role.release_gate_task.arn,
         ]
+      },
+      {
+        Sid      = "RunReleaseGate"
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = [aws_ecs_task_definition.release_gate.arn]
+        Condition = {
+          ArnEquals = {
+            "ecs:cluster" = aws_ecs_cluster.this.arn
+          }
+        }
+      },
+      {
+        Sid      = "ObserveReleaseGate"
+        Effect   = "Allow"
+        Action   = ["ecs:DescribeTasks"]
+        Resource = "*"
+        Condition = {
+          ArnEquals = {
+            "ecs:cluster" = aws_ecs_cluster.this.arn
+          }
+        }
       },
       {
         Sid      = "PublishFrontend"

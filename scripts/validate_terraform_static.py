@@ -60,6 +60,7 @@ ALLOWED_WILDCARD_RESOURCE_CONTEXTS = frozenset(
         "OperationalNotificationEncryption",
         "ManageSynchronousWorkerTask",
         "RegisterTaggedTaskDefinitions",
+        "ObserveReleaseGate",
     }
 )
 
@@ -192,8 +193,10 @@ def validate() -> dict[str, object]:
             raise ValueError(f"{environment}: module environment is missing")
         if not re.search(r"enable_schedules\s*=\s*false", environment_text):
             raise ValueError(f"{environment}: schedules must fail closed")
-        if re.search(r'backend\s+"s3"', environment_text):
-            raise ValueError(f"{environment}: live remote state is not authorized")
+        if not re.search(r'backend\s+"s3"\s*\{\s*encrypt\s*=\s*true\s*\}', environment_text):
+            raise ValueError(f"{environment}: encrypted backend configuration point is missing")
+        if re.search(r'\b(?:bucket|key|region)\s*=\s*"[^\"]+"', environment_text):
+            raise ValueError(f"{environment}: live backend coordinates must not be committed")
 
     return {
         "status": "passed",

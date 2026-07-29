@@ -176,3 +176,11 @@ src/data/processed/
 src/data/raw/charity_commission_bulk/
 src/data/pipeline_status.json
 src/data/pipeline_run.log
+
+# Terraform local state and generated plans (provider locks stay tracked)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.auto.tfvars

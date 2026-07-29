@@ -143,10 +143,13 @@ validation, an ACM certificate, HTTPS listener and ALB alias. No DNS or
 certificate action has been executed. CloudFront uses its AWS TLS hostname
 until a separately reviewed us-east-1 edge certificate/DNS alias is approved.
 
-No remote backend is declared. An approved operator must separately define
-the state account, encrypted/versioned state bucket, lock mechanism, recovery
-owner and bootstrap procedure. This repository must not create or mutate that
-state foundation under the current authorization.
+Each environment now contains an encrypted, coordinate-free S3 backend
+configuration point for the protected deployment workflow. Bucket, key,
+region and lock-table coordinates are supplied only by protected environment
+variables. An approved operator must separately define the state account,
+encrypted/versioned state bucket, lock mechanism, recovery owner and bootstrap
+procedure. This repository does not create or mutate that state foundation
+under the current authorization.
 
 ## Validation and deployment boundary
 

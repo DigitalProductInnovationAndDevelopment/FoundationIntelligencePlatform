@@ -132,6 +132,13 @@ resource "aws_iam_role" "worker_task" {
   tags              = local.common_tags
 }
 
+resource "aws_iam_role" "release_gate_task" {
+  name_prefix = "${local.name}-release-gate-task-"
+
+  assume_role_policy = aws_iam_role.api_task.assume_role_policy
+  tags               = local.common_tags
+}
+
 resource "aws_iam_role_policy" "worker_task" {
   name = "pipeline-storage-and-queue-access"
   role = aws_iam_role.worker_task.id
