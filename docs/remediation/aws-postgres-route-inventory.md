@@ -51,6 +51,12 @@ Status: implemented security contract. Role inheritance is `administrator > oper
 | GET | `/api/admin/pipeline/logs` | administrator action/read | administrator | Last 100 structured PostgreSQL job events; output redacted; security audit event. |
 | GET | `/api/admin/pipeline/sources` | operator action/read | operator | Reads governance-gated source schedules; credential references are masked. |
 | PUT | `/api/admin/pipeline/sources/{source_name}/schedule` | administrator action | administrator | Required `Idempotency-Key`; unresolved legal/licence state blocks enablement. |
+| GET | `/api/admin/governance/retention/policies` | governance read | administrator | Explicit proposed policies; destructive activation false. |
+| POST | `/api/admin/governance/retention/dry-run` | governance action | administrator | Required `Idempotency-Key`; report/archive evidence only, never deletion. |
+| GET/POST | `/api/admin/governance/holds` | governance read/action | administrator | Legal/incident hold list/create; create requires idempotency. |
+| POST | `/api/admin/governance/holds/{hold_id}/release` | governance action | administrator | Required `Idempotency-Key`, actor and reason. |
+| GET | `/api/admin/governance/exports/expiration-report` | governance read | administrator | Dry-run expiration report; no object mutation. |
+| POST | `/api/admin/governance/data-subject-requests` | governance action | administrator | Required `Idempotency-Key`; accepts only a hashed subject reference. |
 | GET | `/api/news/{foundation_name}/summary` | authenticated resource-intensive read | analyst | Bounded parameters/timeouts; live paid-provider use remains separately approval-gated. |
 | GET | `/api/news/{foundation_name}/summary/stream` | authenticated resource-intensive read | analyst | Same restrictions as the JSON endpoint. |
 | configured allowlist only | `/api/core/{path}` | proxy action | administrator | Disabled by default; fixed destination host, exact/prefix path allowlist, method allowlist, request/response header allowlists, no browser credential forwarding, no redirects, timeout, request ID and idempotency for enabled mutations. Hidden from OpenAPI. |

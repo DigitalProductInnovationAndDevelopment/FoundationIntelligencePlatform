@@ -1,0 +1,252 @@
+{
+  "configuration_version": "1",
+  "policy_status": "proposed",
+  "destructive_deletion_enabled": false,
+  "production_activation_approved": false,
+  "restore_before_delete_required": true,
+  "data_owners": {
+    "business_owner": "unassigned",
+    "data_owner": "unassigned",
+    "privacy_owner": "unassigned",
+    "legal_owner": "unassigned",
+    "security_owner": "unassigned",
+    "technical_owner": "data-platform"
+  },
+  "classifications": [
+    {
+      "classification": "public_organisation_data",
+      "retention_class": "public_organisation_data",
+      "exposure": "authenticated",
+      "archive_after_days": 365,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "contact_data",
+      "retention_class": "contact_data",
+      "exposure": "restricted",
+      "archive_after_days": 90,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "personal_email_addresses",
+      "retention_class": "personal_email_addresses",
+      "exposure": "restricted",
+      "archive_after_days": 30,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "postal_addresses",
+      "retention_class": "postal_addresses",
+      "exposure": "restricted",
+      "archive_after_days": 90,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "raw_source_evidence",
+      "retention_class": "raw_source_evidence",
+      "exposure": "internal",
+      "archive_after_days": 30,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "article_metadata",
+      "retention_class": "article_metadata",
+      "exposure": "authenticated",
+      "archive_after_days": 30,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "article_content",
+      "retention_class": "ephemeral_article_content",
+      "exposure": "internal",
+      "archive_after_days": 1,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "pipeline_logs",
+      "retention_class": "pipeline_logs",
+      "exposure": "restricted",
+      "archive_after_days": 30,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "exports",
+      "retention_class": "exports",
+      "exposure": "restricted",
+      "archive_after_days": 7,
+      "delete_after_days": null,
+      "export_expire_after_days": 7
+    },
+    {
+      "classification": "audit_events",
+      "retention_class": "audit_events",
+      "exposure": "restricted",
+      "archive_after_days": 365,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "derived_classifications",
+      "retention_class": "derived_classifications",
+      "exposure": "authenticated",
+      "archive_after_days": 365,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "enriched_profiles",
+      "retention_class": "derived_profile",
+      "exposure": "authenticated",
+      "archive_after_days": 365,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "credentials",
+      "retention_class": "credentials",
+      "exposure": "never",
+      "archive_after_days": null,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    },
+    {
+      "classification": "user_identities",
+      "retention_class": "user_identities",
+      "exposure": "restricted",
+      "archive_after_days": 90,
+      "delete_after_days": null,
+      "export_expire_after_days": null
+    }
+  ],
+  "field_exposure_policies": {
+    "health": ["status", "service", "checks"],
+    "organization_summary": [
+      "id",
+      "name",
+      "reg_charity_number",
+      "reg_status",
+      "organization_type",
+      "foundation_regions",
+      "funding_regions",
+      "tags",
+      "source"
+    ],
+    "pipeline_event": [
+      "job_event_id",
+      "job_run_id",
+      "sequence",
+      "event_type",
+      "occurred_at",
+      "job_type",
+      "details"
+    ],
+    "job_history": [
+      "job_run_id",
+      "job_type",
+      "status",
+      "dataset_version",
+      "requested_at",
+      "started_at",
+      "completed_at",
+      "attempt",
+      "max_attempts",
+      "error_class",
+      "error_message",
+      "queue_name",
+      "heartbeat_at",
+      "lease_expires_at",
+      "timeout_seconds",
+      "failure_reason",
+      "last_good_dataset_version"
+    ],
+    "source_configuration": [
+      "source_name",
+      "source_owner",
+      "technical_owner",
+      "legal_status",
+      "licence_status",
+      "terms_url",
+      "rate_limit_per_minute",
+      "freshness_sla_hours",
+      "schedule_expression",
+      "enabled",
+      "governance_blocked",
+      "last_success_at",
+      "watermark",
+      "classification",
+      "retention_class",
+      "schema_version",
+      "retry_limit",
+      "timeout_seconds",
+      "maximum_pages",
+      "maximum_records"
+    ]
+  },
+  "log_redaction": {
+    "sensitive_keys": [
+      "authorization",
+      "cookie",
+      "password",
+      "passwd",
+      "token",
+      "secret",
+      "api_key",
+      "api-key",
+      "email",
+      "email_address",
+      "personal_email",
+      "address",
+      "postal_address",
+      "connection_string",
+      "database_url",
+      "article_body",
+      "raw_payload"
+    ],
+    "replacement": "[REDACTED]"
+  },
+  "privacy_checklist": {
+    "lawful_basis_review": "unresolved",
+    "data_protection_impact_assessment": "not_started",
+    "data_subject_contact": "unassigned",
+    "source_terms_review": "unresolved",
+    "international_transfer_review": "unresolved",
+    "processor_register": "not_started",
+    "breach_response_owner": "unassigned"
+  },
+  "backup_policy": {
+    "status": "proposed",
+    "encryption_required": true,
+    "restore_test_required": true,
+    "cross_account_copy": "unresolved",
+    "retention_days": null
+  },
+  "pitr_policy": {
+    "status": "proposed",
+    "required": true,
+    "retention_days": null
+  },
+  "service_recovery": {
+    "status": "unresolved",
+    "rto_hours": null,
+    "rpo_hours": null
+  },
+  "data_subject_workflow": [
+    "receive_request",
+    "verify_identity",
+    "locate_scoped_records",
+    "check_legal_and_incident_holds",
+    "review_source_and_legal_constraints",
+    "approve_or_reject",
+    "execute_only_after_separate_authorisation",
+    "record_audit_evidence",
+    "notify_requester"
+  ]
+}

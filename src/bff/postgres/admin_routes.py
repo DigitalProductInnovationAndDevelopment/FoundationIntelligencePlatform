@@ -11,6 +11,8 @@ from bff.postgres.pipeline_repository import PipelineRepository
 from bff.schemas import PipelineStatus, PipelineTrigger, SourceScheduleUpdate
 from bff.security import Role, require_roles
 from bff.utils.logging import redact_text
+from governance.exposure import redact_for_logs, serialize_exposed_fields
+from governance.retention import load_governance_configuration
 from pipelines.durable import redacted_configuration
 
 
@@ -19,6 +21,7 @@ router = APIRouter(
     tags=["Administrative & Monitoring Data"],
     dependencies=[Depends(require_roles(Role.OPERATOR, action="administration.access"))],
 )
+GOVERNANCE_CONFIGURATION = load_governance_configuration()
 
 
 def _jobs(request: Request) -> PostgresJobRepository:
@@ -77,7 +80,20 @@ async def get_pipeline_jobs(
     limit: int = Query(default=50, ge=1, le=100),
     repository: PostgresJobRepository = Depends(_jobs),
 ):
-    return {"jobs": await repository.history(limit=limit)}
+    jobs = await repository.history(limit=limit)
+    return {
+        "jobs": [
+            redact_for_logs(
+                serialize_exposed_fields(
+                    job,
+                    policy_name="job_history",
+                    configuration=GOVERNANCE_CONFIGURATION,
+                ),
+                GOVERNANCE_CONFIGURATION,
+            )
+            for job in jobs
+        ]
+    }
 
 
 @router.get(
@@ -88,9 +104,16 @@ async def get_pipeline_logs(
     limit: int = Query(default=100, ge=1, le=100),
     repository: PostgresJobRepository = Depends(_jobs),
 ):
-    events = await repository.events(limit=limit)
-    encoded = redact_text(json.dumps(events, sort_keys=True, default=str))
-    redacted_events = json.loads(encoded)
+    events = [
+        serialize_exposed_fields(
+            event,
+            policy_name="pipeline_event",
+            configuration=GOVERNANCE_CONFIGURATION,
+        )
+        for event in await repository.events(limit=limit)
+    ]
+    redacted_events = redact_for_logs(events, GOVERNANCE_CONFIGURATION)
+    encoded = redact_text(json.dumps(redacted_events, sort_keys=True, default=str))
     return {"logs": encoded, "events": redacted_events}
 
 
@@ -100,7 +123,12 @@ async def get_pipeline_sources(
 ):
     return {
         "sources": [
-            redacted_configuration(source) for source in await repository.sources()
+            serialize_exposed_fields(
+                redacted_configuration(source),
+                policy_name="source_configuration",
+                configuration=GOVERNANCE_CONFIGURATION,
+            )
+            for source in await repository.sources()
         ]
     }
 

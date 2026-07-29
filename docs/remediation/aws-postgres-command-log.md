@@ -771,3 +771,53 @@ dataset `sqlite-v7-8fc0cce61c81-r2`, eight source configurations, zero enabled
 schedules and eight governance blocks. Test transactions roll back their job,
 idempotency, ingestion and object fixtures. The production-startup integration
 persists only the authoritative eight disabled source-control rows.
+
+## Phase 9 — governance and retention
+
+All retention execution was dry-run/report-only. No row, object, source file,
+backup or dataset was deleted or archived.
+
+### Configuration and local gates
+
+```zsh
+PYTHONPATH=src venv/bin/python -m py_compile alembic/versions/0006_governance_retention.py src/governance/retention.py src/governance/exposure.py src/bff/postgres/governance_repository.py src/bff/postgres/governance_routes.py src/bff/postgres/admin_routes.py src/bff/utils/logging.py src/bff/main.py src/bff/schemas.py src/tests/test_governance_retention.py
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_governance_retention.py src/tests/test_security.py
+venv/bin/python -m flake8 alembic/versions/0006_governance_retention.py src/governance src/bff/postgres/governance_repository.py src/bff/postgres/governance_routes.py src/tests/test_governance_retention.py --count --select=E9,F63,F7,F82 --show-source --statistics
+venv/bin/python -m json.tool config/data-governance.json
+git diff --check
+```
+
+The local governance/security run passes 19 tests, deliberately skips its one
+PostgreSQL-only method and passes eight route/security subtests. Configuration
+validation confirms 14 required classifications, unique retention classes,
+no delete windows, no destructive/production activation, a complete role
+register with unresolved named owners, a data-subject workflow and explicit
+field policies. Compilation, blocking Flake8, JSON and whitespace pass.
+
+### Local PostgreSQL migration and evidence
+
+```zsh
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_governance_retention.py
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic downgrade 0005_durable_pipeline
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder PYTHONPATH=src venv/bin/alembic upgrade head
+PYTHONPATH=src venv/bin/python -m pytest -q
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_governance_retention.py src/tests/test_durable_pipeline.py src/tests/test_postgres_application.py src/tests/test_postgres_schema.py
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -At -F '|' -c '<revision, table, constraint, policy and destructive-control counts>'
+```
+
+The dedicated Phase-9 PostgreSQL run passes 9/9. It creates and releases an
+incident hold, proves the hold overrides a due archive, records held/archive
+dry-run manifests, proves deletion/restore evidence is immutable, reports an
+expired export, creates a hashed data-subject request and rolls the entire
+fixture back. The active dataset never changes.
+
+The `0006 -> 0005 -> 0006` cycle passes. The normal regression passes 326
+tests, skips 11 explicit live tests and passes eight subtests; combined
+Phase-9/Phase-8/application/schema passes 27/27. Final catalog evidence is
+revision `0006_governance_retention`, 45 tables, 55 FKs, 189 checks and 14
+policies with zero destructive flags, zero delete windows, zero active holds
+and zero persisted deletion manifests. Production-startup configuration sync
+persists only the 14 proposed, non-destructive policies.
+
+No dependency download, AWS call, paid/live API, upload or push occurred.

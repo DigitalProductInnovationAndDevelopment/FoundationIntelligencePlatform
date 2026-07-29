@@ -1,7 +1,7 @@
 # PostgreSQL Schema Contract
 
 Status: implemented by Alembic revisions `0001_postgresql_foundation` through
-`0005_durable_pipeline` on 2026-07-29.
+`0006_governance_retention` on 2026-07-29.
 
 ## Version and activation model
 
@@ -33,10 +33,11 @@ transaction after reconciliation.
 | Pipeline storage/configuration | `source_configurations`, `storage_objects`, `ingestion_run_manifests`; fail-closed schedules, immutable raw object descriptors, version/checksum ownership and append-only run evidence. |
 | Audit/control | append-only `audit_events` and durable `idempotency_records`. |
 | Quality/governance | `data_quality_issues`, `materialization_versions`, `retention_actions`, `export_jobs`; quarantines retain original JSON values while queryable control fields remain relational. |
+| Governance evidence | `retention_policies`, `data_holds`, `restore_verifications`, `deletion_manifests`, `data_subject_requests`; destructive retention is fail-closed, holds override actions, and evidence is append-only. |
 | Versioned analytics | `analytics_scope_totals`, `analytics_country_aggregates`, `analytics_country_connections`, `analytics_period_aggregates`, `analytics_programme_aggregates`, `analytics_entity_rankings`, `analytics_country_funder_rankings`, `analytics_funder_relationships`, `analytics_filter_values`; every row is dataset-scoped and deleted by cascade with its dataset. |
 
 Every relationship declares update/delete behavior. The local catalog contains
-40 application tables, 49 validated foreign keys and 161 check constraints. PostgreSQL enforces these
+45 application tables, 55 validated foreign keys and 189 check constraints. PostgreSQL enforces these
 server-side for every connection; there is no connection-local equivalent to a
 SQLite FK pragma.
 

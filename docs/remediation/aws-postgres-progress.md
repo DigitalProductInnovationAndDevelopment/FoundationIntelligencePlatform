@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 9 — governance and retention (next)
+- Current phase: Phase 10 — observability (next)
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -155,7 +155,18 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 9 — Governance and retention
 
-- Status: `PENDING`
+- Status: `COMPLETED`
+- Governance configuration: 14 required classifications, source/owner registers, privacy checklist, field allowlists, log-redaction keys, proposed backup/PITR policy and unresolved RTO/RPO are versioned under `config/`. Unknown owners and legal/licence states remain explicitly unresolved.
+- Retention safety: automatic/destructive deletion and production activation are disabled; every destructive window is unset. Proposed archive windows generate dry-run reports only. PostgreSQL permits initial deletion manifests only for dry-run report/archive actions, and no destructive HTTP route exists.
+- Hold/restore evidence: exact, retention-class and global legal/incident holds override retention. Deletion and restore-verification evidence is append-only; a restore record alone never enables deletion.
+- Exposure/redaction: generic admin outputs use named allowlists and exclude job input, actor identity and credential references. Recursive redaction covers credentials, connection strings, email, postal address, raw payload and article content before serialization; plain log text also removes credential/email shapes.
+- Workflow: export expiration is report-only; data-subject intake stores a hashed reference and requires identity verification, scoped review, hold/legal review, separate mutation approval and audit evidence.
+- Migration/catalog: `0006 -> 0005 -> 0006` passes. Final catalog is revision `0006_governance_retention`, 45 tables, 55 FKs and 189 checks; 14 policies exist with zero destructive flags and zero delete windows.
+- Tests executed: 326 normal tests, 11 explicit live skips and 8 subtests; 9/9 dedicated governance PostgreSQL tests; 27/27 combined Phase-9/Phase-8/application/schema tests; compile, blocking Flake8, JSON and diff checks.
+- Evidence files: `data-governance-register.md`, `retention-privacy-guide.md`, `evidence/phase9-governance-report.json` and `evidence/phase9-governance-report.md`.
+- Protected state/external boundary: SQLite and `docs/audits/` remain at baseline. No AWS, paid/live API, download, upload or push occurred.
+- Gate result: `PASS` for the local governance framework; policy/owner/legal/licence/RTO/RPO approvals remain unresolved and production remains `NO-GO`.
+- Next exact action: implement structured JSON request/job logging, richer readiness checks, metric/alarm definitions and operational runbooks without claiming deployed CloudWatch resources.
 
 ### Phase 10 — Observability
 

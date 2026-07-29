@@ -21,9 +21,12 @@ POSTGRESQL_ONLY_RUNTIME = SECURITY_SETTINGS.app_env in {"staging", "production"}
 if POSTGRESQL_ONLY_RUNTIME:
     from bff.postgres.admin_routes import router as admin_router
     from bff.postgres.audit_repository import PostgresAuditSink
+    from bff.postgres.governance_repository import GovernanceRepository
+    from bff.postgres.governance_routes import router as governance_router
     from bff.postgres.idempotency_repository import PostgresIdempotencyStore
     from bff.postgres.pipeline_repository import PipelineRepository
     from bff.postgres.routes import router as charity_router
+    from governance.retention import load_governance_configuration
     from pipelines.durable import load_source_configurations
 else:
     # The legacy SQLite repository is restricted to development/test while the
@@ -47,8 +50,12 @@ async def lifespan(application: FastAPI):
         synchronized_sources = await PipelineRepository(sessions).synchronize_sources(
             load_source_configurations()
         )
+        synchronized_policies = await GovernanceRepository(sessions).synchronize_policies(
+            load_governance_configuration()
+        )
         logger.info("PostgreSQL repository runtime initialized.")
         logger.info("Synchronized %s governance-gated source configurations.", synchronized_sources)
+        logger.info("Synchronized %s non-destructive retention policies.", synchronized_policies)
     else:
         get_charity_repository()
         logger.info(
@@ -199,6 +206,8 @@ app.include_router(auth_router)
 app.include_router(charity_router)
 app.include_router(proxy_router)
 app.include_router(admin_router)
+if POSTGRESQL_ONLY_RUNTIME:
+    app.include_router(governance_router)
 app.include_router(news_router)
 
 @app.get("/", include_in_schema=False)

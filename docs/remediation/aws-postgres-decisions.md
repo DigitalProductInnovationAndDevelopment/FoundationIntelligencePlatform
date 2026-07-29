@@ -132,6 +132,21 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Reason: reproducible ingestion requires byte identity, watermarks and counts, while unknown source rights must never be converted into implicit approval.
 - Consequences: corrections create new objects/manifests. All current schedules remain disabled until owners approve governance. S3 is the production adapter, but no AWS object operation is part of this decision's local evidence.
 
+## ADR-020 — Non-destructive, hold-aware retention baseline
+
+- Status: accepted and implemented locally in Phase 9.
+- Decision: retention policies are configuration-as-code by classification; archive windows create reports only. Destructive activation is globally false, delete windows are unset and there is no delete endpoint or worker.
+- Decision: legal and incident holds override every candidate. Any future deletion must additionally reference successful immutable restore evidence, administrator approval and an approved policy revision.
+- Reason: owner, legal, licence, privacy, backup-retention, RTO and RPO decisions remain unresolved; silently choosing a 12-month delete policy would be unsafe and unauthorised.
+- Consequences: initial PostgreSQL constraints accept only dry-run report/archive manifests. Enabling deletion requires an explicit reviewed migration/configuration change plus production approval.
+
+## ADR-021 — Explicit exposure and recursive redaction
+
+- Status: accepted and implemented locally in Phase 9.
+- Decision: typed response models or named allowlists define every exposed field; unknown policies fail. Generic job/event/source dictionaries never serialize all columns.
+- Decision: structured values are recursively redacted before output, including credentials, connection strings, email/postal fields, raw payloads and article bodies. Plain text receives credential and email pattern redaction.
+- Consequences: new generic serializers require an exposure-policy update and tests. Raw operational evidence stays internal even when its parent record is readable.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.
