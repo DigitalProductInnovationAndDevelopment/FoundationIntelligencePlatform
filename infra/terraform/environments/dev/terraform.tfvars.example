@@ -1,0 +1,11 @@
+aws_region = "eu-central-1"
+
+api_image                    = "000000000000.dkr.ecr.eu-central-1.amazonaws.com/foundation-intelligence-dev/api@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+worker_image                 = "000000000000.dkr.ecr.eu-central-1.amazonaws.com/foundation-intelligence-dev/worker@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+frontend_origin_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+github_repository            = "replace-owner/FoundationIntelligencePlatform"
+
+# DNS and certificate creation stay disabled until ownership is approved.
+manage_dns     = false
+domain_name    = null
+hosted_zone_id = null

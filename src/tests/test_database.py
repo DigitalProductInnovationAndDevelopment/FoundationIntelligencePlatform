@@ -80,6 +80,20 @@ class TestDatabaseFoundation(unittest.TestCase):
         with self.assertRaises(DatabaseConfigurationError):
             settings.sqlalchemy_url()
 
+    def test_runtime_secret_environment_builds_postgresql_url(self):
+        settings = DatabaseSettings.from_env(
+            {
+                "DATABASE_HOST": "private-postgresql.internal",
+                "DATABASE_NAME": "foundation_intelligence",
+                "DATABASE_USER": "foundation_app",
+                "DATABASE_PASSWORD": "runtime-only-secret",
+            }
+        )
+        url = settings.sqlalchemy_url()
+        self.assertTrue(settings.configured)
+        self.assertEqual(url.password, "runtime-only-secret")
+        self.assertNotIn("runtime-only-secret", url.render_as_string(hide_password=True))
+
     def test_readiness_reflects_postgresql_state(self):
         original = app.state.database
         client = TestClient(app)

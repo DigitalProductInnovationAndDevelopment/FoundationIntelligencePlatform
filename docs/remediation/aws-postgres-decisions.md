@@ -155,6 +155,15 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Reason: exhausted analytical connections must not hide process viability or prevent an orchestrator from making a readiness decision, and high-cardinality or sensitive data must not enter operational telemetry.
 - Consequences: Phase 11 may map the definitions to CloudWatch, but no deployed metric, alarm, dashboard or notification is claimed until AWS execution is separately authorized and evidenced. Threshold and owner approval remains an explicit production blocker.
 
+## ADR-023 — Isolated Terraform environments and fail-closed cloud controls
+
+- Status: accepted and implemented as unexecuted definitions in Phase 11.
+- Decision: dev and staging instantiate one platform module with separate CIDRs, size/availability/cost settings and no shared state declaration. Development chooses one NAT; staging chooses one per AZ plus interface endpoints. Neither environment enables schedules or DNS by default.
+- Decision: application data uses private bucket-owner-enforced KMS buckets without destructive lifecycle expiration. PostgreSQL is private, encrypted, PITR-backed, deletion-protected and protected from Terraform destroy. ECS uses private IPs, digest-only images, non-root/read-only containers and RDS-managed runtime credentials.
+- Decision: GitHub trust is OIDC-only and pins repository environment subject plus audience. Artefact deployment rights are distinct from infrastructure bootstrap/state ownership; AWS credentials are never Terraform variables.
+- Reason: environment isolation and deny-by-default switches preserve deployability without fabricating DNS, owner, secret, legal/source schedule or cloud execution approval.
+- Consequences: the absent Terraform/provider/scanner toolchain blocks fmt/validate/plan evidence but not independent CI/CD definition work. Apply, state, DNS and AWS execution remain prohibited.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

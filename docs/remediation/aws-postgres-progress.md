@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 11 — Terraform AWS infrastructure definitions (next)
+- Current phase: Phase 12 — CI/CD (next)
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -183,8 +183,17 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 11 — Terraform AWS infrastructure definitions
 
-- Status: `PENDING`
+- Status: `COMPLETED_LOCAL`; provider-dependent validation is `NOT TESTED` because the authorised environment has no Terraform/provider/scanner tooling.
 - Execution restriction: no apply/destroy/import/state mutation or AWS resource change.
+- Definitions: 26 `.tf` files, 101 resource blocks and 58 AWS resource types implement shared platform infrastructure plus isolated dev/staging roots. Coverage includes network tiers/NAT/endpoints/security groups, KMS, five private data buckets, CloudFront/WAF, ECR, ECS API/workers/ALB/autoscaling, private RDS/backups/PITR/managed secret, SQS/DLQ, disabled scheduler, Step Functions, logs/dashboard/15 alarms/budgets, least-privilege task roles, GitHub OIDC/deployment role and fail-closed ACM/DNS points.
+- Security: RDS is private, encrypted, deletion-protected and `prevent_destroy`; data buckets block public access, enforce ownership/KMS and define transitions without expiration; ECS requires digest images, non-root/read-only tasks and private IPs; schedules and DNS remain disabled; no long-lived AWS keys exist.
+- Runtime integration: ECS injects the RDS-managed password through Secrets Manager; the database manager now accepts this runtime-only secret interface as well as the local secret-file contract, without logging it.
+- Documentation: four Mermaid diagrams, security/data/deployment boundaries, exact offline/provider validation procedure and dev/staging cost envelopes (not live price claims).
+- Tests executed: offline validator passes 26 files/101 resources/58 types; 2/2 Terraform contract tests; 334 normal backend tests, 12 explicit live skips and 8 subtests; compile, blocking Flake8 and diff checks.
+- Exact blocker: `terraform version` returns `command not found`; no local HashiCorp Terraform image or Terraform/security scanner exists. `registry.terraform.io` is outside approved sources, and AWS read/plan access is not approved. Therefore fmt/init/validate/security scan/provider lock/plan are explicitly `NOT TESTED`.
+- Evidence files: `terraform-aws-infrastructure.md`, `terraform-validation.md`, `evidence/phase11-terraform-report.json` and `evidence/phase11-terraform-report.md`.
+- Gate result: infrastructure code review contract `PASS`; provider-dependent Gate-11 validation remains blocked/`NOT TESTED`, so production remains `NO-GO`.
+- Next exact action: implement complete PR and protected staging workflow definitions, generate local backend/frontend SBOM evidence with already installed tools, and validate workflow contracts without executing any deployment.
 
 ### Phase 12 — CI/CD
 

@@ -854,3 +854,34 @@ tests with 12 explicit live-environment skips, eight subtests and the existing
 Final catalog evidence is revision `0006_governance_retention`, active dataset
 `sqlite-v7-8fc0cce61c81-r2`, eight source configurations, fourteen retention
 policies, zero pending/failed outbox rows and zero dead-lettered jobs.
+
+## Phase 11 — Terraform AWS infrastructure definitions
+
+No AWS API, provider registry, remote state, DNS/certificate endpoint or paid
+service was contacted.
+
+```zsh
+command -v terraform tofu tflint checkov tfsec trivy semgrep syft grype
+terraform version
+docker image ls --format '{{.Repository}}:{{.Tag}} {{.Digest}} {{.ID}}' hashicorp/terraform
+PYTHONPATH=src venv/bin/python scripts/validate_terraform_static.py
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_terraform_contract.py src/tests/test_database.py
+PYTHONPATH=src venv/bin/python -m py_compile scripts/validate_terraform_static.py src/bff/database.py src/tests/test_terraform_contract.py src/tests/test_database.py
+venv/bin/python -m flake8 scripts/validate_terraform_static.py src/bff/database.py src/tests/test_terraform_contract.py src/tests/test_database.py --count --select=E9,F63,F7,F82 --show-source --statistics
+PYTHONPATH=src venv/bin/python -m pytest -q
+git diff --check
+```
+
+`terraform version` failed with `zsh:1: command not found: terraform`.
+The local Docker image query returned no Terraform image. No Terraform/OpenTofu
+CLI, tflint, checkov, tfsec, trivy or semgrep is installed, and no provider
+lock exists. Downloads from `registry.terraform.io` are not authorised.
+Consequently fmt/init/validate/security scan/plan remain `NOT TESTED`.
+
+The offline checker reports 26 Terraform files, 101 resource blocks and 58
+AWS resource types across dev/staging. It validates balanced structure,
+required services, private/deletion-protected RDS, public-access-blocked KMS
+buckets without expiration, non-root/private/digest ECS, disabled schedules,
+OIDC subject/audience and bounded wildcard contexts. The full regression
+passes 334 tests with 12 explicit live skips, eight subtests and the existing
+53 dependency/test-client warnings.

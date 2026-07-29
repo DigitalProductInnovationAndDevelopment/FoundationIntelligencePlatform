@@ -35,6 +35,7 @@ class DatabaseSettings:
     port: int
     name: Optional[str]
     user: Optional[str]
+    password: Optional[str]
     password_file: Optional[str]
     pool_size: int
     max_overflow: int
@@ -51,6 +52,7 @@ class DatabaseSettings:
             port=_positive_int(env.get("DATABASE_PORT"), 5432),
             name=env.get("DATABASE_NAME"),
             user=env.get("DATABASE_USER"),
+            password=env.get("DATABASE_PASSWORD"),
             password_file=env.get("DATABASE_PASSWORD_FILE"),
             pool_size=_positive_int(env.get("DATABASE_POOL_SIZE"), 5),
             max_overflow=_positive_int(env.get("DATABASE_MAX_OVERFLOW"), 5),
@@ -61,7 +63,13 @@ class DatabaseSettings:
 
     @property
     def configured(self) -> bool:
-        return bool(self.url or all((self.host, self.name, self.user, self.password_file)))
+        return bool(
+            self.url
+            or (
+                all((self.host, self.name, self.user))
+                and (self.password is not None or self.password_file)
+            )
+        )
 
     def sqlalchemy_url(self) -> URL:
         if self.url:
@@ -76,13 +84,20 @@ class DatabaseSettings:
 
         if not self.configured:
             raise DatabaseConfigurationError("PostgreSQL connection settings are incomplete")
-        password_path = Path(str(self.password_file))
-        try:
-            if password_path.stat().st_size > 4096:
-                raise DatabaseConfigurationError("Database password file exceeds the safety bound")
-            password = password_path.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise DatabaseConfigurationError("Database password file is unavailable") from exc
+        if self.password is not None:
+            password = self.password.strip()
+        else:
+            password_path = Path(str(self.password_file))
+            try:
+                if password_path.stat().st_size > 4096:
+                    raise DatabaseConfigurationError(
+                        "Database password file exceeds the safety bound"
+                    )
+                password = password_path.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise DatabaseConfigurationError(
+                    "Database password file is unavailable"
+                ) from exc
         if not password:
             raise DatabaseConfigurationError("Database password file is empty")
         return URL.create(
