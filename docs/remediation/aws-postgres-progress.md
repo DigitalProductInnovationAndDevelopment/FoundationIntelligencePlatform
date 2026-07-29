@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 10 — observability (next)
+- Current phase: Phase 11 — Terraform AWS infrastructure definitions (next)
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -170,7 +170,16 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 10 — Observability
 
-- Status: `PENDING`
+- Status: `COMPLETED`
+- Health contract: `/health` and `/health/live` are dependency-free; `/health/ready` checks PostgreSQL, exact Alembic head, the approved active dataset, source/retention configuration and durable queue state. A dedicated `NullPool` health engine remains responsive while the bounded application pool is deliberately exhausted.
+- Logging contract: application and durable-worker logs are redacted JSON with UTC time, service/environment, request/trace/job/dataset identifiers, pseudonymous actor, role, route-template operation, duration, status, error class, counts and retry state when applicable. Raw exception payloads and sensitive values are excluded.
+- Telemetry contract: `config/observability.json` defines 21 metrics and 15 alarms for API, database, cache, freshness, pipelines, reconciliation, gaps/coverage, queue/DLQ, workers/restarts, RDS and cost. The administrator-only local evidence endpoint explicitly marks CloudWatch execution `not_tested`.
+- Runbooks: 13 versioned procedures cover readiness, migration, ingestion, stale data, RDS, queue, DLQ replay, bad deployment, rollback, restore, security incidents, credential rotation and cost spikes.
+- Tests executed: 331 normal tests, 12 explicit live skips and 8 subtests; 6/6 dedicated Phase-10 PostgreSQL tests; 33/33 combined observability/governance/pipeline/application/schema tests; compile, blocking Flake8, JSON and diff checks.
+- Evidence files: `observability-contract.md`, `observability-runbooks.md`, `evidence/phase10-observability-report.json` and `evidence/phase10-observability-report.md`.
+- Protected state/external boundary: SQLite and `docs/audits/` remain at baseline. No AWS, CloudWatch, paid/live API, download, upload or push occurred.
+- Gate result: `PASS` for local observability readiness. Production alarm owners/destinations, SLO thresholds and cost ceiling remain unresolved; production remains `NO-GO`.
+- Next exact action: define complete dev/staging Terraform modules, offline validation contracts and environment plans without provider downloads, AWS reads, apply/destroy/import or state mutation.
 
 ### Phase 11 — Terraform AWS infrastructure definitions
 

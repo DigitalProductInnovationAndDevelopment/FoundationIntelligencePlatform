@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol
 
 from bff.postgres.job_repository import PostgresJobRepository
+from bff.utils.logging import logger
 
 
 JobHandler = Callable[[Mapping[str, Any]], Awaitable[Mapping[str, Any]]]
@@ -51,6 +52,16 @@ class DurableWorker:
         if job is None:
             return WorkerResult(status="idle", job_id=None)
         job_id = str(job["job_id"])
+        logger.info(
+            "job_started",
+            extra={
+                "job_id": job_id,
+                "dataset_version": job.get("dataset_version"),
+                "operation": str(job["job_type"]),
+                "status": "running",
+                "retry_count": max(int(job.get("attempt", 1)) - 1, 0),
+            },
+        )
         handler = self.handlers.get(str(job["job_type"]))
         if handler is None:
             await self.repository.fail(
@@ -59,6 +70,15 @@ class DurableWorker:
                 error_class="UnsupportedJobType",
                 failure_reason="No worker handler is registered for this job type",
                 retryable=False,
+            )
+            logger.error(
+                "job_failed",
+                extra={
+                    "job_id": job_id,
+                    "operation": str(job["job_type"]),
+                    "status": "failed",
+                    "error_class": "UnsupportedJobType",
+                },
             )
             return WorkerResult(status="failed", job_id=job_id)
         try:
@@ -72,6 +92,16 @@ class DurableWorker:
                 failure_reason="Worker execution exceeded the durable job timeout",
                 retryable=True,
             )
+            logger.error(
+                "job_timed_out",
+                extra={
+                    "job_id": job_id,
+                    "operation": str(job["job_type"]),
+                    "status": status,
+                    "error_class": "JobTimeout",
+                    "retry_count": int(job.get("attempt", 1)),
+                },
+            )
             return WorkerResult(status=status, job_id=job_id)
         except Exception as exc:
             status = await self.repository.fail(
@@ -81,11 +111,35 @@ class DurableWorker:
                 failure_reason="Worker handler failed; last-good data remains active",
                 retryable=True,
             )
+            logger.error(
+                "job_failed",
+                extra={
+                    "job_id": job_id,
+                    "operation": str(job["job_type"]),
+                    "status": status,
+                    "error_class": exc.__class__.__name__,
+                    "retry_count": int(job.get("attempt", 1)),
+                },
+            )
             return WorkerResult(status=status, job_id=job_id)
         succeeded = await self.repository.succeed(
             job_id,
             worker_id=self.worker_id,
             result=result,
+        )
+        logger.info(
+            "job_completed",
+            extra={
+                "job_id": job_id,
+                "dataset_version": job.get("dataset_version"),
+                "operation": str(job["job_type"]),
+                "status": "succeeded" if succeeded else "lost_lease",
+                "record_count": result.get("record_count"),
+                "accepted_count": result.get("accepted_count"),
+                "rejected_count": result.get("rejected_count"),
+                "quarantined_count": result.get("quarantined_count"),
+                "retry_count": max(int(job.get("attempt", 1)) - 1, 0),
+            },
         )
         return WorkerResult(status="succeeded" if succeeded else "lost_lease", job_id=job_id)
 

@@ -821,3 +821,36 @@ and zero persisted deletion manifests. Production-startup configuration sync
 persists only the 14 proposed, non-destructive policies.
 
 No dependency download, AWS call, paid/live API, upload or push occurred.
+
+## Phase 10 — observability
+
+All execution remained local. No CloudWatch/AWS operation, dependency
+download, external API, upload or push occurred.
+
+```zsh
+PYTHONPATH=src venv/bin/python -m py_compile src/observability/metrics.py src/bff/utils/logging.py src/bff/database.py src/bff/main.py src/bff/postgres/observability_routes.py src/pipelines/durable_worker.py src/tests/test_observability.py src/tests/test_database.py
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_observability.py src/tests/test_database.py src/tests/test_security.py
+venv/bin/python -m flake8 src/observability src/bff/utils/logging.py src/bff/database.py src/bff/main.py src/bff/postgres/observability_routes.py src/pipelines/durable_worker.py src/tests/test_observability.py src/tests/test_database.py --count --select=E9,F63,F7,F82 --show-source --statistics
+python3 -m json.tool config/observability.json
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_observability.py
+PYTHONPATH=src venv/bin/python -m pytest -q
+RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_observability.py src/tests/test_governance_retention.py src/tests/test_durable_pipeline.py src/tests/test_postgres_application.py src/tests/test_postgres_schema.py
+docker-compose exec -T postgres psql -U foundation_app -d foundation_intelligence -At -F '|' -c '<revision, active dataset, source/policy, outbox and DLQ counts>'
+shasum -a 256 src/data/charities.db
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+git diff --check
+```
+
+An initial static run exposed that the new JSON formatter had removed the
+public `RedactingFormatter` compatibility class required by the Phase-1
+security test; the compatibility formatter was restored. The first real
+PostgreSQL test correctly exhausted the application pool but expected the
+standard-library timeout class instead of SQLAlchemy's timeout class. Only
+the test expectation changed. The repeated Phase-10 PostgreSQL run passes
+6/6, the combined regression passes 33/33 and the normal suite passes 331
+tests with 12 explicit live-environment skips, eight subtests and the existing
+53 dependency/test-client warnings.
+
+Final catalog evidence is revision `0006_governance_retention`, active dataset
+`sqlite-v7-8fc0cce61c81-r2`, eight source configurations, fourteen retention
+policies, zero pending/failed outbox rows and zero dead-lettered jobs.

@@ -9,13 +9,43 @@ from bff.main import app
 
 
 class _HealthyDatabase:
-    async def check(self) -> bool:
-        return True
+    async def readiness(self, *, expected_schema_version):
+        return {
+            "ready": True,
+            "checks": {
+                "postgresql": "healthy",
+                "schema_version": "healthy",
+                "active_dataset": "healthy",
+                "critical_configuration": "healthy",
+                "queue": "healthy",
+            },
+            "metadata": {
+                "queue_age_seconds": 0,
+                "dead_letter_count": 0,
+            },
+        }
+
+    @staticmethod
+    def pool_status():
+        return {"checked_out": 0.0, "capacity": 1.0, "utilization_ratio": 0.0}
 
 
 class _UnavailableDatabase:
-    async def check(self) -> bool:
-        return False
+    async def readiness(self, *, expected_schema_version):
+        return {
+            "ready": False,
+            "checks": {
+                "postgresql": "unavailable",
+                "schema_version": "unknown",
+                "active_dataset": "unknown",
+                "critical_configuration": "unknown",
+                "queue": "unknown",
+            },
+        }
+
+    @staticmethod
+    def pool_status():
+        return {"checked_out": 0.0, "capacity": 1.0, "utilization_ratio": 0.0}
 
 
 class TestDatabaseFoundation(unittest.TestCase):
@@ -58,6 +88,7 @@ class TestDatabaseFoundation(unittest.TestCase):
             ready = client.get("/health/ready")
             self.assertEqual(ready.status_code, 200)
             self.assertEqual(ready.json()["checks"]["postgresql"], "healthy")
+            self.assertEqual(ready.json()["checks"]["schema_version"], "healthy")
 
             app.state.database = _UnavailableDatabase()
             unavailable = client.get("/health/ready")

@@ -14,16 +14,19 @@ from bff.audit import StructuredLogAuditSink, event_from_request
 from bff.config import SECURITY_SETTINGS, validate_security_settings
 from bff.database import DatabaseManager, DatabaseSettings
 from bff.security import IdempotencyStore, SlidingWindowRateLimiter
-from bff.utils.logging import logger
+from bff.utils.logging import logger, pseudonymous_actor_id
+from observability.metrics import MetricsRegistry, load_observability_configuration
 
 
 POSTGRESQL_ONLY_RUNTIME = SECURITY_SETTINGS.app_env in {"staging", "production"}
 if POSTGRESQL_ONLY_RUNTIME:
     from bff.postgres.admin_routes import router as admin_router
     from bff.postgres.audit_repository import PostgresAuditSink
+    from bff.postgres.base import ANALYTICS_CACHE
     from bff.postgres.governance_repository import GovernanceRepository
     from bff.postgres.governance_routes import router as governance_router
     from bff.postgres.idempotency_repository import PostgresIdempotencyStore
+    from bff.postgres.observability_routes import router as observability_router
     from bff.postgres.pipeline_repository import PipelineRepository
     from bff.postgres.routes import router as charity_router
     from governance.retention import load_governance_configuration
@@ -86,6 +89,8 @@ app.state.rate_limiter = SlidingWindowRateLimiter(
 app.state.idempotency_store = IdempotencyStore()
 app.state.audit_sink = StructuredLogAuditSink()
 app.state.database = DatabaseManager(DatabaseSettings.from_env())
+app.state.observability_configuration = load_observability_configuration()
+app.state.metrics_registry = MetricsRegistry(app.state.observability_configuration)
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,6 +104,7 @@ app.add_middleware(
         "Idempotency-Key",
         "X-Action-Reason",
         "X-Request-ID",
+        "X-Trace-ID",
     ],
 )
 
@@ -115,6 +121,12 @@ async def log_requests(request: Request, call_next):
         supplied_request_id
         if _REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
         else str(uuid.uuid4())
+    )
+    supplied_trace_id = request.headers.get("x-trace-id", "")
+    request.state.trace_id = (
+        supplied_trace_id
+        if _REQUEST_ID_PATTERN.fullmatch(supplied_trace_id)
+        else request.state.request_id
     )
     settings = app.state.security_settings
 
@@ -160,6 +172,7 @@ async def log_requests(request: Request, call_next):
             )
 
     response.headers["X-Request-ID"] = request.state.request_id
+    response.headers["X-Trace-ID"] = request.state.trace_id
     record_key = getattr(request.state, "idempotency_record_key", None)
     if record_key:
         if response.status_code < 400 or response.status_code >= 500:
@@ -176,14 +189,65 @@ async def log_requests(request: Request, call_next):
         if inspect.isawaitable(audit_result):
             await audit_result
 
-    duration = time.time() - start_time
+    duration_ms = (time.time() - start_time) * 1000
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", request.url.path)
+    operation = f"{request.method} {route_path}"
+    principal = getattr(request.state, "principal", None)
+    actor_id = pseudonymous_actor_id(
+        getattr(principal, "actor_id", "anonymous")
+    )
+    role = getattr(principal, "primary_role", "anonymous")
+    error_class = None if response.status_code < 400 else f"http_{response.status_code}"
+    registry = app.state.metrics_registry
+    metric_dimensions = {
+        "service": app.state.observability_configuration.service,
+        "environment": settings.app_env,
+        "operation": operation,
+        "status": str(response.status_code),
+    }
+    registry.observe("api_request_duration_ms", duration_ms, **metric_dimensions)
+    if response.status_code >= 500:
+        registry.increment(
+            "api_errors_total",
+            service=app.state.observability_configuration.service,
+            environment=settings.app_env,
+            operation=operation,
+            error_class=error_class,
+        )
+    pool_status = app.state.database.pool_status()
+    registry.set_gauge(
+        "db_pool_checked_out",
+        pool_status["checked_out"],
+        service=app.state.observability_configuration.service,
+        environment=settings.app_env,
+    )
+    registry.set_gauge(
+        "db_pool_utilization_ratio",
+        pool_status["utilization_ratio"],
+        service=app.state.observability_configuration.service,
+        environment=settings.app_env,
+    )
+    if POSTGRESQL_ONLY_RUNTIME:
+        registry.set_gauge(
+            "cache_hit_ratio",
+            ANALYTICS_CACHE.hit_ratio,
+            service=app.state.observability_configuration.service,
+            environment=settings.app_env,
+            cache="analytics",
+        )
     logger.info(
-        "Request: %s %s | Request-ID: %s | Status: %s | Duration: %.4fs",
-        request.method,
-        request.url.path,
-        request.state.request_id,
-        response.status_code,
-        duration,
+        "request_completed",
+        extra={
+            "request_id": request.state.request_id,
+            "trace_id": request.state.trace_id,
+            "actor_id": actor_id,
+            "role": role,
+            "operation": operation,
+            "duration_ms": round(duration_ms, 3),
+            "status": response.status_code,
+            "error_class": error_class,
+        },
     )
     return response
 
@@ -191,9 +255,14 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(
-        "Unhandled exception on path %s; class=%s",
-        request.url.path,
-        exc.__class__.__name__,
+        "request_unhandled_exception",
+        extra={
+            "request_id": getattr(request.state, "request_id", "unknown"),
+            "trace_id": getattr(request.state, "trace_id", "unknown"),
+            "operation": f"{request.method} {request.url.path}",
+            "status": 500,
+            "error_class": exc.__class__.__name__,
+        },
         exc_info=True,
     )
     return JSONResponse(
@@ -208,6 +277,7 @@ app.include_router(proxy_router)
 app.include_router(admin_router)
 if POSTGRESQL_ONLY_RUNTIME:
     app.include_router(governance_router)
+    app.include_router(observability_router)
 app.include_router(news_router)
 
 @app.get("/", include_in_schema=False)
@@ -230,10 +300,37 @@ async def liveness_check():
 
 @app.get("/health/ready", tags=["Health Check"])
 async def readiness_check():
-    """Accept traffic only while the configured PostgreSQL database responds."""
-    if await app.state.database.check():
-        return {"status": "ready", "checks": {"postgresql": "healthy"}}
+    """Check schema, dataset, critical controls and durable queue independently."""
+    result = await app.state.database.readiness(
+        expected_schema_version=app.state.observability_configuration.expected_schema_version
+    )
+    metadata = result.get("metadata", {})
+    registry = app.state.metrics_registry
+    settings = app.state.security_settings
+    registry.set_gauge(
+        "readiness_success",
+        1.0 if result["ready"] else 0.0,
+        service=app.state.observability_configuration.service,
+        environment=settings.app_env,
+    )
+    if metadata:
+        registry.set_gauge(
+            "queue_oldest_message_age_seconds",
+            float(metadata["queue_age_seconds"]),
+            service=app.state.observability_configuration.service,
+            environment=settings.app_env,
+            queue="pipeline",
+        )
+        registry.set_gauge(
+            "dlq_depth",
+            float(metadata["dead_letter_count"]),
+            service=app.state.observability_configuration.service,
+            environment=settings.app_env,
+            queue="pipeline",
+        )
+    if result["ready"]:
+        return {"status": "ready", "checks": result["checks"]}
     return JSONResponse(
         status_code=503,
-        content={"status": "not_ready", "checks": {"postgresql": "unavailable"}},
+        content={"status": "not_ready", "checks": result["checks"]},
     )

@@ -147,6 +147,14 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Decision: structured values are recursively redacted before output, including credentials, connection strings, email/postal fields, raw payloads and article bodies. Plain text receives credential and email pattern redaction.
 - Consequences: new generic serializers require an exposure-policy update and tests. Raw operational evidence stays internal even when its parent record is readable.
 
+## ADR-022 — Independent readiness and versioned observability contract
+
+- Status: accepted and implemented locally in Phase 10.
+- Decision: liveness never waits for PostgreSQL or analytics. Readiness uses an independent `NullPool` PostgreSQL engine and one bounded query for schema, active dataset, synchronized governance configuration and durable queue state.
+- Decision: structured application/worker logs are redacted JSON with route templates and pseudonymous actor IDs. Metric/alarm definitions and runbook links are versioned configuration; local process snapshots are bounded and administrator-only.
+- Reason: exhausted analytical connections must not hide process viability or prevent an orchestrator from making a readiness decision, and high-cardinality or sensitive data must not enter operational telemetry.
+- Consequences: Phase 11 may map the definitions to CloudWatch, but no deployed metric, alarm, dashboard or notification is claimed until AWS execution is separately authorized and evidenced. Threshold and owner approval remains an explicit production blocker.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

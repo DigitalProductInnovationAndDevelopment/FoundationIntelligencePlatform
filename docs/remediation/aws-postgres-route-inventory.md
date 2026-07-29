@@ -7,7 +7,8 @@ Status: implemented security contract. Role inheritance is `administrator > oper
 | Method | Path | Classification | Required identity | Mutation/idempotency | Notes |
 |---|---|---|---|---|---|
 | GET | `/`, `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect` | public read | none | read-only | Documentation/redirect surface; production edge policy may further restrict it. |
-| GET | `/health` | public read | none | read-only | Liveness only; later phases add dependency-aware readiness. |
+| GET | `/health`, `/health/live` | public read | none | read-only | Process liveness only; no database or analytics dependency. |
+| GET | `/health/ready` | public read | none | read-only | Non-sensitive PostgreSQL/schema/dataset/configuration/queue readiness states through an independent bounded connection. |
 | POST | `/api/auth/login` | development authentication bootstrap | explicit local/test mode and allowed client host | authentication exception | Returns 404 unless `AUTH_MODE=development` and `DEV_AUTH_ENABLED=true`; unavailable in staging/production. |
 | POST | `/api/auth/logout` | authenticated action | viewer or higher | session cleanup | Clears only the local-development cookie; production OIDC logout belongs to the identity provider. |
 
@@ -57,6 +58,7 @@ Status: implemented security contract. Role inheritance is `administrator > oper
 | POST | `/api/admin/governance/holds/{hold_id}/release` | governance action | administrator | Required `Idempotency-Key`, actor and reason. |
 | GET | `/api/admin/governance/exports/expiration-report` | governance read | administrator | Dry-run expiration report; no object mutation. |
 | POST | `/api/admin/governance/data-subject-requests` | governance action | administrator | Required `Idempotency-Key`; accepts only a hashed subject reference. |
+| GET | `/api/admin/observability/metrics` | observability read | administrator | Bounded process-local metric evidence and versioned definitions; no CloudWatch execution. |
 | GET | `/api/news/{foundation_name}/summary` | authenticated resource-intensive read | analyst | Bounded parameters/timeouts; live paid-provider use remains separately approval-gated. |
 | GET | `/api/news/{foundation_name}/summary/stream` | authenticated resource-intensive read | analyst | Same restrictions as the JSON endpoint. |
 | configured allowlist only | `/api/core/{path}` | proxy action | administrator | Disabled by default; fixed destination host, exact/prefix path allowlist, method allowlist, request/response header allowlists, no browser credential forwarding, no redirects, timeout, request ID and idempotency for enabled mutations. Hidden from OpenAPI. |
