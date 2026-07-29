@@ -6,7 +6,7 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 - Target branch: `91-clean-up-code-for-aws-integration`
 - Starting commit: `408eb879b05ec4d2caf92d9bbd782dda9b290e23`
-- Current phase: Phase 5 — application conversion to PostgreSQL
+- Current phase: Phase 6 — performance and concurrency
 - Overall production status: `NO-GO`
 - AWS mutations performed: none
 - Paid external calls performed: none
@@ -95,7 +95,17 @@ This file is the durable continuation ledger. Read it before resuming interrupte
 
 ### Phase 5 — Application conversion to PostgreSQL
 
-- Status: `PENDING`
+- Status: `COMPLETED`
+- Runtime coverage: all 25 legacy organization/grant route contracts are present in the PostgreSQL router. Organization list/detail/stats/grants/Sankey/score, registry directory/detail, map/overview/filter suggestions/trends/themes/drill-down/summary, source-funder list/detail, link overrides and profile cache now use domain-sized async PostgreSQL repositories.
+- Operational state: production/staging admin status, manual triggers, history and logs use `job_runs`/`job_events`. Requests enqueue bounded idempotent work and never start a local scraper/subprocess. Production security audits use the append-only `audit_events` table.
+- Runtime boundary: production/staging imports only PostgreSQL application and admin routers; the production startup test proves `sqlite3`, the legacy router and the SQLite repository are absent. Startup fails before serving when PostgreSQL configuration is missing, and readiness passes only after a real database query.
+- Transaction evidence: Funder relink/reset/cache, durable jobs and audit writes were exercised through real asyncpg sessions inside an outer transaction and fully rolled back. No test artifacts remain in the active dataset.
+- Integration evidence: five Phase-5 tests pass against PostgreSQL 16.14, including all read journeys with response-model validation, mutation/idempotency/audit behavior and production startup/router selection. The normal suite passes 310 tests, skips five explicit live-environment tests, and passes eight route subtests.
+- Resolved failures: real PostgreSQL caught and fixed a reserved `grant` alias, an incorrectly typed interval bind, a missing CTE alias and ambiguous joined columns. These failures could not have been detected by mocked repositories alone.
+- Protected state: active SQLite and aggregate `docs/audits/` checksums remain exactly at baseline. No dependency download, AWS access, live scraper/model/API call, upload or push occurred.
+- Gate result: `PASS`.
+- Commit hash: the scoped Phase-5 commit containing this ledger.
+- Next exact action: measure cold/warm and concurrent PostgreSQL journeys, capture query plans, then fix query/index/materialization and duplicate-request root causes for Gate 6.
 
 ### Phase 6 — Performance and concurrency
 

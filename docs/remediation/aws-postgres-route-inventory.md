@@ -45,9 +45,10 @@ Status: implemented security contract. Role inheritance is `administrator > oper
 
 | Method | Path | Classification | Minimum role | Additional controls |
 |---|---|---|---|---|
-| GET | `/api/admin/pipeline/status` | operator action/read | operator | Security audit event; current local status is replaced by durable job state in Phase 8. |
+| GET | `/api/admin/pipeline/status` | operator action/read | operator | Reads the latest durable PostgreSQL job state. |
 | POST | `/api/admin/pipeline/trigger` | operator action | operator | Required `Idempotency-Key`; bounded mode validation; security audit event. |
-| GET | `/api/admin/pipeline/logs` | administrator action/read | administrator | Last 100 lines only; output redacted; security audit event. |
+| GET | `/api/admin/pipeline/jobs` | operator action/read | operator | Bounded durable PostgreSQL job history. |
+| GET | `/api/admin/pipeline/logs` | administrator action/read | administrator | Last 100 structured PostgreSQL job events; output redacted; security audit event. |
 | GET | `/api/news/{foundation_name}/summary` | authenticated resource-intensive read | analyst | Bounded parameters/timeouts; live paid-provider use remains separately approval-gated. |
 | GET | `/api/news/{foundation_name}/summary/stream` | authenticated resource-intensive read | analyst | Same restrictions as the JSON endpoint. |
 | configured allowlist only | `/api/core/{path}` | proxy action | administrator | Disabled by default; fixed destination host, exact/prefix path allowlist, method allowlist, request/response header allowlists, no browser credential forwarding, no redirects, timeout, request ID and idempotency for enabled mutations. Hidden from OpenAPI. |
@@ -56,4 +57,4 @@ There is no internal-service route in the current application. Queue/task callba
 
 ## Phase boundary
 
-Rate limiting and idempotency are thread-safe process-local controls in Phase 1 so the current single local process is deterministic. The target production layers are WAF/API edge rate limiting plus PostgreSQL-backed idempotency/job records before horizontal ECS deployment. Security audit records are append-only structured events through a sink interface; the runtime sink emits redacted JSON for the managed log pipeline, and tests replace it with a deterministic memory sink. Later schema/observability phases add the durable database audit table and least-privilege CloudWatch retention policy without changing route semantics.
+Production/staging application data, job state, link overrides, profile caches and audit records now use PostgreSQL. Manual refresh routes only enqueue durable jobs and return a job ID; workers are introduced in Phase 8. The request-level reservation remains process-local until Phase 8, while the job-table uniqueness constraint already makes enqueue idempotency durable. Production audit events are append-only PostgreSQL rows; local unit tests may replace the sink with deterministic memory state. Edge/distributed rate limiting remains a Terraform and deployment concern.

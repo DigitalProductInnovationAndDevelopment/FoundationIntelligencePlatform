@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+import inspect
 import re
 import time
 import uuid
@@ -8,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from bff.auth import router as auth_router
 from bff.proxy import router as proxy_router
-from bff.admin import router as admin_router
 from bff.news import router as news_router
 from bff.audit import StructuredLogAuditSink, event_from_request
 from bff.config import SECURITY_SETTINGS, validate_security_settings
@@ -19,11 +19,14 @@ from bff.utils.logging import logger
 
 POSTGRESQL_ONLY_RUNTIME = SECURITY_SETTINGS.app_env in {"staging", "production"}
 if POSTGRESQL_ONLY_RUNTIME:
+    from bff.postgres.admin_routes import router as admin_router
+    from bff.postgres.audit_repository import PostgresAuditSink
     from bff.postgres.routes import router as charity_router
 else:
     # The legacy SQLite repository is restricted to development/test while the
     # remaining domain journeys are ported in Phase 5.
     from bff.charity import router as charity_router
+    from bff.admin import router as admin_router
     from bff.repositories import get_charity_repository
 
 
@@ -35,7 +38,8 @@ async def lifespan(application: FastAPI):
     if POSTGRESQL_ONLY_RUNTIME:
         # Constructing the pool remains lazy; readiness owns the first bounded
         # connection and all production repositories use the same manager.
-        application.state.database.sessions()
+        sessions = application.state.database.sessions()
+        application.state.audit_sink = PostgresAuditSink(sessions)
         logger.info("PostgreSQL repository runtime initialized.")
     else:
         get_charity_repository()
@@ -149,7 +153,11 @@ async def log_requests(request: Request, call_next):
             app.state.idempotency_store.release(record_key)
     if hasattr(request.state, "audit_action"):
         error_class = None if response.status_code < 400 else f"http_{response.status_code}"
-        app.state.audit_sink.record(event_from_request(request, response.status_code, error_class))
+        audit_result = app.state.audit_sink.record(
+            event_from_request(request, response.status_code, error_class)
+        )
+        if inspect.isawaitable(audit_result):
+            await audit_result
 
     duration = time.time() - start_time
     logger.info(

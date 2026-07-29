@@ -100,6 +100,15 @@ Status: active architecture contract through Phase 2; implementation evidence is
 - Decision: every full migration report includes a catalog-driven anti-join result across all declared PostgreSQL foreign keys, in addition to relying on validated server constraints.
 - Consequence: apparent duplicate-count drift caused by truncating source timestamps is a schema defect, not an approved data correction. The schema must preserve the original business key before reconciliation can pass.
 
+## ADR-016 — Domain-sized async repositories and queue-only control plane
+
+- Decision: production/staging organization, registry, grant analytics, source-funder, job and audit journeys use separate async PostgreSQL repositories behind small protocol interfaces. A single cross-domain repository is prohibited.
+- Decision: the 25 pre-existing organization/grant method-and-path contracts remain stable while their production implementation changes. Route parity is an executable contract.
+- Decision: application mutations own explicit transaction boundaries. Source-funder override revisions are locked and incremented in the same transaction that invalidates profile cache state.
+- Decision: manual refresh and enrichment HTTP requests only create idempotent `job_runs` plus structured `job_events`; they never start a scraper or local subprocess. Job execution and delivery semantics belong to Phase 8.
+- Decision: production security audit events are awaited and persisted to the append-only PostgreSQL table with actual HTTP status. Development/test may use structured-log or memory sinks without creating a production fallback.
+- Consequence: production startup selects PostgreSQL application/admin routers before legacy modules can import and fails when PostgreSQL connection settings are incomplete. Legacy SQLite modules remain test/migration compatibility code, not a production route.
+
 ## Open external decisions
 
 - OIDC issuer, audiences, role/group claims and identity owner.

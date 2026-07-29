@@ -627,6 +627,7 @@ class PipelineStatus(BaseModel):
     finished_at: Optional[str] = None
     last_run_source: Optional[str] = None
     error: Optional[str] = None
+    job_id: Optional[str] = None
 
 class PipelineTrigger(BaseModel):
     source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants, full_run")

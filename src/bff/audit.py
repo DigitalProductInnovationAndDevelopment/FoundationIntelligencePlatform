@@ -20,12 +20,13 @@ class AuditEvent:
     timestamp: str
     request_id: str
     result: str
+    http_status: int
     error_class: Optional[str]
     dataset_version: Optional[str]
 
 
 class AuditSink(Protocol):
-    def record(self, event: AuditEvent) -> None: ...
+    def record(self, event: AuditEvent) -> object: ...
 
 
 class StructuredLogAuditSink:
@@ -59,6 +60,7 @@ def event_from_request(request, status_code: int, error_class: Optional[str] = N
         timestamp=datetime.now(timezone.utc).isoformat(),
         request_id=getattr(request.state, "request_id", "unavailable"),
         result=result,
+        http_status=status_code,
         error_class=error_class,
         dataset_version=getattr(request.state, "dataset_version", None),
     )

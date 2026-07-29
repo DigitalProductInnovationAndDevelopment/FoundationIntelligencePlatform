@@ -466,3 +466,55 @@ The final image passes the complete contract, contains migration and Alembic
 head `0003_grant_award_timestamp`, and has local image ID
 `sha256:e43491e5e7080e0923b9d777aa1f985bfd3c4897482d662d0be7bf7364758b91`.
 It is an unpushed local image and therefore has no repository digest.
+
+## Phase 5 — PostgreSQL application conversion
+
+### Runtime implementation and static gates
+
+```zsh
+python3 -m py_compile src/bff/postgres/*.py src/bff/main.py src/bff/audit.py src/bff/schemas.py
+git diff --check
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_security.py src/tests/test_database.py src/tests/test_postgres_schema.py -k 'not integration'
+PYTHONPATH=src venv/bin/python -c '<compare all legacy and PostgreSQL APIRoute method/path contracts>'
+PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_postgres_application.py -k 'not TestPostgreSQLApplicationIntegration'
+```
+
+The PostgreSQL router matches all 25 existing organization/grant contracts.
+Production now selects PostgreSQL-backed admin routes in addition to the data
+routes. Manual triggers create durable jobs rather than filesystem status,
+locks, logs or subprocesses. Production audit middleware awaits the append-only
+PostgreSQL sink. Static/security/database tests passed without network access.
+
+### Real PostgreSQL application gate
+
+The retained PostgreSQL 16.14 container was healthy on loopback port 55432.
+Every invocation used `DATABASE_PASSWORD_FILE`; no password was printed.
+
+```zsh
+DOCKER_CONFIG=/private/tmp/fip-phase2-docker-config DOCKER_HOST=unix:///Users/manuelgrabmayer/.docker/run/docker.sock POSTGRES_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder POSTGRES_HOST_PORT=55432 docker-compose ps
+APP_ENV=test AUTH_MODE=disabled RUN_POSTGRES_INTEGRATION=1 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=foundation_intelligence DATABASE_USER=foundation_app DATABASE_PASSWORD_FILE=/private/tmp/fip-compose-secret-placeholder DATABASE_STATEMENT_TIMEOUT_MS=120000 PYTHONPATH=src venv/bin/python -m pytest -q src/tests/test_postgres_application.py -vv
+```
+
+The first repetitions exposed four PostgreSQL-specific defects: `grant` was a
+reserved SQL alias, an integer interval bind was inferred as text, an aggregate
+CTE retained the pre-CTE alias and joined detail columns were ambiguous. Each
+was corrected and the affected real journey was repeated. The final Phase-5
+suite passes five tests: complete reads and Pydantic response validation,
+transactional link/cache/job/audit mutations with outer rollback, missing-DB
+startup failure, production PostgreSQL route selection and real readiness.
+
+### Regression and protected-state gates
+
+```zsh
+PYTHONPATH=src venv/bin/python -m pytest -q
+shasum -a 256 src/data/charities.db
+find docs/audits -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+Result: 310 passed, five intentional skips, eight subtests and 53 known
+deprecation warnings. The SQLite checksum remains
+`8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651`;
+the aggregate audit checksum remains
+`d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a`.
+No packages or images were downloaded in Phase 5. No AWS, paid/live API,
+scraper/model, upload or push action occurred.
