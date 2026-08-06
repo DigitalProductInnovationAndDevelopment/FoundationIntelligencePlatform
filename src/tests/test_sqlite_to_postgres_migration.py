@@ -238,6 +238,21 @@ class TestMigrationSourceSafety(unittest.TestCase):
             with self.assertRaises(PreflightError):
                 source_preflight(path, "0" * 64, "7", enforce_capacity=False)
 
+    def test_remote_postgres_capacity_does_not_count_rds_storage_as_local(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "fixture.db"
+            checksum = _fixture_database(path)
+            result = source_preflight(
+                path,
+                checksum,
+                "7",
+                enforce_capacity=False,
+                remote_postgres=True,
+            )
+            self.assertEqual(result.capacity.estimated_postgres_and_indexes_bytes, 0)
+            self.assertEqual(result.capacity.estimated_wal_and_temp_bytes, 0)
+            self.assertEqual(result.capacity.safety_margin_bytes, 4 * 1024**3)
+
 
 @unittest.skipUnless(
     os.getenv("RUN_POSTGRES_INTEGRATION") == "1" or os.getenv("TEST_DATABASE_URL"),

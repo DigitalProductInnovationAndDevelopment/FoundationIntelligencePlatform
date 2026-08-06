@@ -247,11 +247,23 @@ def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
-def capacity_estimate(source_path: Path) -> CapacityEstimate:
+def capacity_estimate(
+    source_path: Path,
+    *,
+    remote_postgres: bool = False,
+) -> CapacityEstimate:
     source_bytes = source_path.stat().st_size
-    postgres_and_indexes = source_bytes * 3
-    wal_and_temp = source_bytes * 2
-    safety_margin = 10 * GIB
+    if remote_postgres:
+        # An ECS migration task streams the read-only SQLite source to RDS. Its
+        # local filesystem never stores PostgreSQL data or WAL, so retain a
+        # bounded 4 GiB margin for the image, reports and SQLite temporary work.
+        postgres_and_indexes = 0
+        wal_and_temp = 0
+        safety_margin = 4 * GIB
+    else:
+        postgres_and_indexes = source_bytes * 3
+        wal_and_temp = source_bytes * 2
+        safety_margin = 10 * GIB
     return CapacityEstimate(
         source_bytes=source_bytes,
         estimated_postgres_and_indexes_bytes=postgres_and_indexes,
@@ -277,6 +289,7 @@ def source_preflight(
     expected_schema_version: str,
     *,
     enforce_capacity: bool = True,
+    remote_postgres: bool = False,
 ) -> SourcePreflight:
     if not source_path.is_file():
         raise PreflightError("SQLite source does not exist")
@@ -285,7 +298,7 @@ def source_preflight(
     actual_checksum = sha256_file(source_path)
     if actual_checksum != expected_checksum:
         raise PreflightError("SQLite source checksum does not match the approved value")
-    capacity = capacity_estimate(source_path)
+    capacity = capacity_estimate(source_path, remote_postgres=remote_postgres)
     if enforce_capacity and not capacity.sufficient:
         raise PreflightError(
             f"Insufficient disk capacity: requires {capacity.minimum_free_bytes} bytes, "
@@ -471,13 +484,15 @@ def _converted_record(
 
 
 async def _connect_postgres() -> asyncpg.Connection:
-    url = DatabaseSettings.from_env().sqlalchemy_url()
+    settings = DatabaseSettings.from_env()
+    url = settings.sqlalchemy_url()
     connection = await asyncpg.connect(
         host=url.host,
         port=url.port or 5432,
         user=url.username,
         password=url.password,
         database=url.database,
+        ssl=settings.ssl_mode,
         command_timeout=None,
     )
     await connection.execute("SET statement_timeout = 0")
@@ -1025,6 +1040,7 @@ async def migrate(
     batch_size: int = 10_000,
     enforce_baseline: bool = True,
     enforce_capacity: bool = True,
+    remote_postgres: bool = False,
 ) -> dict[str, Any]:
     if not re.fullmatch(r"[a-f0-9]{40}", code_revision):
         raise PreflightError("Code revision must be a full lowercase Git SHA")
@@ -1035,6 +1051,7 @@ async def migrate(
         expected_checksum,
         expected_schema_version,
         enforce_capacity=enforce_capacity,
+        remote_postgres=remote_postgres,
     )
     migration_run_id = uuid.uuid5(
         uuid.NAMESPACE_URL,
@@ -1262,6 +1279,14 @@ def _parser() -> argparse.ArgumentParser:
     migrate_parser.add_argument("--output-directory", type=Path, required=True)
     migrate_parser.add_argument("--batch-size", type=int, default=10_000)
     migrate_parser.add_argument("--fixture", action="store_true")
+    migrate_parser.add_argument(
+        "--remote-postgres-capacity",
+        action="store_true",
+        help=(
+            "Size local capacity for a read-only SQLite source streamed to remote "
+            "PostgreSQL; PostgreSQL data and WAL are not counted as local files."
+        ),
+    )
     rollback_parser = subparsers.add_parser("rollback")
     rollback_parser.add_argument("--dataset-version", required=True)
     return parser
@@ -1301,6 +1326,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 batch_size=arguments.batch_size,
                 enforce_baseline=not arguments.fixture,
                 enforce_capacity=not arguments.fixture,
+                remote_postgres=arguments.remote_postgres_capacity,
             )
         )
         print(json.dumps({
