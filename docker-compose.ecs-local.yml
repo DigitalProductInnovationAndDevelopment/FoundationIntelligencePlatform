@@ -2,14 +2,16 @@ services:
   backend:
     image: foundation-intelligence-backend:aws-readiness-local
     environment:
-      AUTH_MODE: development
-      DEV_AUTH_ENABLED: "true"
+      APP_ENV: "${ECS_APP_ENV:-development}"
+      AUTH_MODE: "${ECS_AUTH_MODE:-development}"
+      DEV_AUTH_ENABLED: "${ECS_DEV_AUTH_ENABLED:-true}"
+      DATABASE_USER: "${ECS_DATABASE_USER:-foundation_app}"
       DEV_AUTH_USERNAME: ${DEV_AUTH_USERNAME:?Set DEV_AUTH_USERNAME for the isolated local test}
       DEV_AUTH_PASSWORD: ${DEV_AUTH_PASSWORD:?Set DEV_AUTH_PASSWORD for the isolated local test}
       DEV_AUTH_SECRET: ${DEV_AUTH_SECRET:?Set DEV_AUTH_SECRET for the isolated local test}
       DEV_AUTH_ALLOWED_HOSTS: ${DEV_AUTH_ALLOWED_HOSTS:-127.0.0.1,::1,localhost}
     ports:
-      - "127.0.0.1:${ECS_FRONTEND_HOST_PORT:-8081}:8080"
+      - "127.0.0.1:${ECS_FRONTEND_HOST_PORT:-8081}:80"
 
   frontend:
     image: foundation-intelligence-frontend:aws-readiness-local
@@ -33,7 +35,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
       interval: 5s
       timeout: 3s
       retries: 12
