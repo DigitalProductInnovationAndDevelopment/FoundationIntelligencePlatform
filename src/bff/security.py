@@ -37,6 +37,38 @@ _ROLE_RANK = {
 }
 
 
+# This allowlist deliberately contains only the read-only route templates used
+# by the normal demo UI. Operational, authentication, live-research, cache and
+# mutation surfaces stay private even when they use GET internally.
+# Route templates, rather than path prefixes or a blanket GET rule, make newly
+# added viewer endpoints private until they receive an explicit data review.
+PUBLIC_READONLY_ROUTE_ALLOWLIST: FrozenSet[str] = frozenset(
+    {
+        "/api/charities",
+        "/api/charities/stats",
+        "/api/charities/{reg_charity_number}",
+        "/api/charities/{reg_charity_number}/grants",
+        "/api/charities/{reg_charity_number}/sankey",
+        "/api/charities/{reg_charity_number}/score",
+        "/api/charities/directory/organizations",
+        "/api/charities/directory/organizations/{registry_id}",
+        "/api/charities/grants/beneficiary-geographies",
+        "/api/charities/grants/funders",
+        "/api/charities/grants/funders/{source_funder_key}",
+        "/api/charities/grants/map",
+        "/api/charities/grants/map/connections",
+        "/api/charities/grants/overview",
+        "/api/charities/grants/overview/drilldown",
+        "/api/charities/grants/overview/entity-suggestions",
+        "/api/charities/grants/overview/trends",
+        "/api/charities/grants/summary",
+        "/api/charities/grants/themes",
+        "/api/charities/grants/trends",
+    }
+)
+PUBLIC_READONLY_METHOD_ALLOWLIST: FrozenSet[str] = frozenset({"GET", "HEAD"})
+
+
 @dataclass(frozen=True)
 class Principal:
     actor_id: str
@@ -247,6 +279,26 @@ def _extract_token(request: Request, settings: SecuritySettings) -> Optional[str
     return None
 
 
+def _public_readonly_principal(
+    request: Request,
+    settings: SecuritySettings,
+) -> Optional[Principal]:
+    """Return the demo viewer only for one explicitly reviewed API route."""
+    if settings.auth_mode != "public_readonly" or settings.app_env != "demo":
+        return None
+    if request.method.upper() not in PUBLIC_READONLY_METHOD_ALLOWLIST:
+        return None
+    route = request.scope.get("route")
+    route_template = getattr(route, "path", None)
+    if route_template not in PUBLIC_READONLY_ROUTE_ALLOWLIST:
+        return None
+    return Principal(
+        actor_id="public-readonly-demo",
+        roles=frozenset({Role.VIEWER}),
+        claims={"sub": "public-readonly-demo", "auth_mode": "public_readonly"},
+    )
+
+
 def _roles_from_claims(claims: Mapping[str, Any], claim_name: str) -> FrozenSet[Role]:
     raw_roles = claims.get(claim_name, [])
     if isinstance(raw_roles, str):
@@ -342,6 +394,19 @@ async def authenticate_request(request: Request) -> Principal:
     settings = getattr(request.app.state, "security_settings", SECURITY_SETTINGS)
     token = _extract_token(request, settings)
     if not token:
+        public_principal = _public_readonly_principal(request, settings)
+        if public_principal is not None:
+            retry_after = _limiter_for(request, settings).check(
+                f"public-demo:{_request_host(request)}"
+            )
+            if retry_after is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Request rate limit exceeded.",
+                    headers={"Retry-After": str(retry_after)},
+                )
+            request.state.principal = public_principal
+            return public_principal
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="A bearer token or secure session is required.",

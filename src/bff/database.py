@@ -37,6 +37,7 @@ class DatabaseSettings:
     user: Optional[str]
     password: Optional[str]
     password_file: Optional[str]
+    ssl_mode: str
     pool_size: int
     max_overflow: int
     pool_timeout_seconds: int
@@ -54,6 +55,7 @@ class DatabaseSettings:
             user=env.get("DATABASE_USER"),
             password=env.get("DATABASE_PASSWORD"),
             password_file=env.get("DATABASE_PASSWORD_FILE"),
+            ssl_mode=env.get("DATABASE_SSL_MODE", "disable").strip().lower(),
             pool_size=_positive_int(env.get("DATABASE_POOL_SIZE"), 5),
             max_overflow=_positive_int(env.get("DATABASE_MAX_OVERFLOW"), 5),
             pool_timeout_seconds=_positive_int(env.get("DATABASE_POOL_TIMEOUT_SECONDS"), 5),
@@ -72,6 +74,10 @@ class DatabaseSettings:
         )
 
     def sqlalchemy_url(self) -> URL:
+        if self.ssl_mode not in {"disable", "require"}:
+            raise DatabaseConfigurationError(
+                "DATABASE_SSL_MODE must be disable or require"
+            )
         if self.url:
             parsed = make_url(self.url)
             if parsed.get_backend_name() != "postgresql":
@@ -123,6 +129,16 @@ class DatabaseManager:
     def engine(self) -> AsyncEngine:
         if self._engine is None:
             url = self.settings.sqlalchemy_url()
+            connect_args = {
+                "command_timeout": self.settings.statement_timeout_ms / 1000,
+                "timeout": self.settings.connect_timeout_seconds,
+                "server_settings": {
+                    "application_name": "foundation-intelligence-api",
+                    "statement_timeout": str(self.settings.statement_timeout_ms),
+                },
+            }
+            if self.settings.ssl_mode != "disable":
+                connect_args["ssl"] = self.settings.ssl_mode
             self._engine = create_async_engine(
                 url,
                 pool_size=self.settings.pool_size,
@@ -130,31 +146,27 @@ class DatabaseManager:
                 pool_timeout=self.settings.pool_timeout_seconds,
                 pool_recycle=1800,
                 pool_pre_ping=True,
-                connect_args={
-                    "command_timeout": self.settings.statement_timeout_ms / 1000,
-                    "timeout": self.settings.connect_timeout_seconds,
-                    "server_settings": {
-                        "application_name": "foundation-intelligence-api",
-                        "statement_timeout": str(self.settings.statement_timeout_ms),
-                    },
-                },
+                connect_args=connect_args,
             )
         return self._engine
 
     def health_engine(self) -> AsyncEngine:
         """Use independent connections so analytical pool pressure cannot block health."""
         if self._health_engine is None:
+            connect_args = {
+                "command_timeout": min(self.settings.statement_timeout_ms / 1000, 5),
+                "timeout": self.settings.connect_timeout_seconds,
+                "server_settings": {
+                    "application_name": "foundation-intelligence-health",
+                    "statement_timeout": "5000",
+                },
+            }
+            if self.settings.ssl_mode != "disable":
+                connect_args["ssl"] = self.settings.ssl_mode
             self._health_engine = create_async_engine(
                 self.settings.sqlalchemy_url(),
                 poolclass=NullPool,
-                connect_args={
-                    "command_timeout": min(self.settings.statement_timeout_ms / 1000, 5),
-                    "timeout": self.settings.connect_timeout_seconds,
-                    "server_settings": {
-                        "application_name": "foundation-intelligence-health",
-                        "statement_timeout": "5000",
-                    },
-                },
+                connect_args=connect_args,
             )
         return self._health_engine
 

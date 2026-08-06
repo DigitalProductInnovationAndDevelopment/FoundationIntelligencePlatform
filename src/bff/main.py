@@ -81,17 +81,34 @@ async def lifespan(application: FastAPI):
         # Constructing the pool remains lazy; readiness owns the first bounded
         # connection and all production repositories use the same manager.
         sessions = application.state.database.sessions()
-        application.state.audit_sink = PostgresAuditSink(sessions)
-        application.state.idempotency_store = PostgresIdempotencyStore(sessions)
-        synchronized_sources = await PipelineRepository(sessions).synchronize_sources(
-            load_source_configurations()
+        public_readonly = (
+            application.state.security_settings.auth_mode == "public_readonly"
         )
-        synchronized_policies = await GovernanceRepository(sessions).synchronize_policies(
-            load_governance_configuration()
-        )
+        if public_readonly:
+            # The public web task has a database role with SELECT only. It must
+            # never synchronize configuration or persist audit/idempotency rows
+            # as a side effect of startup or anonymous reads.
+            application.state.audit_sink = StructuredLogAuditSink()
+            application.state.idempotency_store = IdempotencyStore()
+            logger.info("Public read-only PostgreSQL runtime initialized without writes.")
+        else:
+            application.state.audit_sink = PostgresAuditSink(sessions)
+            application.state.idempotency_store = PostgresIdempotencyStore(sessions)
+            synchronized_sources = await PipelineRepository(sessions).synchronize_sources(
+                load_source_configurations()
+            )
+            synchronized_policies = await GovernanceRepository(sessions).synchronize_policies(
+                load_governance_configuration()
+            )
+            logger.info(
+                "Synchronized %s governance-gated source configurations.",
+                synchronized_sources,
+            )
+            logger.info(
+                "Synchronized %s non-destructive retention policies.",
+                synchronized_policies,
+            )
         logger.info("PostgreSQL repository runtime initialized.")
-        logger.info("Synchronized %s governance-gated source configurations.", synchronized_sources)
-        logger.info("Synchronized %s non-destructive retention policies.", synchronized_policies)
     else:
         get_charity_repository()
         logger.info(
@@ -172,7 +189,19 @@ async def log_requests(request: Request, call_next):
     )
     settings = app.state.security_settings
 
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+    if (
+        settings.auth_mode == "public_readonly"
+        and request.url.path.startswith("/api/")
+        and request.method not in {"GET", "HEAD"}
+    ):
+        # Fail before routing so an anonymous mutation-shaped request never
+        # becomes a 405/validation oracle or reaches a current/future handler.
+        response = JSONResponse(
+            status_code=401,
+            content={"detail": "Public demo access is read-only."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    elif request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         content_length = request.headers.get("content-length")
         try:
             declared_size = int(content_length) if content_length else 0

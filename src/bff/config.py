@@ -67,6 +67,7 @@ class SecurityConfigurationError(RuntimeError):
 @dataclass(frozen=True)
 class SecuritySettings:
     app_env: str
+    data_runtime_mode: str
     auth_mode: str
     oidc_issuer: Optional[str]
     oidc_audience: Optional[str]
@@ -103,6 +104,9 @@ class SecuritySettings:
         app_env = env.get("APP_ENV", "development").strip().lower()
         return cls(
             app_env=app_env,
+            data_runtime_mode=env.get(
+                "DATA_RUNTIME_MODE", "sqlite_migration_source"
+            ).strip().lower(),
             auth_mode=env.get("AUTH_MODE", "disabled").strip().lower(),
             oidc_issuer=env.get("OIDC_ISSUER"),
             oidc_audience=env.get("OIDC_AUDIENCE"),
@@ -163,8 +167,10 @@ def validate_security_settings(settings: SecuritySettings) -> None:
     errors = []
     production = settings.app_env in {"staging", "production"}
 
-    if settings.auth_mode not in {"disabled", "development", "oidc"}:
-        errors.append("AUTH_MODE must be disabled, development or oidc")
+    if settings.auth_mode not in {"disabled", "development", "oidc", "public_readonly"}:
+        errors.append(
+            "AUTH_MODE must be disabled, development, oidc or public_readonly"
+        )
     if production and settings.auth_mode != "oidc":
         errors.append("staging/production requires AUTH_MODE=oidc")
     if production and settings.dev_auth_enabled:
@@ -181,6 +187,18 @@ def validate_security_settings(settings: SecuritySettings) -> None:
             errors.append("development authentication credentials must be configured explicitly")
         if settings.dev_auth_secret and len(settings.dev_auth_secret) < 32:
             errors.append("DEV_AUTH_SECRET must contain at least 32 characters")
+
+    if settings.auth_mode == "public_readonly":
+        if settings.app_env != "demo":
+            errors.append("public_readonly authentication requires APP_ENV=demo")
+        if settings.data_runtime_mode != "postgresql":
+            errors.append(
+                "public_readonly authentication requires DATA_RUNTIME_MODE=postgresql"
+            )
+        if settings.dev_auth_enabled:
+            errors.append("development authentication must be disabled in public_readonly mode")
+        if settings.core_proxy_enabled:
+            errors.append("the core proxy must be disabled in public_readonly mode")
 
     if settings.auth_mode == "oidc":
         if not settings.oidc_issuer or not settings.oidc_audience:

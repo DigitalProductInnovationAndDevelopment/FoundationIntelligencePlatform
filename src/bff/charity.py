@@ -985,6 +985,20 @@ async def get_charity_sankey(
     return await repo.get_sankey_data(reg_charity_number, currency=currency, limit=limit)
 
 
+@router.get("/{reg_charity_number}/score", response_model=ScoreResponse)
+async def get_default_charity_relevance_score(
+    reg_charity_number: int,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    charity = await repo.get_by_id(reg_charity_number)
+    if not charity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization {reg_charity_number} not found.",
+        )
+    return await repo.get_score(reg_charity_number, target_profile=None)
+
+
 @router.post(
     "/{reg_charity_number}/score",
     response_model=ScoreResponse,

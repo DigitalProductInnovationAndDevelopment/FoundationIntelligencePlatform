@@ -2320,10 +2320,8 @@ export default function App() {
         return;
       }
       const resp = await fetch(`${API_BASE}/api/charities/${id}/score`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "GET",
         credentials: "include",
-        body: JSON.stringify({}),
         signal,
       });
       if (!isCurrentProfileRequest(requestId)) return;

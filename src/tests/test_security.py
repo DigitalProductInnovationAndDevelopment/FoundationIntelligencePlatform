@@ -25,6 +25,8 @@ from bff.config import (
 from bff.main import app
 from bff.security import (
     IdempotencyStore,
+    PUBLIC_READONLY_METHOD_ALLOWLIST,
+    PUBLIC_READONLY_ROUTE_ALLOWLIST,
     Role,
     SlidingWindowRateLimiter,
     create_development_access_token,
@@ -270,6 +272,123 @@ class TestSecurityGate(unittest.TestCase):
     def test_public_endpoint_is_read_only(self):
         self.assertEqual(self.client.get("/health").status_code, 200)
         self.assertEqual(self.client.post("/health").status_code, 405)
+
+    def test_public_readonly_allows_only_reviewed_ui_read_routes(self):
+        app.state.security_settings = dataclasses.replace(
+            SECURITY_SETTINGS,
+            app_env="demo",
+            data_runtime_mode="postgresql",
+            auth_mode="public_readonly",
+            dev_auth_enabled=False,
+            core_proxy_enabled=False,
+        )
+
+        allowed = self.client.get("/api/charities/grants/overview")
+        self.assertEqual(allowed.status_code, 200)
+        self.assertIsNone(allowed.headers.get("set-cookie"))
+        self.assertEqual(
+            PUBLIC_READONLY_ROUTE_ALLOWLIST,
+            {
+                "/api/charities",
+                "/api/charities/stats",
+                "/api/charities/{reg_charity_number}",
+                "/api/charities/{reg_charity_number}/grants",
+                "/api/charities/{reg_charity_number}/sankey",
+                "/api/charities/{reg_charity_number}/score",
+                "/api/charities/directory/organizations",
+                "/api/charities/directory/organizations/{registry_id}",
+                "/api/charities/grants/beneficiary-geographies",
+                "/api/charities/grants/funders",
+                "/api/charities/grants/funders/{source_funder_key}",
+                "/api/charities/grants/map",
+                "/api/charities/grants/map/connections",
+                "/api/charities/grants/overview",
+                "/api/charities/grants/overview/drilldown",
+                "/api/charities/grants/overview/entity-suggestions",
+                "/api/charities/grants/overview/trends",
+                "/api/charities/grants/summary",
+                "/api/charities/grants/themes",
+                "/api/charities/grants/trends",
+            },
+        )
+        self.assertEqual(PUBLIC_READONLY_METHOD_ALLOWLIST, {"GET", "HEAD"})
+
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            with self.subTest(method=method):
+                blocked = self.client.request(
+                    method,
+                    "/api/charities/grants/overview",
+                )
+                self.assertEqual(blocked.status_code, 401)
+                self.assertIsNone(blocked.headers.get("set-cookie"))
+
+        protected = (
+            "/api/charities/grants/funders/example/profile-cache",
+            "/api/admin/pipeline/status",
+            "/api/news/example/summary",
+        )
+        for path in protected:
+            with self.subTest(path=path):
+                self.assertIn(self.client.get(path).status_code, {401, 403})
+
+        mutation = self.client.post(
+            "/api/admin/pipeline/trigger",
+            json={"source": "quick_consolidate"},
+            headers={"Idempotency-Key": "public-demo-write"},
+        )
+        self.assertIn(mutation.status_code, {401, 403})
+
+    def test_public_readonly_fails_closed_outside_demo(self):
+        for environment in ("development", "test", "staging", "production"):
+            with self.subTest(environment=environment):
+                settings = SecuritySettings.from_env(
+                    {
+                        "APP_ENV": environment,
+                        "DATA_RUNTIME_MODE": "postgresql",
+                        "AUTH_MODE": "public_readonly",
+                        "SESSION_COOKIE_SECURE": "true",
+                        "CORS_ORIGINS": "https://app.example.invalid",
+                    }
+                )
+                with self.assertRaisesRegex(
+                    SecurityConfigurationError,
+                    "public_readonly authentication requires APP_ENV=demo",
+                ):
+                    validate_security_settings(settings)
+
+    def test_public_readonly_rejects_development_auth_and_proxy_bypasses(self):
+        settings = SecuritySettings.from_env(
+            {
+                "APP_ENV": "demo",
+                "DATA_RUNTIME_MODE": "postgresql",
+                "AUTH_MODE": "public_readonly",
+                "DEV_AUTH_ENABLED": "true",
+                "CORE_PROXY_ENABLED": "true",
+                "CORE_API_URL": "https://core.example.invalid",
+                "CORE_API_ALLOWED_HOSTS": "core.example.invalid",
+                "CORE_PROXY_ALLOWED_PATHS": "v1/data",
+                "CORS_ORIGINS": "",
+            }
+        )
+        with self.assertRaises(SecurityConfigurationError):
+            validate_security_settings(settings)
+
+    def test_public_readonly_rejects_legacy_data_runtime(self):
+        settings = SecuritySettings.from_env(
+            {
+                "APP_ENV": "demo",
+                "DATA_RUNTIME_MODE": "sqlite_migration_source",
+                "AUTH_MODE": "public_readonly",
+                "DEV_AUTH_ENABLED": "false",
+                "CORE_PROXY_ENABLED": "false",
+                "CORS_ORIGINS": "",
+            }
+        )
+        with self.assertRaisesRegex(
+            SecurityConfigurationError,
+            "public_readonly authentication requires DATA_RUNTIME_MODE=postgresql",
+        ):
+            validate_security_settings(settings)
 
     def test_production_configuration_fails_closed(self):
         settings = SecuritySettings.from_env(

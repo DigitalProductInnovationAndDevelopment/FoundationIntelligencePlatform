@@ -342,6 +342,21 @@ class OrganizationRepository(PostgresRepository):
                     {"dataset_version": dataset_version},
                 )
             ).all()
+            grant_sources = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT DISTINCT source
+                        FROM grants
+                        WHERE dataset_version=:dataset_version
+                          AND source IS NOT NULL
+                          AND source<>''
+                        ORDER BY source
+                        """
+                    ),
+                    {"dataset_version": dataset_version},
+                )
+            ).scalars().all()
             types = (
                 await session.execute(
                     text(
@@ -358,7 +373,10 @@ class OrganizationRepository(PostgresRepository):
             **row_dict(row),
             "total_grants": int(grant_count or 0),
             "data_mode": "postgresql_active_dataset",
-            "source": [str(item[0]) for item in sources],
+            "source": sorted(
+                {str(item[0]) for item in sources if str(item[0]) != "Unknown"}
+                | {str(source) for source in grant_sources}
+            ),
             "source_counts": {str(item[0]): int(item[1]) for item in sources},
             "organization_type_counts": {str(item[0]): int(item[1]) for item in types},
         }

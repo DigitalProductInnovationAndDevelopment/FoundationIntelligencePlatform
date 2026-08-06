@@ -1314,13 +1314,24 @@ class AnalyticsRepository(PostgresRepository):
                     **{key: value for key, value in filters.items() if key != "currency"},
                 ),
             )
+            grant_count = int(totals["total_grants"])
+            awarded_funding = float(totals["total_amount_minor"]) / 100
+            classification = theme_payload["classification_coverage"]
             return {
                 "status": "available" if totals["total_grants"] else "no_transactions_found",
                 "kpis": {
-                    "grant_count": int(totals["total_grants"]),
+                    "awarded_funding": awarded_funding,
+                    "grants_monitored": grant_count,
+                    "country_coverage_percentage": map_payload["coverage_percentage"],
+                    "mapped_grant_count": map_payload["known_geography_count"],
+                    "unmapped_grant_count": map_payload["unknown_geography_count"],
+                    "programme_coverage_percentage": classification["classified_percentage"],
+                    "classified_grant_count": classification["classified_grant_count"],
+                    "qualifying_programme_grant_count": classification["qualifying_grant_count"],
+                    "grant_count": grant_count,
                     "funder_count": int(entity_counts.get("funder", 0)),
                     "recipient_count": int(entity_counts.get("recipient", 0)),
-                    "total_amount": float(totals["total_amount_minor"]) / 100,
+                    "total_amount": awarded_funding,
                     "currency": selected_currency,
                 },
                 "map": map_payload,
@@ -1362,13 +1373,24 @@ class AnalyticsRepository(PostgresRepository):
         theme_payload = await self.themes(currency=filters.get("currency"), **{
             key: value for key, value in filters.items() if key != "currency"
         })
+        grant_count = int(kpis["grant_count"] or 0)
+        awarded_funding = number_value(kpis["total_amount"]) or 0.0
+        classification = theme_payload["classification_coverage"]
         return {
-            "status": "available" if int(kpis["grant_count"] or 0) else "no_transactions_found",
+            "status": "available" if grant_count else "no_transactions_found",
             "kpis": {
-                "grant_count": int(kpis["grant_count"] or 0),
+                "awarded_funding": awarded_funding,
+                "grants_monitored": grant_count,
+                "country_coverage_percentage": map_payload["coverage_percentage"],
+                "mapped_grant_count": map_payload["known_geography_count"],
+                "unmapped_grant_count": map_payload["unknown_geography_count"],
+                "programme_coverage_percentage": classification["classified_percentage"],
+                "classified_grant_count": classification["classified_grant_count"],
+                "qualifying_programme_grant_count": classification["qualifying_grant_count"],
+                "grant_count": grant_count,
                 "funder_count": int(kpis["funder_count"] or 0),
                 "recipient_count": int(kpis["recipient_count"] or 0),
-                "total_amount": number_value(kpis["total_amount"]) or 0.0,
+                "total_amount": awarded_funding,
                 "currency": selected_currency,
             },
             "map": map_payload,

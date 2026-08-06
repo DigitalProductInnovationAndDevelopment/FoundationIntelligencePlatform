@@ -614,6 +614,17 @@ async def charity_sankey(
     )
 
 
+@router.get("/{reg_charity_number}/score", response_model=ScoreResponse)
+async def default_charity_score(
+    reg_charity_number: int,
+    repository: OrganizationRepository = Depends(_organizations),
+):
+    try:
+        return await repository.score(reg_charity_number, None)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Organization not found.") from exc
+
+
 @router.post(
     "/{reg_charity_number}/score",
     response_model=ScoreResponse,

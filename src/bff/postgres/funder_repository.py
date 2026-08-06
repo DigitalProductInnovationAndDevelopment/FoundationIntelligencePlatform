@@ -31,18 +31,40 @@ class SourceFunderRepository(PostgresRepository):
     @staticmethod
     def _item(row: dict[str, Any], rank: Optional[int] = None) -> dict[str, Any]:
         linked_profile = row.get("effective_profile_id")
-        link_status = "linked" if linked_profile is not None else "observed_only"
         amount = number_value(row.get("selected_amount"))
+        selected_currency = row.get("selected_currency")
+        grant_count = int(row.get("grant_count") or 0)
+        recipient_count = int(row.get("recipient_count") or 0)
+        latest_award_date = iso_value(row.get("latest_award_date"))
+        included_count = int(row.get("included_count") or 0)
+        conversion_excluded = int(row.get("conversion_excluded") or 0)
+        multi_country_count = int(row.get("multi_country_count") or 0)
+        identity_method = str(row.get("identity_method") or "unknown")
+        source_funder_key = str(row["source_funder_key"])
+        profile_name = str(row.get("profile_name") or row.get("display_name") or "Organization")
+        profile_link = (
+            {
+                "status": "single",
+                "profile_id": int(linked_profile),
+                "profile_name": profile_name,
+                "method": row.get("override_mode") or "source_identifier",
+            }
+            if linked_profile is not None
+            else {"status": "none"}
+        )
         return {
             "rank": rank,
             "kind": "source_funder",
             "identity": {
-                "source_namespace": row.get("source_namespace"),
+                "key": source_funder_key,
+                "namespace": row.get("source_namespace"),
+                "method": identity_method,
                 "source_organization_id": row.get("source_organization_id"),
+                "normalized_name_fallback": row.get("normalized_name_fallback"),
             },
-            "source_funder_key": str(row["source_funder_key"]),
+            "source_funder_key": source_funder_key,
             "display_name": str(row.get("display_name") or "Unknown source funder"),
-            "identity_method": str(row.get("identity_method") or "unknown"),
+            "identity_method": identity_method,
             "source_ids": list(row.get("source_ids") or []),
             "sources": list(row.get("sources") or []),
             "source_only": linked_profile is None,
@@ -53,28 +75,29 @@ class SourceFunderRepository(PostgresRepository):
                 }
                 if linked_profile is not None else None
             ),
-            "profile_link": {
-                "status": link_status,
-                "mode": row.get("override_mode") or "source_observed",
-                "revision": int(row.get("override_revision") or 0),
-            },
+            "profile_link": profile_link,
             "evidence_sources": list(row.get("sources") or []),
             "activity": {
-                "grant_count": int(row.get("grant_count") or 0),
-                "distinct_recipient_count": int(row.get("recipient_count") or 0),
+                "grant_count": grant_count,
+                "distinct_recipient_count": recipient_count,
                 "first_award_date": iso_value(row.get("first_award_date")),
-                "latest_award_date": iso_value(row.get("latest_award_date")),
+                "latest_award_date": latest_award_date,
             },
             "observed_activity": {
-                "beneficiary_country": row.get("country_code"),
+                "grant_count": grant_count,
+                "recipient_count": recipient_count,
+                "latest_grant_date": latest_award_date,
+                "observed_funding": amount,
+                "displayed_currency": selected_currency,
+                "programme_areas": list(row.get("leading_programme_areas") or []),
             },
             "observed_funding": {
                 "amount": amount,
-                "currency": row.get("selected_currency"),
-                "included_grant_count": int(row.get("included_count") or 0),
-                "excluded_multi_country_grant_count": int(row.get("multi_country_count") or 0),
+                "currency": selected_currency,
+                "included_grant_count": included_count,
+                "excluded_multi_country_grant_count": multi_country_count,
                 "excluded_multi_country_amount": 0.0,
-                "excluded_conversion_grant_count": int(row.get("conversion_excluded") or 0),
+                "excluded_conversion_grant_count": conversion_excluded,
                 "excluded_missing_amount_grant_count": int(row.get("missing_count") or 0),
                 "excluded_invalid_amount_grant_count": int(row.get("invalid_count") or 0),
                 "excluded_negative_amount_grant_count": int(row.get("negative_count") or 0),
@@ -83,12 +106,61 @@ class SourceFunderRepository(PostgresRepository):
                 "fallback_original_grant_count": int(row.get("fallback_count") or 0),
             },
             "amount_policy": {
-                "basis": "eur_converted" if row.get("selected_currency") == "EUR" else "original_currency",
+                "mode": "automatic_eur" if selected_currency == "EUR" else "original_currency",
+                "converted_grant_count": included_count,
+                "unconverted_grant_count": conversion_excluded,
+                "multi_country_amount_excluded": 0.0,
                 "multi_country": "counted_once_per_selected_country_scope",
                 "negative": "excluded_and_reported",
             },
-            "leading_programme_areas": [],
+            "leading_programme_areas": list(row.get("leading_programme_areas") or []),
             "representative_source_url": row.get("publisher_source_url"),
+        }
+
+    @staticmethod
+    def _summary(row: dict[str, Any], selected_currency: str) -> dict[str, Any]:
+        total_items = int(row.get("total_items") or 0)
+        linked_count = int(row.get("linked_count") or 0)
+        observed_only_count = max(0, total_items - linked_count)
+        return {
+            "matching_funder_count": total_items,
+            "matching_grant_count": int(row.get("matching_grant_count") or 0),
+            "unattributed_funder_grant_count": 0,
+            "distinct_recipient_count": int(row.get("recipient_count") or 0),
+            "source_only_funder_count": observed_only_count,
+            "linked_directory_funder_count": linked_count,
+            "status_counts": {
+                "all": total_items,
+                "linked": linked_count,
+                "observed_only": observed_only_count,
+            },
+            "monetary": {
+                "currency_mode": (
+                    "auto_converted_eur" if selected_currency == "EUR"
+                    else "source_currency"
+                ),
+                "display_currency": selected_currency,
+                "included_funding_total": number_value(
+                    row.get("included_funding_total")
+                ),
+                "included_grant_count": int(row.get("included_count") or 0),
+                "excluded_multi_country_grant_count": int(
+                    row.get("multi_country_count") or 0
+                ),
+                "excluded_multi_country_amount": 0.0,
+                "excluded_conversion_grant_count": int(
+                    row.get("conversion_excluded") or 0
+                ),
+                "excluded_missing_amount_grant_count": int(
+                    row.get("missing_count") or 0
+                ),
+                "excluded_invalid_amount_grant_count": int(
+                    row.get("invalid_count") or 0
+                ),
+                "excluded_negative_amount_grant_count": int(
+                    row.get("negative_count") or 0
+                ),
+            },
         }
 
     @staticmethod
@@ -117,7 +189,7 @@ class SourceFunderRepository(PostgresRepository):
             selected_currency = currency
         else:
             amount = "fact.eur_amount_minor"
-            valid = "fact.eur_amount_status NOT IN ('missing','invalid')"
+            valid = "fact.eur_amount_status NOT IN ('negative','missing','invalid')"
             selected_currency = "EUR"
         if parameters["date_from"]:
             conditions.append("fact.award_date>=CAST(:date_from AS date)")
@@ -184,7 +256,7 @@ class SourceFunderRepository(PostgresRepository):
         conditions, parameters, amount, selected_currency = self._conditions(filters)
         valid = (
             "fact.original_amount_status NOT IN ('negative','invalid','missing')"
-            if currency else "fact.eur_amount_status NOT IN ('missing','invalid')"
+            if currency else "fact.eur_amount_status NOT IN ('negative','missing','invalid')"
         )
         profile_condition = {
             "all": "TRUE",
@@ -272,9 +344,34 @@ class SourceFunderRepository(PostgresRepository):
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
             parameters["dataset_version"] = dataset_version
-            total = await session.scalar(
-                text(f"{cte} SELECT COUNT(*) FROM effective WHERE {profile_condition}"),
-                parameters,
+            summary_row = dict(
+                (
+                    await session.execute(
+                        text(
+                            f"""
+                            {cte}
+                            SELECT COUNT(*) AS total_items,
+                                   COALESCE(SUM(grant_count), 0) AS matching_grant_count,
+                                   COALESCE(SUM(recipient_count), 0) AS recipient_count,
+                                   COUNT(*) FILTER (
+                                       WHERE effective_profile_id IS NOT NULL
+                                   ) AS linked_count,
+                                   COALESCE(SUM(selected_amount), 0)
+                                       AS included_funding_total,
+                                   COALESCE(SUM(included_count), 0) AS included_count,
+                                   COALESCE(SUM(multi_country_count), 0)
+                                       AS multi_country_count,
+                                   COALESCE(SUM(conversion_excluded), 0)
+                                       AS conversion_excluded,
+                                   COALESCE(SUM(missing_count), 0) AS missing_count,
+                                   COALESCE(SUM(invalid_count), 0) AS invalid_count,
+                                   COALESCE(SUM(negative_count), 0) AS negative_count
+                            FROM effective WHERE {profile_condition}
+                            """
+                        ),
+                        parameters,
+                    )
+                ).mappings().one()
             )
             rows = [
                 dict(row)
@@ -327,20 +424,15 @@ class SourceFunderRepository(PostgresRepository):
                 {"dataset_version": dataset_version, "country": beneficiary_country.upper()},
             )
         items = [self._item(row, parameters["offset"] + index + 1) for index, row in enumerate(rows)]
-        total_items = int(total or 0)
-        linked_count = sum(1 for item in items if not item["source_only"])
+        summary = self._summary(summary_row, selected_currency)
+        total_items = summary["matching_funder_count"]
         return {
             "status": "available" if total_items else "no_transactions_found",
             "country": {
                 "code": beneficiary_country.upper(),
                 "name": str(country_name or beneficiary_country.upper()),
             },
-            "summary": {
-                "matching_funder_count": total_items,
-                "matching_grant_count": sum(item["activity"]["grant_count"] for item in items),
-                "source_only_funder_count": len(items) - linked_count,
-                "linked_directory_funder_count": linked_count,
-            },
+            "summary": summary,
             "items": items,
             "pagination": {
                 "page": page,
@@ -463,9 +555,34 @@ class SourceFunderRepository(PostgresRepository):
             )
             if not materialized:
                 raise RuntimeError("Active dashboard materialization is unavailable")
-            total = await session.scalar(
-                text(f"{cte} SELECT COUNT(*) FROM effective WHERE {profile_condition}"),
-                parameters,
+            summary_row = dict(
+                (
+                    await session.execute(
+                        text(
+                            f"""
+                            {cte}
+                            SELECT COUNT(*) AS total_items,
+                                   COALESCE(SUM(grant_count), 0) AS matching_grant_count,
+                                   COALESCE(SUM(recipient_count), 0) AS recipient_count,
+                                   COUNT(*) FILTER (
+                                       WHERE effective_profile_id IS NOT NULL
+                                   ) AS linked_count,
+                                   COALESCE(SUM(selected_amount_minor), 0) / 100.0
+                                       AS included_funding_total,
+                                   COALESCE(SUM(included_count), 0) AS included_count,
+                                   COALESCE(SUM(multi_country_count), 0)
+                                       AS multi_country_count,
+                                   COALESCE(SUM(conversion_excluded), 0)
+                                       AS conversion_excluded,
+                                   COALESCE(SUM(missing_count), 0) AS missing_count,
+                                   COALESCE(SUM(invalid_count), 0) AS invalid_count,
+                                   COALESCE(SUM(negative_count), 0) AS negative_count
+                            FROM effective WHERE {profile_condition}
+                            """
+                        ),
+                        parameters,
+                    )
+                ).mappings().one()
             )
             rows = [
                 dict(row)
@@ -529,22 +646,15 @@ class SourceFunderRepository(PostgresRepository):
             self._item(row, parameters["offset"] + index + 1)
             for index, row in enumerate(rows)
         ]
-        total_items = int(total or 0)
-        linked_count = sum(1 for item in items if not item["source_only"])
+        summary = self._summary(summary_row, selected_currency)
+        total_items = summary["matching_funder_count"]
         return {
             "status": "available" if total_items else "no_transactions_found",
             "country": {
                 "code": beneficiary_country.upper(),
                 "name": str(country_name or beneficiary_country.upper()),
             },
-            "summary": {
-                "matching_funder_count": total_items,
-                "matching_grant_count": sum(
-                    item["activity"]["grant_count"] for item in items
-                ),
-                "source_only_funder_count": len(items) - linked_count,
-                "linked_directory_funder_count": linked_count,
-            },
+            "summary": summary,
             "items": items,
             "pagination": {
                 "page": page,
@@ -619,7 +729,7 @@ class SourceFunderRepository(PostgresRepository):
             recipient_rows = await session.execute(
                 text(
                     """
-                    SELECT recipient_name, grant_count,
+                    SELECT recipient_key, recipient_name, grant_count,
                            total_amount_minor / 100.0 AS amount
                     FROM analytics_funder_relationships
                     WHERE dataset_version=:dataset_version
@@ -649,10 +759,13 @@ class SourceFunderRepository(PostgresRepository):
             )
         recipients = [
             {
-                "name": str(row[0]),
-                "grant_count": int(row[1]),
-                "amount": number_value(row[2]),
+                "recipient_key": str(row[0]),
+                "name": str(row[1]),
+                "grant_count": int(row[2]),
+                "observed_funding": number_value(row[3]),
+                "amount": number_value(row[3]),
                 "currency": selected_currency,
+                "latest_award_date": None,
             }
             for row in recipient_rows
         ]

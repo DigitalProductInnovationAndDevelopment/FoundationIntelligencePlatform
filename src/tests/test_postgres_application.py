@@ -237,7 +237,24 @@ with TestClient(app) as client:
             self.assertTrue(listed)
             for item in listed:
                 CharityBase.model_validate(item)
-            CharityStats.model_validate(await organizations.stats())
+            stats = await organizations.stats()
+            CharityStats.model_validate(stats)
+            async with sessions() as session:
+                grant_sources = set(
+                    (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT DISTINCT source FROM grants
+                                WHERE dataset_version=:dataset_version
+                                  AND source IS NOT NULL AND source<>''
+                                """
+                            ),
+                            {"dataset_version": dataset_version},
+                        )
+                    ).scalars()
+                )
+            self.assertTrue(grant_sources.issubset(set(stats["source"])))
             CharityDetail.model_validate(await organizations.detail(int(organization_id)))
             GrantListResponse.model_validate(await organizations.grants(int(organization_id), "all"))
             SankeyData.model_validate(await organizations.sankey(int(organization_id)))
@@ -256,6 +273,17 @@ with TestClient(app) as client:
             GrantMapResponse.model_validate(await analytics.map())
             overview = await analytics.overview()
             self.assertIn("kpis", overview)
+            self.assertEqual(
+                overview["kpis"]["awarded_funding"],
+                overview["kpis"]["total_amount"],
+            )
+            self.assertEqual(
+                overview["kpis"]["grants_monitored"],
+                overview["kpis"]["grant_count"],
+            )
+            filtered_overview = await analytics.overview(sources=["360Giving"])
+            self.assertIn("awarded_funding", filtered_overview["kpis"])
+            self.assertIn("programme_coverage_percentage", filtered_overview["kpis"])
             self.assertIn("donors", await analytics.suggestions(sources=None, limit=5))
             GrantTrendsResponse.model_validate(await analytics.trends(months=24))
             GrantThemesResponse.model_validate(await analytics.themes())
@@ -268,9 +296,20 @@ with TestClient(app) as client:
             )
 
             country, funder_key = str(funder_scope[0]), str(funder_scope[1])
-            SourceFunderListResponse.model_validate(
-                await funders.list(beneficiary_country=country, page_size=5)
+            funder_list = await funders.list(
+                beneficiary_country=country,
+                sources=["360Giving"],
+                page_size=5,
             )
+            SourceFunderListResponse.model_validate(funder_list)
+            self.assertIn("status_counts", funder_list["summary"])
+            self.assertIn("monetary", funder_list["summary"])
+            if funder_list["items"]:
+                item = funder_list["items"][0]
+                self.assertIn(item["profile_link"]["status"], {"none", "single"})
+                self.assertIn("grant_count", item["observed_activity"])
+                self.assertIn("recipient_count", item["observed_activity"])
+                self.assertIn("displayed_currency", item["observed_activity"])
             SourceFunderDetailResponse.model_validate(
                 await funders.detail(funder_key, beneficiary_country=country)
             )
