@@ -100,3 +100,9 @@ EXPOSE 8080
 STOPSIGNAL SIGQUIT
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
     CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+
+
+FROM frontend-runtime AS frontend-runtime-ecs
+
+LABEL org.opencontainers.image.description="Static Vite production build for a shared ECS task network namespace"
+COPY docker/frontend-nginx.ecs.conf /etc/nginx/conf.d/default.conf
