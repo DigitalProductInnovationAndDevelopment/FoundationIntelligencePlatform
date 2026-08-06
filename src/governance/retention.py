@@ -34,15 +34,18 @@ REQUIRED_CLASSIFICATIONS = frozenset(
 
 
 def canonical_json(value: object) -> str:
+    """Serialize a payload deterministically so checksums are reproducible."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def checksum(value: object) -> str:
+    """Return the reproducible checksum of a canonical payload."""
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
 class ClassificationPolicy:
+    """Retention rules for one data classification."""
     classification: str
     retention_class: str
     exposure: str
@@ -51,6 +54,7 @@ class ClassificationPolicy:
     export_expire_after_days: int | None
 
     def validate(self) -> None:
+        """Reject a policy whose retention period or action is incoherent."""
         if not self.classification.strip() or not self.retention_class.strip():
             raise ValueError("Classification and retention class are required")
         if self.exposure not in {"authenticated", "restricted", "internal", "never"}:
@@ -65,9 +69,11 @@ class ClassificationPolicy:
 
     @property
     def configuration_checksum(self) -> str:
+        """Return the reproducible checksum of this policy."""
         return checksum(asdict(self))
 
     def database_record(self, *, policy_status: str) -> dict[str, Any]:
+        """Project the policy into its stored row shape."""
         self.validate()
         return {
             **asdict(self),
@@ -80,6 +86,7 @@ class ClassificationPolicy:
 
 @dataclass(frozen=True)
 class GovernanceConfiguration:
+    """The versioned governance configuration and its safety flags."""
     policy_status: str
     destructive_deletion_enabled: bool
     production_activation_approved: bool
@@ -95,6 +102,7 @@ class GovernanceConfiguration:
     data_subject_workflow: tuple[str, ...]
 
     def validate(self) -> None:
+        """Reject a configuration that would permit unapproved destructive action."""
         if self.policy_status not in {"proposed", "approved", "retired"}:
             raise ValueError("Invalid governance policy status")
         if self.destructive_deletion_enabled:
@@ -131,12 +139,14 @@ class GovernanceConfiguration:
 
     @property
     def by_retention_class(self) -> dict[str, ClassificationPolicy]:
+        """Return the policy governing one retention class."""
         return {policy.retention_class: policy for policy in self.policies}
 
 
 def load_governance_configuration(
     path: Path = GOVERNANCE_CONFIGURATION_PATH,
 ) -> GovernanceConfiguration:
+    """Load and validate the versioned governance configuration file."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("configuration_version") != "1":
         raise ValueError("Unsupported governance configuration version")
@@ -166,6 +176,7 @@ def load_governance_configuration(
 
 @dataclass(frozen=True)
 class RetentionCandidate:
+    """One record considered for a retention action."""
     target_type: str
     target_id: str
     retention_class: str
@@ -176,6 +187,7 @@ class RetentionCandidate:
     target_checksums: tuple[str, ...] = ()
 
     def validate(self) -> None:
+        """Reject a candidate missing its classification or timestamps."""
         if not self.target_type.strip() or not self.target_id.strip():
             raise ValueError("Retention target identity is required")
         if self.last_modified_at.tzinfo is None:
@@ -189,6 +201,7 @@ class RetentionCandidate:
 
 @dataclass(frozen=True)
 class DataHold:
+    """A legal or incident hold that overrides retention actions."""
     hold_id: str
     hold_type: str
     scope_type: str
@@ -197,6 +210,7 @@ class DataHold:
     expires_at: datetime | None = None
 
     def applies(self, candidate: RetentionCandidate, now: datetime) -> bool:
+        """Report whether this hold covers the given candidate."""
         active = self.status == "active" and (
             self.expires_at is None or self.expires_at > now
         )
@@ -211,6 +225,7 @@ class DataHold:
 
 @dataclass(frozen=True)
 class RetentionPlanEntry:
+    """One planned retention action and its supporting evidence."""
     target_type: str
     target_id: str
     retention_class: str
@@ -227,15 +242,19 @@ class RetentionPlanEntry:
 
     @property
     def manifest(self) -> dict[str, Any]:
+        """Return the canonical manifest for this planned action."""
         return asdict(self)
 
     @property
     def manifest_checksum(self) -> str:
+        """Return the manifest's reproducible checksum."""
         return checksum(self.manifest)
 
 
 class RetentionPlanner:
+    """Plans hold-aware retention actions without ever deleting data."""
     def __init__(self, configuration: GovernanceConfiguration):
+        """Create a planner bound to a governance configuration."""
         configuration.validate()
         self.configuration = configuration
 
@@ -246,6 +265,7 @@ class RetentionPlanner:
         *,
         now: datetime | None = None,
     ) -> tuple[RetentionPlanEntry, ...]:
+        """Return planned actions for the candidates, honouring every hold."""
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("Planner timestamp must be timezone-aware")
@@ -306,6 +326,7 @@ class RetentionPlanner:
         restore_verified: bool,
         active_hold_ids: Iterable[str],
     ) -> None:
+        """Fail closed unless destructive deletion is explicitly approved."""
         policy = self.configuration.by_retention_class.get(retention_class)
         if policy is None:
             raise PermissionError("Unknown retention class")
@@ -326,6 +347,7 @@ class RetentionPlanner:
 def export_lifecycle_status(
     *, expires_at: datetime | None, hold_until: datetime | None, now: datetime | None = None
 ) -> str:
+    """Report whether an export object has passed its expiry."""
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         raise ValueError("Lifecycle timestamp must be timezone-aware")

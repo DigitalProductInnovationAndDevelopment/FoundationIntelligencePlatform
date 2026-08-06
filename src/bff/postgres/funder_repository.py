@@ -13,8 +13,10 @@ from bff.postgres.base import PostgresRepository, iso_value, number_value, utc_n
 
 
 class SourceFunderRepository(PostgresRepository):
+    """Source-funder reads, explicit link overrides and profile-cache jobs."""
     @staticmethod
     def _can_use_materialization(filters: dict[str, Any]) -> bool:
+        """Report whether the applied filters permit reading the narrow fact table."""
         return not any(
             filters.get(name)
             for name in (
@@ -30,6 +32,7 @@ class SourceFunderRepository(PostgresRepository):
 
     @staticmethod
     def _item(row: dict[str, Any], rank: Optional[int] = None) -> dict[str, Any]:
+        """Project a source-funder row into the API list-item shape."""
         linked_profile = row.get("effective_profile_id")
         link_status = "linked" if linked_profile is not None else "observed_only"
         amount = number_value(row.get("selected_amount"))
@@ -93,6 +96,7 @@ class SourceFunderRepository(PostgresRepository):
 
     @staticmethod
     def _conditions(filters: dict[str, Any]) -> tuple[str, dict[str, Any], str, str]:
+        """Translate the applied grant scope into SQL conditions."""
         currency = str(filters.get("currency") or "").upper() or None
         conditions = [
             "fact.dataset_version=:dataset_version",
@@ -168,6 +172,7 @@ class SourceFunderRepository(PostgresRepository):
         page: int = 1,
         page_size: int = 25,
     ) -> dict[str, Any]:
+        """Return the filtered, paginated observed-donor ranking."""
         if self._can_use_materialization(locals()):
             return await self._materialized_list(
                 beneficiary_country=beneficiary_country,
@@ -381,6 +386,7 @@ class SourceFunderRepository(PostgresRepository):
         page: int,
         page_size: int,
     ) -> dict[str, Any]:
+        """Serve the donor ranking from the narrow source-funder fact table."""
         page = max(int(page), 1)
         page_size = min(max(int(page_size), 1), 100)
         basis = "original" if currency else "eur_converted"
@@ -584,6 +590,7 @@ class SourceFunderRepository(PostgresRepository):
         source_funder_key: str,
         **filters: Any,
     ) -> Optional[dict[str, Any]]:
+        """Return one source funder's detail, or None when the key is unknown."""
         key = str(source_funder_key or "").strip()
         if not key or len(key) > 500:
             raise ValueError("source_funder_key must be a non-empty canonical key")
@@ -717,6 +724,7 @@ class SourceFunderRepository(PostgresRepository):
         }
 
     async def _identity(self, session, key: str) -> Optional[dict[str, Any]]:
+        """Derive a funder's deterministic key from its source namespace and ID."""
         dataset_version = await self.active_dataset(session)
         row = (
             await session.execute(
@@ -741,6 +749,7 @@ class SourceFunderRepository(PostgresRepository):
     async def reset(
         self, source_funder_key: str, *, actor_id: str
     ) -> Optional[dict[str, Any]]:
+        """Discard a curated link override, returning the funder to source state."""
         key = str(source_funder_key or "").strip()
         async with self.sessions() as session, session.begin():
             identity = await self._identity(session, key)
@@ -801,6 +810,7 @@ class SourceFunderRepository(PostgresRepository):
         *,
         actor_id: str,
     ) -> Optional[dict[str, Any]]:
+        """Point a source funder at an explicit profile, advancing the override revision."""
         key = str(source_funder_key or "").strip()
         async with self.sessions() as session, session.begin():
             identity = await self._identity(session, key)
@@ -873,6 +883,7 @@ class SourceFunderRepository(PostgresRepository):
         }
 
     async def _effective_profile(self, session, key: str) -> Optional[dict[str, Any]]:
+        """Resolve the profile link currently in force for a source funder."""
         dataset_version = await self.active_dataset(session)
         row = (
             await session.execute(
@@ -920,6 +931,7 @@ class SourceFunderRepository(PostgresRepository):
         actor_id: str,
         idempotency_key: str,
     ) -> Optional[dict[str, Any]]:
+        """Enqueue a durable job that rebuilds one funder's cached profile."""
         key = str(source_funder_key or "").strip()
         async with self.sessions() as session, session.begin():
             linked = await self._effective_profile(session, key)
@@ -994,6 +1006,7 @@ class SourceFunderRepository(PostgresRepository):
         }
 
     async def profile_cache(self, source_funder_key: str) -> Optional[dict[str, Any]]:
+        """Return a funder's cached profile payload, or None when not yet built."""
         key = str(source_funder_key or "").strip()
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)

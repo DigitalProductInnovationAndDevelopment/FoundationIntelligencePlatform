@@ -18,16 +18,20 @@ class QueuePublisher(Protocol):
 
     async def publish(
         self, *, queue_name: str, message: Mapping[str, Any], deduplication_id: str
-    ) -> str: ...
+    ) -> str:
+        """Publish one dispatch envelope to the delivery transport."""
+        ...
 
 
 @dataclass(frozen=True)
 class WorkerResult:
+    """Outcome of one worker pass: jobs claimed, completed and failed."""
     status: str
     job_id: str | None
 
 
 class DurableWorker:
+    """Claims durable jobs under PostgreSQL leases and executes them."""
     def __init__(
         self,
         repository: PostgresJobRepository,
@@ -37,6 +41,7 @@ class DurableWorker:
         queue_name: str = "pipeline",
         lease_seconds: int = 60,
     ) -> None:
+        """Bind the worker to a job repository and handler registry."""
         self.repository = repository
         self.handlers = dict(handlers)
         self.worker_id = worker_id
@@ -44,6 +49,7 @@ class DurableWorker:
         self.lease_seconds = lease_seconds
 
     async def run_once(self) -> WorkerResult:
+        """Claim and execute at most one job, recording heartbeats and outcome."""
         job = await self.repository.claim(
             worker_id=self.worker_id,
             queue_name=self.queue_name,
@@ -145,15 +151,18 @@ class DurableWorker:
 
 
 class OutboxDispatcher:
+    """Publishes transactional outbox rows to the delivery transport."""
     def __init__(
         self,
         repository: PostgresJobRepository,
         publisher: QueuePublisher,
     ) -> None:
+        """Bind the dispatcher to a job repository and queue publisher."""
         self.repository = repository
         self.publisher = publisher
 
     async def run_once(self, *, limit: int = 100) -> dict[str, int]:
+        """Publish due outbox rows and record delivery or failure."""
         published = 0
         failed = 0
         dead_lettered = 0

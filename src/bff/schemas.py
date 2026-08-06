@@ -4,15 +4,18 @@ from datetime import datetime
 
 # Authentication Schemas
 class UserLogin(BaseModel):
+    """Development-only login credentials."""
     username: str = Field(..., examples=["admin"])
     password: str = Field(..., examples=["password"])
 
 class Token(BaseModel):
+    """Issued development session token."""
     access_token: str
     token_type: str
 
 # Charity Nested Schemas
 class CharityFinancialHistoryItem(BaseModel):
+    """One reported financial year for an organization."""
     ar_cycle_reference: Optional[str] = None
     financial_period_end_date: Optional[str] = None
     income: Optional[float] = None
@@ -38,6 +41,7 @@ class CharityFinancialHistoryItem(BaseModel):
     exp_total: Optional[float] = None
 
 class CharityAssetsLiabilitiesItem(BaseModel):
+    """One reported assets-and-liabilities position."""
     organisation_number: Optional[int] = None
     fin_period_end_date: Optional[str] = None
     assets_own_use: Optional[float] = None
@@ -47,6 +51,7 @@ class CharityAssetsLiabilitiesItem(BaseModel):
     assets_total_liabilities: Optional[float] = None
 
 class CharityAllDetails(BaseModel):
+    """Full retained source detail for an organization."""
     organisation_number: int
     reg_charity_number: int
     group_subsid_suffix: int
@@ -90,6 +95,7 @@ class CharityAllDetails(BaseModel):
 
 # Main API Response Schemas
 class CharityBase(BaseModel):
+    """Organization list item: identity, headline figures and classifications."""
     registered_charity_number: int
     suffix: int
     link: Optional[str] = None
@@ -122,6 +128,7 @@ class CharityBase(BaseModel):
     score_configuration_status: Optional[str] = None
 
 class CharityDetail(BaseModel):
+    """Organization detail with provenance, evidence and derived values."""
     registered_charity_number: int
     suffix: int
     link: Optional[str] = None
@@ -157,6 +164,7 @@ class CharityDetail(BaseModel):
     deduplication_candidates: List[Dict[str, Any]] = []
 
 class CharityStats(BaseModel):
+    """Dataset KPIs, source counts and organization-type counts."""
     total_charities: int
     active_charities: int
     removed_charities: int
@@ -187,6 +195,7 @@ class RegistryOrganizationSummary(BaseModel):
 
 
 class RegistryDirectoryPage(BaseModel):
+    """One cursor-paginated page of official registry rows."""
     results: List[RegistryOrganizationSummary] = []
     next_cursor: Optional[str] = None
     has_more: bool = False
@@ -197,6 +206,7 @@ class RegistryDirectoryPage(BaseModel):
 
 
 class RegistryEnrichedLink(BaseModel):
+    """An accepted link between a registry row and an enriched profile."""
     enriched_organization_id: int
     organization_name: str
     match_status: str
@@ -208,6 +218,7 @@ class RegistryEnrichedLink(BaseModel):
 
 
 class RegistryOrganizationDetail(BaseModel):
+    """Official registry detail plus any accepted profile link."""
     registry_id: str
     charity_number: str
     linked_charity_number: Optional[str] = None
@@ -232,6 +243,7 @@ class RegistryOrganizationDetail(BaseModel):
     enriched_profile: Optional[RegistryEnrichedLink] = None
 
 class GrantMapItem(BaseModel):
+    """One beneficiary country with its associations and currency-safe totals."""
     region_or_country_code: Optional[str] = None
     region_or_country_name: str
     grant_count: int
@@ -248,6 +260,7 @@ class GrantMapItem(BaseModel):
     excluded_invalid_amount_grant_count: int = 0
 
 class GrantMapConnection(BaseModel):
+    """An illustrative funder-location to beneficiary-country association."""
     origin_country_code: str
     origin_country_name: str
     destination_country_code: str
@@ -257,6 +270,7 @@ class GrantMapConnection(BaseModel):
     origin_sources: List[str] = []
 
 class DataMetadata(BaseModel):
+    """Coverage, exclusion and provenance metadata accompanying a payload."""
     data_mode: str
     source: List[str] = []
     generated_at: Optional[str] = None
@@ -266,6 +280,7 @@ class DataMetadata(BaseModel):
     limitations: List[str] = []
 
 class GrantMapResponse(BaseModel):
+    """Map payload: country items, connections, rankings and coverage metadata."""
     status: str
     geographic_dimension: str
     items: List[GrantMapItem] = []
@@ -290,6 +305,7 @@ class GrantMapResponse(BaseModel):
     metadata: DataMetadata
 
 class GrantDetail(BaseModel):
+    """One observed grant transaction with its source and conversion facts."""
     grant_id: str
     funding_charity_id: Optional[int] = None
     funding_name: Optional[str] = None
@@ -327,6 +343,7 @@ class GrantDetail(BaseModel):
     enrichment_rule_version: Optional[str] = None
 
 class GrantListResponse(BaseModel):
+    """Observed transactions for one organization with explicit coverage status."""
     status: str
     organization_id: int
     role: str
@@ -337,6 +354,7 @@ class GrantListResponse(BaseModel):
     metadata: DataMetadata
 
 class GrantRankingItem(BaseModel):
+    """One ranked entity within a network summary."""
     organization_id: Optional[int] = None
     organization_name: str
     total_amount: float
@@ -344,6 +362,7 @@ class GrantRankingItem(BaseModel):
     grant_count: int
 
 class GrantNetworkSummary(BaseModel):
+    """Currency-separated network totals and rankings."""
     status: str
     total_grant_count: int
     currencies: List[str] = []
@@ -353,11 +372,13 @@ class GrantNetworkSummary(BaseModel):
 
 
 class SourceFunderProfileLink(BaseModel):
+    """Explicit zero, one or many profile-link status for a source funder."""
     charity_id: int
     name: Optional[str] = None
 
 
 class SourceEvidenceLink(BaseModel):
+    """A citation back to the source record supporting a displayed value."""
     kind: str
     label: str
     role: Optional[str] = None
@@ -368,6 +389,7 @@ class SourceEvidenceLink(BaseModel):
 
 
 class SourceFunderActivity(BaseModel):
+    """Observed activity counts and recency for a source funder."""
     grant_count: int = 0
     distinct_recipient_count: int = 0
     first_award_date: Optional[str] = None
@@ -375,6 +397,7 @@ class SourceFunderActivity(BaseModel):
 
 
 class SourceFunderObservedFunding(BaseModel):
+    """Country-attributable funding totals under the applied amount policy."""
     amount: Optional[float] = None
     currency: Optional[str] = None
     included_grant_count: int = 0
@@ -390,6 +413,7 @@ class SourceFunderObservedFunding(BaseModel):
 
 
 class SourceFunderItem(BaseModel):
+    """One row of the observed donor ranking."""
     rank: Optional[int] = None
     kind: str = "source_funder"
     identity: Dict[str, Any] = {}
@@ -411,6 +435,7 @@ class SourceFunderItem(BaseModel):
 
 
 class SourceFunderPagination(BaseModel):
+    """Page position and totals for a paginated funder listing."""
     page: int
     page_size: int
     total_items: int
@@ -418,6 +443,7 @@ class SourceFunderPagination(BaseModel):
 
 
 class SourceFunderListResponse(BaseModel):
+    """The filtered, paginated observed-donor ranking."""
     status: str
     country: Dict[str, str]
     summary: Dict[str, Any] = {}
@@ -431,6 +457,7 @@ class SourceFunderListResponse(BaseModel):
 
 
 class SourceFunderGrantSample(BaseModel):
+    """A bounded sample of grants supporting a funder's displayed figures."""
     grant_id: str
     recipient_name: str
     award_date: Optional[str] = None
@@ -444,12 +471,14 @@ class SourceFunderGrantSample(BaseModel):
 
 
 class SourceFunderRelationshipNode(BaseModel):
+    """One node in a funder-to-recipient relationship graph."""
     id: str
     label: str
     role: str
 
 
 class SourceFunderRelationshipLink(BaseModel):
+    """One edge in a funder-to-recipient relationship graph."""
     source: str
     target: str
     value: float
@@ -467,6 +496,7 @@ class SourceFunderRelationshipFlow(BaseModel):
 
 
 class SourceFunderDetailResponse(BaseModel):
+    """Source-funder detail; recipients and evidence load only when requested."""
     status: str
     country: Dict[str, str]
     funder: SourceFunderItem
@@ -479,6 +509,7 @@ class SourceFunderDetailResponse(BaseModel):
 
 
 class GrantAggregationExclusions(BaseModel):
+    """Counts of records excluded from additive totals, with reasons."""
     missing_date: int = 0
     invalid_date: int = 0
     missing_amount: int = 0
@@ -491,11 +522,13 @@ class GrantAggregationExclusions(BaseModel):
 
 
 class GrantAggregationScope(BaseModel):
+    """The applied grant scope echoed back with the aggregation."""
     coverage_note: str
     market_scope: str = "available cached 360Giving records"
 
 
 class GrantAmountPolicy(BaseModel):
+    """Which amounts were monetary-eligible under the requested currency mode."""
     monetary_precision: str = "minor_units_2_decimal_places"
     rounding: str = "ROUND_HALF_UP"
     zero_amounts: str = "included_when_source_value_is_numeric_zero"
@@ -505,6 +538,7 @@ class GrantAmountPolicy(BaseModel):
 
 
 class GrantTrendPeriod(BaseModel):
+    """One period bucket; null values mean unknown coverage, not zero activity."""
     from_month: str = Field(alias="from")
     to: str
     months: int
@@ -514,6 +548,7 @@ class GrantTrendPeriod(BaseModel):
 
 
 class GrantTrendItem(BaseModel):
+    """One aggregated award-date period total."""
     month: str
     grant_count: Optional[int] = None
     source_record_count: int = 0
@@ -524,6 +559,7 @@ class GrantTrendItem(BaseModel):
 
 
 class GrantTrendsResponse(BaseModel):
+    """Award-date period totals with unknown-coverage periods and exclusions."""
     status: str
     currency: Optional[str] = None
     available_currencies: List[str] = []
@@ -542,6 +578,7 @@ class GrantTrendsResponse(BaseModel):
 
 
 class ProgrammeAllocationItem(BaseModel):
+    """One programme area's minor-unit-preserving allocated amount."""
     programme_area: str
     distinct_grant_count: int
     weighted_grant_count: float
@@ -552,6 +589,7 @@ class ProgrammeAllocationItem(BaseModel):
 
 
 class ProgrammeClassificationCoverage(BaseModel):
+    """How many records were source-classified, inferred or unclassified."""
     qualifying_grant_count: int
     classified_grant_count: int
     unclassified_grant_count: int
@@ -566,6 +604,7 @@ class ProgrammeClassificationCoverage(BaseModel):
 
 
 class GrantThemesResponse(BaseModel):
+    """Programme allocations with classification coverage and exclusions."""
     status: str
     currency: Optional[str] = None
     available_currencies: List[str] = []
@@ -586,6 +625,7 @@ class GrantThemesResponse(BaseModel):
 
 
 class ScoreTargetProfile(BaseModel):
+    """The user-selected target profile a score is calculated against."""
     programme_areas: List[str] = []
     geographies: List[str] = []
     minimum_annual_expenditure: Optional[float] = None
@@ -595,10 +635,12 @@ class ScoreTargetProfile(BaseModel):
 
 
 class ScoreRequest(BaseModel):
+    """Request to calculate the experimental relevance score."""
     target_profile: Optional[ScoreTargetProfile] = None
 
 
 class ScoreComponent(BaseModel):
+    """One score component with its inputs, method, confidence and missing reason."""
     score: Optional[float] = None
     weight: float
     weighted_score: Optional[float] = None
@@ -609,6 +651,7 @@ class ScoreComponent(BaseModel):
 
 
 class ScoreResponse(BaseModel):
+    """Experimental relevance score with components, confidence and completeness."""
     score: Optional[float] = None
     score_target: str
     score_version: str
@@ -623,6 +666,7 @@ class ScoreResponse(BaseModel):
     not_a_prediction: bool = True
 
 class PipelineStatus(BaseModel):
+    """Current durable pipeline job state."""
     status: str = Field(..., description="idle, queued, running, success, failed")
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
@@ -631,6 +675,7 @@ class PipelineStatus(BaseModel):
     job_id: Optional[str] = None
 
 class PipelineTrigger(BaseModel):
+    """Request to enqueue an allowed pipeline mode."""
     source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants, full_run")
     limit: Optional[int] = None
     fresh: Optional[bool] = False
@@ -640,10 +685,12 @@ class PipelineTrigger(BaseModel):
 
 
 class SourceScheduleUpdate(BaseModel):
+    """Request to enable or disable a source ingestion schedule."""
     enabled: bool
 
 
 class RetentionDryRunRequest(BaseModel):
+    """Request to plan retention actions without deleting anything."""
     target_type: str = Field(..., min_length=1, max_length=120)
     target_id: str = Field(..., min_length=1, max_length=500)
     retention_class: str = Field(..., min_length=1, max_length=120)
@@ -655,6 +702,7 @@ class RetentionDryRunRequest(BaseModel):
 
 
 class DataHoldRequest(BaseModel):
+    """Request to create a legal or incident hold."""
     hold_type: str = Field(..., pattern="^(legal|incident)$")
     scope_type: str = Field(..., min_length=1, max_length=120)
     scope_id: str = Field(..., min_length=1, max_length=500)
@@ -663,10 +711,12 @@ class DataHoldRequest(BaseModel):
 
 
 class DataHoldRelease(BaseModel):
+    """Request to release a hold, carrying the actor and stated reason."""
     reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class DataSubjectRequestCreate(BaseModel):
+    """Data-subject request carrying only a hashed subject reference."""
     request_type: str = Field(
         ..., pattern="^(access|correction|deletion|restriction|objection)$"
     )
@@ -693,11 +743,13 @@ class SourceFunderRelinkRequest(BaseModel):
 
 
 class SankeyNode(BaseModel):
+    """One node in a donor-to-recipient flow diagram."""
     id: str
     label: str
     role: Optional[str] = None
 
 class SankeyLink(BaseModel):
+    """One weighted flow between two Sankey nodes."""
     source: str
     target: str
     value: float
@@ -705,6 +757,7 @@ class SankeyLink(BaseModel):
     grant_count: int
 
 class SankeyMetadata(BaseModel):
+    """Currency mode, conversion status and exclusions for a Sankey payload."""
     source: List[str] = []
     generated_at: str
     grant_count: int
@@ -719,6 +772,7 @@ class SankeyMetadata(BaseModel):
     truncation_applied: bool = False
 
 class SankeyData(BaseModel):
+    """Donor-to-recipient flows with their nodes, links and metadata."""
     status: str
     nodes: List[SankeyNode]
     links: List[SankeyLink]
@@ -726,6 +780,7 @@ class SankeyData(BaseModel):
 
 # Foundation News Schemas
 class NewsSource(BaseModel):
+    """One cited source article backing a news summary."""
     title: str
     link: str
     source: str
@@ -735,6 +790,7 @@ class NewsSource(BaseModel):
     published_at: Optional[str] = None
 
 class NewsSummary(BaseModel):
+    """Sourced news summary with its citations."""
     foundation: str
     summary: str
     sources: List[NewsSource] = Field(default_factory=list)

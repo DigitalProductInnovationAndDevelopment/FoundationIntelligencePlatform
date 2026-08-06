@@ -1,3 +1,11 @@
+/**
+ * Observed donor directory: server-side searched, sorted and paginated funder
+ * list with a lazily loaded detail panel.
+ *
+ * Funders are derived from stored grants, never invented profiles — a source-only
+ * funder stays source-only. Requires a beneficiary country and preserves the full
+ * grant scope through a typed URL contract, so a view survives refresh and sharing.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,

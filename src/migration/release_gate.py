@@ -16,6 +16,7 @@ EXPECTED_SCHEMA_VERSION = load_observability_configuration().expected_schema_ver
 
 
 def evaluate_release_state(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Evaluate the reconciliation and schema state of a candidate release."""
     reconciliation = dict(row.get("reconciliation_results") or {})
     reconciliation_failures = sorted(
         name
@@ -40,6 +41,7 @@ def evaluate_release_state(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 async def release_state(database: DatabaseManager) -> dict[str, Any]:
+    """Return the current release state for the active dataset."""
     sessions = database.sessions()
     async with sessions() as session:
         row = (
@@ -86,6 +88,7 @@ async def release_state(database: DatabaseManager) -> dict[str, Any]:
 
 
 async def _main() -> int:
+    """Run the release gate and return a process exit code."""
     database = DatabaseManager(DatabaseSettings.from_env())
     try:
         result = await release_state(database)
@@ -96,6 +99,7 @@ async def _main() -> int:
 
 
 def main() -> int:
+    """Command-line entry point for the fail-closed release gate."""
     return asyncio.run(_main())
 
 

@@ -27,6 +27,7 @@ Status: implemented security contract. Role inheritance is `administrator > oper
 | POST | `/api/charities/directory/organizations/enrich` | operator action | operator | required `Idempotency-Key` |
 | GET | `/api/charities/grants/beneficiary-geographies` | authenticated read | viewer | read-only |
 | GET | `/api/charities/grants/map` | authenticated read | viewer | read-only |
+| GET | `/api/charities/grants/map/connections` | authenticated read | viewer | read-only |
 | GET | `/api/charities/grants/overview` | authenticated read | viewer | read-only |
 | GET | `/api/charities/grants/overview/entity-suggestions` | authenticated read | viewer | read-only |
 | GET | `/api/charities/grants/overview/trends` | authenticated read | viewer | read-only |

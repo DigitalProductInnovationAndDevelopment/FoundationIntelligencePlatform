@@ -33,10 +33,12 @@ RETENTION_PLANNER = RetentionPlanner(GOVERNANCE_CONFIGURATION)
 
 
 def _repository(request: Request) -> GovernanceRepository:
+    """Build a governance repository for this request."""
     return GovernanceRepository(request.app.state.database.sessions())
 
 
 def _actor(request: Request) -> str:
+    """Return the authenticated actor ID, or 'unknown' when unauthenticated."""
     principal = getattr(request.state, "principal", None)
     return principal.actor_id if principal else "unknown"
 
@@ -45,6 +47,7 @@ def _actor(request: Request) -> str:
 async def retention_policies(
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Return the currently proposed retention policies."""
     return {
         "destructive_deletion_enabled": False,
         "production_activation_approved": False,
@@ -69,6 +72,7 @@ async def retention_dry_run(
     request: Request,
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Plan retention actions and record evidence; never deletes data."""
     candidate = RetentionCandidate(
         target_type=payload.target_type,
         target_id=payload.target_id,
@@ -106,6 +110,7 @@ async def retention_dry_run(
 async def active_holds(
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Return every legal or incident hold currently in force."""
     return {"holds": [asdict(hold) for hold in await repository.active_holds()]}
 
 
@@ -126,6 +131,7 @@ async def create_hold(
     request: Request,
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Create a hold that overrides retention actions for the covered data."""
     try:
         return await repository.create_hold(
             hold_type=payload.hold_type,
@@ -157,6 +163,7 @@ async def release_hold(
     request: Request,
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Release a hold, recording the actor and stated reason."""
     try:
         return await repository.release_hold(
             hold_id,
@@ -171,6 +178,7 @@ async def release_hold(
 async def export_expiration_report(
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Return a dry-run report of expired export objects; nothing is mutated."""
     return {
         "dry_run": True,
         "destructive_deletion_enabled": False,
@@ -194,6 +202,7 @@ async def create_data_subject_request(
     payload: DataSubjectRequestCreate,
     repository: GovernanceRepository = Depends(_repository),
 ):
+    """Record a data-subject request against a hashed subject reference only."""
     request_id = await repository.create_data_subject_request(
         request_type=payload.request_type,
         subject_reference_hash=payload.subject_reference_hash,

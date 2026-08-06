@@ -23,6 +23,7 @@ from pipelines.sample_360giving_publishers import API_BASE_URL, RateLimitedClien
 
 
 def _read_pilot(path: Path) -> dict[str, Any]:
+    """Read the existing pilot output so the run can resume."""
     with path.open("r", encoding="utf-8") as source:
         payload = json.load(source)
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
@@ -31,6 +32,7 @@ def _read_pilot(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write a JSON payload atomically so a partial run leaves no corrupt file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     with temporary.open("w", encoding="utf-8") as output:
@@ -40,6 +42,7 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _record_grant_ids(record: Mapping[str, Any]) -> set[str]:
+    """Record the grant IDs seen, so overflow paging stays idempotent."""
     return {
         identifier
         for item in record.get("grants_made") or []

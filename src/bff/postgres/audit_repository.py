@@ -14,10 +14,13 @@ from bff.utils.logging import logger
 
 
 class PostgresAuditSink:
+    """Append-only PostgreSQL sink for security audit events."""
     def __init__(self, sessions: async_sessionmaker[AsyncSession]):
+        """Bind the sink to an async session factory."""
         self._sessions = sessions
 
     async def record(self, event: AuditEvent) -> None:
+        """Append one audit event; the table rejects update and delete."""
         outcome = {
             "success": "succeeded",
             "denied": "denied",

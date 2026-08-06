@@ -21,6 +21,7 @@ _EMAIL_PATTERN = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.
 
 
 def redact_text(value: object, replacement: str = "[REDACTED]") -> str:
+    """Redact sensitive substrings from free text."""
     redacted = str(value)
     for pattern in _CREDENTIAL_PATTERNS:
         if pattern.groups >= 2:
@@ -38,6 +39,7 @@ def redact_data(
     sensitive_keys: set[str],
     replacement: str = "[REDACTED]",
 ) -> Any:
+    """Recursively redact sensitive fields in a structured payload."""
     if isinstance(value, Mapping):
         return {
             str(key): (
@@ -62,6 +64,7 @@ def redact_data(
 
 
 def redact_for_logs(value: Any, configuration: GovernanceConfiguration) -> Any:
+    """Apply the log redaction policy to a structured log record."""
     keys = {
         str(key).casefold()
         for key in configuration.log_redaction.get("sensitive_keys", ())
@@ -76,6 +79,7 @@ def serialize_exposed_fields(
     policy_name: str,
     configuration: GovernanceConfiguration,
 ) -> dict[str, Any]:
+    """Project a record through its serializer's explicit field allowlist."""
     fields = configuration.field_exposure_policies.get(policy_name)
     if fields is None:
         raise ValueError(f"Unknown field exposure policy: {policy_name}")

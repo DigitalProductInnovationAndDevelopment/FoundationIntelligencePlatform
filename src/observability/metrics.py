@@ -60,12 +60,14 @@ REQUIRED_ALARMS = frozenset(
 
 @dataclass(frozen=True)
 class MetricDefinition:
+    """One versioned metric definition."""
     name: str
     type: str
     unit: str
     dimensions: tuple[str, ...]
 
     def validate(self) -> None:
+        """Reject a metric whose type or unit is unsupported."""
         if self.type not in {"counter", "gauge", "histogram"}:
             raise ValueError(f"Invalid metric type for {self.name}")
         if not self.name.strip() or not self.unit.strip():
@@ -74,6 +76,7 @@ class MetricDefinition:
 
 @dataclass(frozen=True)
 class AlarmDefinition:
+    """One versioned alarm definition and its threshold."""
     name: str
     metric: str
     comparison: str
@@ -83,6 +86,7 @@ class AlarmDefinition:
     runbook: str
 
     def validate(self) -> None:
+        """Reject an alarm missing a metric, comparison or threshold."""
         if self.comparison not in {
             "GreaterThanThreshold",
             "GreaterThanOrEqualToThreshold",
@@ -98,12 +102,14 @@ class AlarmDefinition:
 
 @dataclass(frozen=True)
 class ObservabilityConfiguration:
+    """The versioned telemetry contract for this service."""
     service: str
     expected_schema_version: str
     metrics: tuple[MetricDefinition, ...]
     alarms: tuple[AlarmDefinition, ...]
 
     def validate(self) -> None:
+        """Reject a configuration whose alarms reference unknown metrics."""
         if not self.service.strip() or not self.expected_schema_version.strip():
             raise ValueError("Service and expected schema version are required")
         for definition in self.metrics:
@@ -136,6 +142,7 @@ class ObservabilityConfiguration:
 def load_observability_configuration(
     path: Path = OBSERVABILITY_CONFIGURATION_PATH,
 ) -> ObservabilityConfiguration:
+    """Load and validate the versioned observability configuration file."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("configuration_version") != "1":
         raise ValueError("Unsupported observability configuration version")
@@ -172,6 +179,7 @@ class MetricsRegistry:
     """Bounded process-local evidence; production publishing uses CloudWatch."""
 
     def __init__(self, configuration: ObservabilityConfiguration):
+        """Create a bounded in-process registry for the declared metrics."""
         configuration.validate()
         self.configuration = configuration
         self._definitions = {definition.name: definition for definition in configuration.metrics}
@@ -180,9 +188,11 @@ class MetricsRegistry:
 
     @staticmethod
     def _key(name: str, dimensions: Mapping[str, object]) -> tuple[str, tuple[tuple[str, str], ...]]:
+        """Build the storage key for a metric and its label set."""
         return name, tuple(sorted((str(key), str(value)) for key, value in dimensions.items()))
 
     def _validate(self, name: str, dimensions: Mapping[str, object]) -> MetricDefinition:
+        """Reject a sample that does not match a declared metric."""
         definition = self._definitions.get(name)
         if definition is None:
             raise ValueError(f"Unknown metric: {name}")
@@ -192,6 +202,7 @@ class MetricsRegistry:
         return definition
 
     def increment(self, name: str, value: float = 1.0, **dimensions: object) -> None:
+        """Increment a declared counter."""
         definition = self._validate(name, dimensions)
         if definition.type != "counter" or value < 0:
             raise ValueError(f"Metric {name} is not a non-negative counter")
@@ -201,6 +212,7 @@ class MetricsRegistry:
             record["value"] += float(value)
 
     def set_gauge(self, name: str, value: float, **dimensions: object) -> None:
+        """Set a declared gauge to an absolute value."""
         definition = self._validate(name, dimensions)
         if definition.type != "gauge":
             raise ValueError(f"Metric {name} is not a gauge")
@@ -208,6 +220,7 @@ class MetricsRegistry:
             self._values[self._key(name, dimensions)] = {"value": float(value)}
 
     def observe(self, name: str, value: float, **dimensions: object) -> None:
+        """Record one observation against a declared histogram."""
         definition = self._validate(name, dimensions)
         if definition.type != "histogram" or value < 0:
             raise ValueError(f"Metric {name} is not a non-negative histogram")
@@ -223,6 +236,7 @@ class MetricsRegistry:
             record["max"] = max(record["max"], float(value))
 
     def snapshot(self) -> list[dict[str, Any]]:
+        """Return bounded local evidence alongside the metric definitions."""
         with self._lock:
             return [
                 {

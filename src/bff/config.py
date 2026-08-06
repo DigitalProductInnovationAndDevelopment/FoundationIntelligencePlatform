@@ -38,6 +38,7 @@ _load_local_env()
 
 
 def _as_bool(value: Optional[str], default: bool = False) -> bool:
+    """Parse a boolean environment value, rejecting anything ambiguous."""
     if value is None:
         return default
     normalized = value.strip().lower()
@@ -49,6 +50,7 @@ def _as_bool(value: Optional[str], default: bool = False) -> bool:
 
 
 def _as_int(value: Optional[str], default: int, *, minimum: int = 1) -> int:
+    """Parse an integer environment value and enforce a minimum."""
     parsed = int(value) if value is not None else default
     if parsed < minimum:
         raise ValueError(f"Expected an integer greater than or equal to {minimum}")
@@ -56,6 +58,7 @@ def _as_int(value: Optional[str], default: int, *, minimum: int = 1) -> int:
 
 
 def _as_csv(value: Optional[str], default: str = "") -> Tuple[str, ...]:
+    """Split a comma-separated environment value into trimmed, non-empty items."""
     raw = value if value is not None else default
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
@@ -66,6 +69,7 @@ class SecurityConfigurationError(RuntimeError):
 
 @dataclass(frozen=True)
 class SecuritySettings:
+    """Frozen snapshot of the security configuration for one process."""
     app_env: str
     auth_mode: str
     oidc_issuer: Optional[str]
@@ -99,6 +103,7 @@ class SecuritySettings:
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "SecuritySettings":
+        """Read security settings from the environment, applying documented defaults."""
         env = os.environ if environ is None else environ
         app_env = env.get("APP_ENV", "development").strip().lower()
         return cls(
@@ -160,6 +165,7 @@ class SecuritySettings:
 
 
 def validate_security_settings(settings: SecuritySettings) -> None:
+    """Reject any configuration that would start with an unsafe security posture."""
     errors = []
     production = settings.app_env in {"staging", "production"}
 

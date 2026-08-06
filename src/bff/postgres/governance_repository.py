@@ -19,7 +19,9 @@ from governance.retention import (
 
 
 class GovernanceRepository(PostgresRepository):
+    """Governance policies, holds and non-destructive retention evidence."""
     async def synchronize_policies(self, configuration: GovernanceConfiguration) -> int:
+        """Reconcile stored retention policies with the versioned configuration file."""
         configuration.validate()
         records = [
             policy.database_record(policy_status=configuration.policy_status)
@@ -60,6 +62,7 @@ class GovernanceRepository(PostgresRepository):
         return len(records)
 
     async def policies(self) -> list[dict[str, Any]]:
+        """Return the currently stored retention policies."""
         async with self.sessions() as session:
             rows = (
                 await session.execute(
@@ -90,6 +93,7 @@ class GovernanceRepository(PostgresRepository):
         created_by: str,
         expires_at: datetime | None = None,
     ) -> dict[str, Any]:
+        """Create a legal or incident hold that overrides retention actions."""
         if hold_type not in {"legal", "incident"}:
             raise ValueError("Hold type must be legal or incident")
         if any(not str(value).strip() for value in (scope_type, scope_id, reason, created_by)):
@@ -131,6 +135,7 @@ class GovernanceRepository(PostgresRepository):
         released_by: str,
         release_reason: str,
     ) -> dict[str, Any]:
+        """Release a hold, recording the actor and stated reason."""
         if not released_by.strip() or not release_reason.strip():
             raise ValueError("Hold release actor and reason are required")
         async with self.sessions() as session, session.begin():
@@ -160,6 +165,7 @@ class GovernanceRepository(PostgresRepository):
         return self._hold_row(row)
 
     async def active_holds(self) -> tuple[DataHold, ...]:
+        """Return every hold currently in force."""
         async with self.sessions() as session:
             rows = (
                 await session.execute(
@@ -193,6 +199,7 @@ class GovernanceRepository(PostgresRepository):
         *,
         requested_by: str,
     ) -> list[str]:
+        """Append a planned retention action as evidence; never deletes data."""
         action_ids: list[str] = []
         async with self.sessions() as session, session.begin():
             for entry in entries:
@@ -279,6 +286,7 @@ class GovernanceRepository(PostgresRepository):
         verified_by: str,
         evidence: Mapping[str, Any],
     ) -> str:
+        """Append proof that a backup restored successfully into an isolated database."""
         if verification_status not in {"passed", "failed"}:
             raise ValueError("Restore verification status must be passed or failed")
         verification_id = uuid.uuid4()
@@ -311,6 +319,7 @@ class GovernanceRepository(PostgresRepository):
         return str(verification_id)
 
     async def expired_exports(self) -> list[dict[str, Any]]:
+        """Return export objects past their expiry for the dry-run report."""
         async with self.sessions() as session:
             rows = (
                 await session.execute(
@@ -347,6 +356,7 @@ class GovernanceRepository(PostgresRepository):
         subject_reference_hash: str,
         due_at: datetime | None,
     ) -> str:
+        """Record a data-subject request against a hashed subject reference only."""
         request_id = uuid.uuid4()
         async with self.sessions() as session, session.begin():
             await session.execute(
@@ -372,6 +382,7 @@ class GovernanceRepository(PostgresRepository):
 
     @staticmethod
     def _hold_row(row: Mapping[str, Any]) -> dict[str, Any]:
+        """Project a hold row into the API shape."""
         result = dict(row)
         result["data_hold_id"] = str(result["data_hold_id"])
         for field in ("created_at", "expires_at", "released_at"):

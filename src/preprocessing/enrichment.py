@@ -23,6 +23,7 @@ class RuleConfigurationError(ValueError):
 
 @dataclass(frozen=True)
 class RegexRule:
+    """One declared enrichment rule with its pattern, category and confidence."""
     rule_id: str
     target_field: str
     target_category: str
@@ -44,6 +45,7 @@ class RegexRule:
 
 @dataclass(frozen=True)
 class CompiledRule:
+    """A compiled enrichment rule ready for matching."""
     config: RegexRule
     pattern: re.Pattern[str]
     positive_context: tuple[re.Pattern[str], ...]
@@ -139,6 +141,7 @@ PROGRAMME_SOURCE_ALIASES = {
 
 
 def _programme_rule(rule_id: str, category: str, pattern: str, weight: float = 0.8, **kwargs):
+    """Declare one programme-area classification rule."""
     return RegexRule(rule_id, "programme_area", category, pattern, weight=weight, **kwargs)
 
 
@@ -215,6 +218,7 @@ COUNTRY_CODE_TO_NAME.update({"GB": "United Kingdom", "UK": "United Kingdom"})
 
 
 def _geo_rule(rule_id: str, target: str, pattern: str, weight: float = 0.9, **kwargs):
+    """Declare one geography classification rule."""
     return RegexRule(rule_id, "geographic_focus", target, pattern, weight=weight, **kwargs)
 
 
@@ -289,6 +293,7 @@ COMPILED_GEOGRAPHY_RULES = compile_rules(GEOGRAPHY_RULES)
 
 
 def _excerpt(text: str, start: int, end: int, radius: int = 60) -> str:
+    """Return the matched excerpt retained as classification evidence."""
     return re.sub(r"\s+", " ", text[max(0, start - radius):min(len(text), end + radius)]).strip()
 
 
@@ -390,6 +395,7 @@ def apply_rules(
 
 
 def _as_values(value: Any) -> list[str]:
+    """Coerce a source field into a list of candidate values."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -414,6 +420,7 @@ def _as_values(value: Any) -> list[str]:
 
 
 def normalize_programme_sources(values: Iterable[Any]) -> tuple[list[str], list[dict[str, Any]]]:
+    """Normalize source-declared programme areas onto the taxonomy."""
     categories = set()
     evidence = []
     for raw in _as_values(list(values)):
@@ -443,6 +450,7 @@ def normalize_programme_sources(values: Iterable[Any]) -> tuple[list[str], list[
 
 
 def classify_programme_fields(fields: Mapping[str, Any], source_values: Iterable[Any] = ()) -> dict[str, Any]:
+    """Infer programme areas deterministically, emitting evidence and confidence."""
     source_categories, source_evidence = normalize_programme_sources(source_values)
     inferred = apply_rules(fields, COMPILED_PROGRAMME_RULES)
     # A source-provided category remains a source category even if the same words
@@ -464,6 +472,7 @@ def classify_programme_fields(fields: Mapping[str, Any], source_values: Iterable
 
 
 def normalize_country_value(value: Any) -> dict[str, Any] | None:
+    """Normalize a country label, flagging ambiguous names for review."""
     text = str(value or "").strip()
     if not text:
         return None
@@ -488,6 +497,7 @@ def normalize_country_value(value: Any) -> dict[str, Any] | None:
 
 
 def normalize_geography_sources(values: Iterable[Any], source_field: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Normalize source-declared operating and funding geographies."""
     normalized = {}
     evidence = []
     for raw_item in values:
@@ -519,6 +529,7 @@ def normalize_geography_sources(values: Iterable[Any], source_field: str) -> tup
 
 
 def classify_geography_fields(fields: Mapping[str, Any], source_values: Iterable[Any] = ()) -> dict[str, Any]:
+    """Infer geographic focus deterministically, emitting evidence and confidence."""
     source_values = list(source_values)
     normalized_source, source_evidence = normalize_geography_sources(source_values, "source_geography")
     inferred = apply_rules(fields, COMPILED_GEOGRAPHY_RULES)
@@ -532,6 +543,7 @@ def classify_geography_fields(fields: Mapping[str, Any], source_values: Iterable
 
 
 def _source_classifications(record: Mapping[str, Any]) -> list[Any]:
+    """Collect the normalized source-declared classifications."""
     details = record.get("all_details") if isinstance(record.get("all_details"), Mapping) else {}
     result = []
     result.extend(_as_values(record.get("who_what_how")))
@@ -542,6 +554,7 @@ def _source_classifications(record: Mapping[str, Any]) -> list[Any]:
 
 
 def _source_geography(record: Mapping[str, Any]) -> list[Any]:
+    """Collect the normalized source-declared geographies."""
     details = record.get("all_details") if isinstance(record.get("all_details"), Mapping) else {}
     result = []
     for field in ("CharityAoOCountryContinent", "CharityAoORegion", "CharityAoOLocalAuthority"):

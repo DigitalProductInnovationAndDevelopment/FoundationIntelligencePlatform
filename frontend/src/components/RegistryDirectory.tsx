@@ -1,3 +1,10 @@
+/**
+ * Charity Commission registry search over ~397,000 official register rows.
+ *
+ * Cursor-paginated and capped at 100 rows per request, with a 300 ms debounce and
+ * detail loaded only when a result is opened. Rows without an accepted enriched
+ * profile show "No observed grant data" — unlinked means unknown, not zero.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, LoaderCircle, Search, X } from "lucide-react";
 import { validateOptionalNumericRange } from "../lib/numericRange";

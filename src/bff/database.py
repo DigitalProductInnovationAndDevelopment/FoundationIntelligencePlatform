@@ -22,6 +22,7 @@ class DatabaseConfigurationError(RuntimeError):
 
 
 def _positive_int(value: Optional[str], default: int) -> int:
+    """Parse a positive integer database setting, rejecting zero and negatives."""
     parsed = int(value) if value is not None else default
     if parsed <= 0:
         raise DatabaseConfigurationError("Database numeric settings must be positive")
@@ -30,6 +31,7 @@ def _positive_int(value: Optional[str], default: int) -> int:
 
 @dataclass(frozen=True)
 class DatabaseSettings:
+    """Frozen PostgreSQL connection and pool configuration."""
     url: Optional[str]
     host: Optional[str]
     port: int
@@ -45,6 +47,7 @@ class DatabaseSettings:
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "DatabaseSettings":
+        """Read database settings from the environment, applying documented defaults."""
         env = os.environ if environ is None else environ
         return cls(
             url=env.get("DATABASE_URL"),
@@ -63,6 +66,7 @@ class DatabaseSettings:
 
     @property
     def configured(self) -> bool:
+        """Report whether enough connection detail is present to build a URL."""
         return bool(
             self.url
             or (
@@ -72,6 +76,7 @@ class DatabaseSettings:
         )
 
     def sqlalchemy_url(self) -> URL:
+        """Build the asyncpg URL, rejecting non-PostgreSQL or non-async drivers."""
         if self.url:
             parsed = make_url(self.url)
             if parsed.get_backend_name() != "postgresql":
@@ -111,16 +116,20 @@ class DatabaseSettings:
 
 
 class DatabaseManager:
+    """Owns the bounded async engine, session factory and readiness checks."""
     def __init__(self, settings: DatabaseSettings):
+        """Create a manager for the given settings without connecting."""
         self.settings = settings
         self._engine: Optional[AsyncEngine] = None
         self._health_engine: Optional[AsyncEngine] = None
 
     @property
     def configured(self) -> bool:
+        """Report whether the manager has usable connection settings."""
         return self.settings.configured
 
     def engine(self) -> AsyncEngine:
+        """Return the lazily created async engine."""
         if self._engine is None:
             url = self.settings.sqlalchemy_url()
             self._engine = create_async_engine(
@@ -168,6 +177,7 @@ class DatabaseManager:
         )
 
     async def check(self) -> bool:
+        """Run a bounded connectivity query against PostgreSQL."""
         if not self.configured:
             return False
         try:
@@ -180,6 +190,7 @@ class DatabaseManager:
             return False
 
     async def readiness(self, *, expected_schema_version: str) -> dict[str, object]:
+        """Evaluate readiness over an independent no-pool connection."""
         unavailable = {
             "ready": False,
             "checks": {
@@ -251,6 +262,7 @@ class DatabaseManager:
             return unavailable
 
     def pool_status(self) -> dict[str, float]:
+        """Return current pool utilisation for observability reporting."""
         if self._engine is None:
             return {"checked_out": 0.0, "capacity": 0.0, "utilization_ratio": 0.0}
         pool = self._engine.sync_engine.pool
@@ -265,6 +277,7 @@ class DatabaseManager:
         }
 
     async def close(self) -> None:
+        """Dispose the engine and release all pooled connections."""
         if self._engine is not None:
             await self._engine.dispose()
             self._engine = None

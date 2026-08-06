@@ -26,15 +26,18 @@ SOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 
 
 def canonical_json(value: object) -> str:
+    """Serialize a payload deterministically so checksums are reproducible."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def sha256_bytes(payload: bytes) -> str:
+    """Return the hex SHA-256 digest of the given bytes."""
     return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True)
 class SourceConfiguration:
+    """One declared ingestion source with its ownership and legal status."""
     source_name: str
     source_owner: str
     technical_owner: str
@@ -59,6 +62,7 @@ class SourceConfiguration:
     maximum_records: int
 
     def validate(self) -> None:
+        """Reject a source whose ownership, schedule or legal status is incoherent."""
         if not SOURCE_NAME_PATTERN.fullmatch(self.source_name):
             raise ValueError(f"Invalid source name: {self.source_name!r}")
         if self.legal_status not in LEGAL_STATES or self.licence_status not in LEGAL_STATES:
@@ -93,9 +97,11 @@ class SourceConfiguration:
 
     @property
     def configuration_checksum(self) -> str:
+        """Return the reproducible checksum of this source configuration."""
         return sha256_bytes(canonical_json(asdict(self)).encode("utf-8"))
 
     def database_record(self) -> dict[str, Any]:
+        """Project the configuration into its stored row shape."""
         self.validate()
         result = asdict(self)
         result["configuration_checksum"] = self.configuration_checksum
@@ -105,6 +111,7 @@ class SourceConfiguration:
 def load_source_configurations(
     path: Path = SOURCE_CONFIGURATION_PATH,
 ) -> tuple[SourceConfiguration, ...]:
+    """Load and validate the versioned source configuration file."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("configuration_version") != "1":
         raise ValueError("Unsupported source configuration version")
@@ -121,6 +128,7 @@ def load_source_configurations(
 
 @dataclass(frozen=True)
 class StorageObject:
+    """An immutable raw object descriptor with its checksum and provenance."""
     storage_object_id: UUID
     zone: str
     bucket_alias: str
@@ -134,6 +142,7 @@ class StorageObject:
     immutable: bool = True
 
     def validate(self) -> None:
+        """Reject a descriptor missing checksum, size or provenance."""
         if self.zone not in OBJECT_ZONES:
             raise ValueError(f"Unsupported object zone: {self.zone}")
         if self.zone == "raw" and not self.immutable:
@@ -152,6 +161,7 @@ class StorageObject:
 def object_key(
     *, source_name: str, run_id: UUID, zone: str, checksum: str, extension: str
 ) -> str:
+    """Build the deterministic storage key for a source object."""
     if not SOURCE_NAME_PATTERN.fullmatch(source_name):
         raise ValueError("Invalid source name")
     if zone not in OBJECT_ZONES:
@@ -166,6 +176,7 @@ def object_key(
 
 @dataclass(frozen=True)
 class IngestionManifest:
+    """Append-only evidence describing one completed ingestion run."""
     source_ingestion_run_id: UUID
     schema_version: str
     source_name: str
@@ -185,12 +196,14 @@ class IngestionManifest:
 
     @classmethod
     def create(cls, **values: Any) -> "IngestionManifest":
+        """Build a manifest from a run's objects and counts."""
         values.setdefault("generated_at", datetime.now(timezone.utc).isoformat())
         manifest = cls(**values)
         manifest.validate()
         return manifest
 
     def validate(self) -> None:
+        """Reject a manifest whose counts or checksums disagree."""
         if not SOURCE_NAME_PATTERN.fullmatch(self.source_name):
             raise ValueError("Invalid manifest source")
         counts = (
@@ -210,6 +223,7 @@ class IngestionManifest:
 
     @property
     def payload(self) -> dict[str, Any]:
+        """Return the canonical manifest payload."""
         self.validate()
         result = asdict(self)
         for key, value in tuple(result.items()):
@@ -219,11 +233,13 @@ class IngestionManifest:
 
     @property
     def checksum(self) -> str:
+        """Return the manifest's reproducible checksum."""
         return sha256_bytes(canonical_json(self.payload).encode("utf-8"))
 
 
 @dataclass(frozen=True)
 class QueueEnvelope:
+    """Transport envelope carrying one job dispatch and its deduplication key."""
     schema_version: str
     job_id: UUID
     job_type: str
@@ -233,6 +249,7 @@ class QueueEnvelope:
     max_attempts: int
 
     def validate(self) -> None:
+        """Reject an envelope missing its group or deduplication identity."""
         if self.schema_version != "job-envelope-v1":
             raise ValueError("Unsupported queue envelope version")
         if not self.job_type.strip() or not self.queue_name.strip():
@@ -242,6 +259,7 @@ class QueueEnvelope:
 
     @property
     def payload(self) -> dict[str, Any]:
+        """Return the canonical envelope payload."""
         self.validate()
         result = asdict(self)
         result["job_id"] = str(self.job_id)
@@ -251,19 +269,25 @@ class QueueEnvelope:
 class ObjectStore(Protocol):
     """Minimal immutable object-store boundary implemented by an S3 adapter."""
 
-    async def put_if_absent(self, descriptor: StorageObject, payload: bytes) -> None: ...
+    async def put_if_absent(self, descriptor: StorageObject, payload: bytes) -> None:
+        """Store an object only when its key is not already present."""
+        ...
 
-    async def get(self, descriptor: StorageObject) -> bytes: ...
+    async def get(self, descriptor: StorageObject) -> bytes:
+        """Return a stored object's bytes by descriptor."""
+        ...
 
 
 class InMemoryObjectStore:
     """Deterministic local substitute; never used as production coordination."""
 
     def __init__(self) -> None:
+        """Create an in-memory object store for local runs and tests."""
         self._objects: dict[tuple[str, str, str, str], tuple[StorageObject, bytes]] = {}
 
     @staticmethod
     def _identity(descriptor: StorageObject) -> tuple[str, str, str, str]:
+        """Return the stored identity for a key, if present."""
         return (
             descriptor.zone,
             descriptor.bucket_alias,
@@ -272,6 +296,7 @@ class InMemoryObjectStore:
         )
 
     async def put_if_absent(self, descriptor: StorageObject, payload: bytes) -> None:
+        """Store an object only when its key is not already present."""
         descriptor.validate()
         if descriptor.content_length != len(payload):
             raise ValueError("Object length does not match payload")
@@ -286,12 +311,14 @@ class InMemoryObjectStore:
         self._objects[identity] = (descriptor, bytes(payload))
 
     async def get(self, descriptor: StorageObject) -> bytes:
+        """Return a stored object by key, or None."""
         return bytes(self._objects[self._identity(descriptor)][1])
 
 
 def require_sources(
     configurations: Iterable[SourceConfiguration], required: Iterable[str]
 ) -> None:
+    """Fail closed when a required source configuration is absent."""
     names = {source.source_name for source in configurations}
     missing = sorted(set(required) - names)
     if missing:
@@ -299,6 +326,7 @@ def require_sources(
 
 
 def redacted_configuration(configuration: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a source configuration with credential references masked."""
     result = dict(configuration)
     if result.get("credentials_reference"):
         result["credentials_reference"] = "configured-reference"

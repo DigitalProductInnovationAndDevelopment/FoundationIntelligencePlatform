@@ -13,6 +13,7 @@ from scoring.engine import load_score_configuration, score_relevance
 
 
 def _registered_number(row: Mapping[str, Any], raw: Mapping[str, Any]) -> int:
+    """Extract an organization's registered charity number from a row."""
     value = raw.get("registered_charity_number", row["charity_id"])
     try:
         return int(value)
@@ -21,6 +22,7 @@ def _registered_number(row: Mapping[str, Any], raw: Mapping[str, Any]) -> int:
 
 
 def _base_item(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Project an organization row into the shared list-item shape."""
     raw = json_value(row.get("raw_source_data"), {})
     details = json_value(raw.get("all_details"), {})
     return {
@@ -56,6 +58,7 @@ def _base_item(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class OrganizationRepository(PostgresRepository):
+    """Async organization, grant-history, Sankey and score queries."""
     async def list(
         self,
         *,
@@ -77,6 +80,7 @@ class OrganizationRepository(PostgresRepository):
         skip: int = 0,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
+        """Search, filter, sort and paginate organization profiles."""
         limit = min(max(int(limit), 1), 100)
         skip = min(max(int(skip), 0), 1_000_000)
         conditions = ["charity.dataset_version=:dataset_version"]
@@ -227,6 +231,7 @@ class OrganizationRepository(PostgresRepository):
         return items
 
     async def detail(self, organization_id: int) -> Optional[dict[str, Any]]:
+        """Return one organization with provenance and enrichment evidence."""
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
             row = (
@@ -303,6 +308,7 @@ class OrganizationRepository(PostgresRepository):
         }
 
     async def stats(self) -> dict[str, Any]:
+        """Return dataset KPIs, source counts and organization-type counts."""
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
             row = (
@@ -365,6 +371,7 @@ class OrganizationRepository(PostgresRepository):
 
     @staticmethod
     def _grant_item(row: Mapping[str, Any]) -> dict[str, Any]:
+        """Project a grant row into the API grant shape, preserving source facts."""
         return {
             "grant_id": str(row["grant_id"]),
             "funding_charity_id": row.get("funding_charity_id"),
@@ -408,6 +415,7 @@ class OrganizationRepository(PostgresRepository):
         }
 
     async def grants(self, organization_id: int, role: str) -> dict[str, Any]:
+        """Return observed transactions and explicit coverage status for one organization."""
         conditions = {
             "all": "(grant_row.funding_charity_id=:organization_id OR grant_row.recipient_charity_id=:organization_id)",
             "funder": "grant_row.funding_charity_id=:organization_id",
@@ -464,6 +472,7 @@ class OrganizationRepository(PostgresRepository):
 
     @staticmethod
     def _entity_id(role: str, charity_id: Any, source_id: Any, name: Any) -> str:
+        """Derive a stable Sankey node identifier for a funder or recipient."""
         if charity_id is not None:
             return f"organization:{int(charity_id)}"
         material = f"{role}|{source_id or ''}|{str(name or '').casefold()}"
@@ -476,6 +485,7 @@ class OrganizationRepository(PostgresRepository):
         currency: Optional[str] = None,
         limit: int = 30,
     ) -> dict[str, Any]:
+        """Return bounded donor-to-recipient flows for one organization."""
         selected_currency = str(currency or "EUR").upper()
         amount_column = "amount_eur" if currency is None or selected_currency == "EUR" else "amount"
         currency_condition = "" if amount_column == "amount_eur" else "AND currency=:currency"
@@ -569,6 +579,7 @@ class OrganizationRepository(PostgresRepository):
         organization_id: int,
         target_profile: Optional[Mapping[str, Any]],
     ) -> dict[str, Any]:
+        """Calculate the experimental relevance score against a target profile."""
         organization = await self.detail(organization_id)
         if not organization:
             raise KeyError(organization_id)

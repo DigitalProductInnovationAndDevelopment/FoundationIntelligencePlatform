@@ -43,34 +43,42 @@ router = APIRouter(
 
 
 def _sessions(request: Request):
+    """Return the application-scoped async session factory."""
     return request.app.state.database.sessions()
 
 
 def _organizations(request: Request) -> OrganizationRepository:
+    """Build an organization repository bound to the request's session factory."""
     return OrganizationRepository(_sessions(request))
 
 
 def _registry(request: Request) -> RegistryRepository:
+    """Build a Charity Commission registry repository for this request."""
     return RegistryRepository(_sessions(request))
 
 
 def _analytics(request: Request) -> AnalyticsRepository:
+    """Build a grant-analytics repository for this request."""
     return AnalyticsRepository(_sessions(request))
 
 
 def _funders(request: Request) -> SourceFunderRepository:
+    """Build a source-funder repository for this request."""
     return SourceFunderRepository(_sessions(request))
 
 
 def _jobs(request: Request) -> PostgresJobRepository:
+    """Build a durable job repository for this request."""
     return PostgresJobRepository(_sessions(request))
 
 
 def _split(value: Optional[str]) -> list[str]:
+    """Split a comma-separated query value into trimmed, non-empty items."""
     return [item.strip() for item in (value or "").split(",") if item.strip()]
 
 
 def _iso_date(value: Optional[str], field: str) -> Optional[str]:
+    """Parse an optional ISO date, rejecting malformed input with 400."""
     if value is None or not value.strip():
         return None
     try:
@@ -83,6 +91,7 @@ def _iso_date(value: Optional[str], field: str) -> Optional[str]:
 
 
 def _date_range(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Parse a from/to date pair and reject an inverted range with 400."""
     parsed_from = _iso_date(date_from, "date_from")
     parsed_to = _iso_date(date_to, "date_to")
     if parsed_from and parsed_to and parsed_from > parsed_to:
@@ -91,11 +100,13 @@ def _date_range(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optio
 
 
 def _actor(request: Request) -> str:
+    """Return the authenticated actor ID, or 'unknown' when unauthenticated."""
     principal = getattr(request.state, "principal", None)
     return principal.actor_id if principal else "unknown"
 
 
 def _idempotency_key(request: Request) -> str:
+    """Return the request's Idempotency-Key header, stripped."""
     return str(request.headers.get("idempotency-key") or "").strip()
 
 
@@ -110,6 +121,7 @@ def _grant_filters(
     recipient: Optional[str],
     sources: Optional[str],
 ) -> dict[str, Any]:
+    """Normalize the canonical grant-scope query parameters into repository filters."""
     parsed_from, parsed_to = _date_range(date_from, date_to)
     return {
         "currency": currency,
@@ -144,6 +156,7 @@ async def list_charities(
     limit: int = Query(default=20, ge=1, le=100),
     repository: OrganizationRepository = Depends(_organizations),
 ):
+    """Search, filter, sort and paginate enriched organization profiles."""
     return await repository.list(
         search=search,
         reg_status=reg_status,
@@ -167,6 +180,7 @@ async def list_charities(
 
 @router.get("/stats", response_model=CharityStats)
 async def charity_stats(repository: OrganizationRepository = Depends(_organizations)):
+    """Return dataset KPIs, source counts and organization-type counts."""
     return await repository.stats()
 
 
@@ -189,6 +203,7 @@ async def registry_page(
     sort: str = Query(default="name", pattern="^(name|income_desc|expenditure_desc)$"),
     repository: RegistryRepository = Depends(_registry),
 ):
+    """Return one cursor-paginated page of the Charity Commission registry directory."""
     if income_min is not None and income_max is not None and income_min > income_max:
         raise HTTPException(status_code=400, detail="income_min cannot exceed income_max")
     if expenditure_min is not None and expenditure_max is not None and expenditure_min > expenditure_max:
@@ -223,6 +238,7 @@ async def registry_detail(
     registry_id: str,
     repository: RegistryRepository = Depends(_registry),
 ):
+    """Return one registry organization with its accepted enriched-profile link."""
     result = await repository.detail(registry_id)
     if not result:
         raise HTTPException(status_code=404, detail="Registry organization not found.")
@@ -239,6 +255,7 @@ async def enrich_registry(
     request: Request,
     jobs: PostgresJobRepository = Depends(_jobs),
 ):
+    """Enqueue a durable enrichment job for exactly one registry organization."""
     numbers = sorted({int(value) for value in payload.reg_numbers})
     if len(numbers) != 1:
         raise HTTPException(status_code=400, detail="Exactly one registry organization is required")
@@ -262,6 +279,7 @@ async def enrich_registry(
 async def beneficiary_geographies(
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """List the distinct normalized beneficiary geographies available for filtering."""
     return await repository.beneficiary_geographies()
 
 
@@ -277,6 +295,7 @@ async def grant_map(
     min_avg_grant_size: Optional[float] = None,
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return beneficiary-country associations, currency-safe totals and coverage metadata."""
     return await repository.map(
         currency=currency,
         min_coverage=min_coverage,
@@ -295,6 +314,7 @@ async def grant_map_connections(
     limit: int = Query(default=100, ge=1, le=250),
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return bounded, illustrative funder-location to beneficiary-country associations."""
     return await repository.map_connections(currency=currency, limit=limit)
 
 
@@ -312,6 +332,7 @@ async def grant_overview(
     include_connections: bool = False,
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return the combined Overview aggregation for one applied grant scope."""
     filters = _grant_filters(
         currency=currency, date_from=date_from, date_to=date_to,
         beneficiary_geographies=beneficiary_geographies,
@@ -331,6 +352,7 @@ async def grant_suggestions(
     limit: int = Query(default=2500, ge=1, le=5000),
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return bounded donor/recipient typeahead suggestions for the Overview filters."""
     return await repository.suggestions(
         sources=_split(sources) if sources is not None else None,
         limit=limit,
@@ -350,6 +372,7 @@ async def overview_trends(
     granularity: str = Query(default="auto", pattern="^(auto|monthly|yearly)$"),
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return award-date period totals for the applied grant scope, with unknown-coverage periods."""
     return await repository.trends(
         **_grant_filters(
             currency=currency, date_from=date_from, date_to=date_to,
@@ -375,6 +398,7 @@ async def overview_drilldown(
     sources: Optional[str] = Query(default=None, max_length=500),
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return the detailed rows behind one selected Overview segment."""
     return await repository.drilldown(
         selection_type=selection_type,
         selection_value=selection_value,
@@ -397,6 +421,7 @@ async def enrich_funders(
     request: Request,
     jobs: PostgresJobRepository = Depends(_jobs),
 ):
+    """Enqueue a durable enrichment job for the selected source funders."""
     job = await jobs.enqueue(
         "source_funder_enrichment",
         payload.model_dump(),
@@ -422,6 +447,7 @@ async def reset_funder(
     request: Request,
     repository: SourceFunderRepository = Depends(_funders),
 ):
+    """Discard a curated funder link override and return the funder to observed source state."""
     result = await repository.reset(source_funder_key, actor_id=_actor(request))
     if not result:
         raise HTTPException(status_code=404, detail="Source-funder entry not found.")
@@ -438,6 +464,7 @@ async def relink_funder(
     request: Request,
     repository: SourceFunderRepository = Depends(_funders),
 ):
+    """Point a source funder at an explicit enriched profile, advancing the override revision."""
     try:
         result = await repository.relink(
             source_funder_key, payload.profile_id, actor_id=_actor(request)
@@ -458,6 +485,7 @@ async def queue_profile_cache(
     request: Request,
     repository: SourceFunderRepository = Depends(_funders),
 ):
+    """Enqueue a durable job that rebuilds one source funder's cached profile."""
     result = await repository.queue_profile_cache(
         source_funder_key,
         actor_id=_actor(request),
@@ -476,6 +504,7 @@ async def profile_cache(
     source_funder_key: str,
     repository: SourceFunderRepository = Depends(_funders),
 ):
+    """Return a source funder's cached profile payload, if one has been built."""
     result = await repository.profile_cache(source_funder_key)
     if not result:
         raise HTTPException(status_code=404, detail="No source-profile cache is available.")
@@ -500,6 +529,7 @@ async def source_funders(
     page_size: int = Query(default=25, ge=1, le=100),
     repository: SourceFunderRepository = Depends(_funders),
 ):
+    """Return the filtered, paginated observed-donor ranking for one beneficiary country."""
     filters = _grant_filters(
         currency=currency, date_from=date_from, date_to=date_to,
         beneficiary_geographies=beneficiary_geographies,
@@ -535,6 +565,7 @@ async def source_funder_detail(
     detail_level: str = Query(default="full", pattern="^(summary|full)$"),
     repository: SourceFunderRepository = Depends(_funders),
 ):
+    """Return one source funder's detail; full recipients and evidence load only on request."""
     result = await repository.detail(
         source_funder_key,
         beneficiary_country=beneficiary_country.upper(),
@@ -553,6 +584,7 @@ async def source_funder_detail(
 
 @router.get("/grants/summary", response_model=GrantNetworkSummary)
 async def grant_summary(repository: AnalyticsRepository = Depends(_analytics)):
+    """Return currency-separated network totals and rankings."""
     return await repository.summary()
 
 
@@ -562,6 +594,7 @@ async def grant_trends(
     months: int = Query(default=24, ge=1, le=120),
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return monthly award totals over a bounded window, with unknown-coverage months."""
     return await repository.trends(currency=currency, months=months)
 
 
@@ -570,6 +603,7 @@ async def grant_themes(
     currency: Optional[str] = None,
     repository: AnalyticsRepository = Depends(_analytics),
 ):
+    """Return minor-unit-preserving programme allocations and classification coverage."""
     return await repository.themes(currency=currency)
 
 
@@ -578,6 +612,7 @@ async def charity_detail(
     reg_charity_number: int,
     repository: OrganizationRepository = Depends(_organizations),
 ):
+    """Return one organization's detail, provenance and enrichment evidence."""
     result = await repository.detail(reg_charity_number)
     if not result:
         raise HTTPException(
@@ -593,6 +628,7 @@ async def charity_grants(
     role: str = Query(default="all", pattern="^(all|funder|recipient)$"),
     repository: OrganizationRepository = Depends(_organizations),
 ):
+    """Return an organization's observed transactions and explicit coverage status."""
     if not await repository.detail(reg_charity_number):
         raise HTTPException(status_code=404, detail="Organization not found.")
     return await repository.grants(reg_charity_number, role)
@@ -605,6 +641,7 @@ async def charity_sankey(
     limit: int = Query(default=30, ge=1, le=100),
     repository: OrganizationRepository = Depends(_organizations),
 ):
+    """Return donor-to-recipient flows; auto mode converts to EUR, explicit currency does not."""
     if not await repository.detail(reg_charity_number):
         raise HTTPException(status_code=404, detail="Organization not found.")
     return await repository.sankey(
@@ -624,6 +661,7 @@ async def charity_score(
     payload: ScoreRequest,
     repository: OrganizationRepository = Depends(_organizations),
 ):
+    """Calculate the experimental target-profile relevance score; nothing is persisted."""
     profile = payload.target_profile.model_dump(exclude_none=True) if payload.target_profile else None
     try:
         return await repository.score(reg_charity_number, profile)

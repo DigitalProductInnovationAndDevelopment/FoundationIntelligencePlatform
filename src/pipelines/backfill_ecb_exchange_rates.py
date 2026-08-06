@@ -40,10 +40,12 @@ ECB_FIRST_RATE_DATE = "1999-01-04"
 
 
 def _utc_now() -> str:
+    """Return the current timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _parse_award_date(value: Any) -> str | None:
+    """Parse a grant's award date, tolerating date-or-timestamp source text."""
     if value is None:
         return None
     candidate = str(value).strip()[:10]
@@ -54,6 +56,7 @@ def _parse_award_date(value: Any) -> str | None:
 
 
 def _decimal(value: Any) -> Decimal | None:
+    """Coerce a value to Decimal so rates keep full precision."""
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -64,10 +67,12 @@ def _decimal(value: Any) -> Decimal | None:
 
 
 def _series_key(currency: str) -> str:
+    """Build the ECB series key for one currency's daily reference rate."""
     return f"EXR.D.{currency}.EUR.SP00.A"
 
 
 def _series_url(currency: str, start_date: str, end_date: str) -> str:
+    """Build the ECB API URL for one rate series and date window."""
     query = urllib.parse.urlencode({
         "startPeriod": start_date,
         "endPeriod": end_date,
@@ -100,6 +105,7 @@ def fetch_ecb_daily_rates(
 
 
 def _parse_ecb_csv_rates(currency: str, payload: str) -> dict[str, Decimal]:
+    """Parse an ECB CSV response into dated rates, skipping non-published days."""
     rates: dict[str, Decimal] = {}
     for row in csv.DictReader(io.StringIO(payload)):
         rate_date = _parse_award_date(row.get("TIME_PERIOD"))
@@ -124,6 +130,7 @@ def load_cached_ecb_daily_rates(currency: str, directory: Path) -> dict[str, Dec
 
 
 def _grant_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Return the grant rows requiring an EUR conversion."""
     connection.row_factory = sqlite3.Row
     rows = connection.execute(
         "SELECT grant_id, amount, currency, date FROM grants ORDER BY grant_id"
@@ -132,6 +139,7 @@ def _grant_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _award_month_bounds(award_date: str) -> tuple[str, str]:
+    """Return the date window covering the award months present."""
     parsed = date.fromisoformat(award_date)
     last_day = calendar.monthrange(parsed.year, parsed.month)[1]
     return (
@@ -141,6 +149,7 @@ def _award_month_bounds(award_date: str) -> tuple[str, str]:
 
 
 def _foreign_rate_windows(rows: Iterable[Mapping[str, Any]], as_of: str) -> dict[str, tuple[str, str]]:
+    """Group the required rate lookups by currency and date window."""
     windows: dict[str, list[str]] = {}
     for row in rows:
         currency = str(row.get("currency") or "").strip().upper()
@@ -274,6 +283,7 @@ def _store_rates(
     rates_by_currency: Mapping[str, Mapping[str, Decimal]],
     retrieved_at: str,
 ) -> int:
+    """Persist retrieved reference rates idempotently."""
     rows = [
         (currency, rate_date, float(rate), _series_key(currency), ECB_RATE_URL, retrieved_at)
         for currency, rates in rates_by_currency.items()

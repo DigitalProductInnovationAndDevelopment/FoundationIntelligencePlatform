@@ -1,3 +1,6 @@
+/**
+ * Top navigation bar: view switching, data-source selection and favourites entry.
+ */
 import { Database, Menu, RotateCcw, SlidersHorizontal } from "lucide-react";
 
 interface Props {

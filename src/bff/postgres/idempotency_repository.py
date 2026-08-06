@@ -15,11 +15,13 @@ RecordKey = Tuple[str, str, str]
 
 
 class PostgresIdempotencyStore:
+    """Durable at-most-once reservation store for mutating requests."""
     def __init__(
         self,
         sessions: async_sessionmaker[AsyncSession],
         ttl_seconds: int = 86_400,
     ) -> None:
+        """Bind the store to an async session factory."""
         self.sessions = sessions
         self.ttl_seconds = int(timedelta(seconds=ttl_seconds).total_seconds())
 
@@ -30,6 +32,7 @@ class PostgresIdempotencyStore:
         key: str,
         fingerprint: str,
     ) -> RecordKey:
+        """Reserve a key with a request fingerprint, rejecting a conflicting replay."""
         record_key = (actor_id, action, key)
         async with self.sessions() as session, session.begin():
             await session.execute(
@@ -89,6 +92,7 @@ class PostgresIdempotencyStore:
         return record_key
 
     async def complete(self, record_key: RecordKey) -> None:
+        """Mark a reservation complete and retain its response fingerprint."""
         actor_id, action, key = record_key
         async with self.sessions() as session, session.begin():
             await session.execute(
@@ -105,6 +109,7 @@ class PostgresIdempotencyStore:
             )
 
     async def release(self, record_key: RecordKey) -> None:
+        """Release a reservation so a failed request can be retried."""
         actor_id, action, key = record_key
         async with self.sessions() as session, session.begin():
             await session.execute(

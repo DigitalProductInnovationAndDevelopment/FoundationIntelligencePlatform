@@ -38,7 +38,9 @@ def redact_text(value: object) -> str:
 
 
 class RedactingFilter(logging.Filter):
+    """Logging filter applying the recursive sensitive-data redaction policy."""
     def filter(self, record: logging.LogRecord) -> bool:
+        """Redact sensitive fields on a record before it is formatted."""
         record.msg = redact_text(record.getMessage())
         record.args = ()
         return True
@@ -48,10 +50,12 @@ class RedactingFormatter(logging.Formatter):
     """Compatibility formatter for callers that still need plain-text output."""
 
     def formatException(self, exception_info) -> str:
+        """Suppress raw exception payloads, emitting only the error class."""
         return redact_text(super().formatException(exception_info))
 
 
 def pseudonymous_actor_id(value: object) -> str:
+    """Derive a stable pseudonymous identifier for an actor."""
     normalized = str(value or "").strip()
     if not normalized:
         return "unknown"
@@ -59,7 +63,9 @@ def pseudonymous_actor_id(value: object) -> str:
 
 
 class JsonFormatter(logging.Formatter):
+    """Formats each log record as one redacted JSON object."""
     def format(self, record: logging.LogRecord) -> str:
+        """Render a record as a single-line JSON object."""
         payload: dict[str, object] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname.lower(),

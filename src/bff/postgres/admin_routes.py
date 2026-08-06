@@ -25,15 +25,18 @@ GOVERNANCE_CONFIGURATION = load_governance_configuration()
 
 
 def _jobs(request: Request) -> PostgresJobRepository:
+    """Build a durable job repository for this request."""
     return PostgresJobRepository(request.app.state.database.sessions())
 
 
 def _actor(request: Request) -> str:
+    """Return the authenticated actor ID, or 'unknown' when unauthenticated."""
     principal = getattr(request.state, "principal", None)
     return principal.actor_id if principal else "unknown"
 
 
 def _pipelines(request: Request) -> PipelineRepository:
+    """Build a pipeline repository for this request."""
     return PipelineRepository(request.app.state.database.sessions())
 
 
@@ -41,6 +44,7 @@ def _pipelines(request: Request) -> PipelineRepository:
 async def get_pipeline_status(
     repository: PostgresJobRepository = Depends(_jobs),
 ):
+    """Return the latest durable job state."""
     return await repository.latest_status()
 
 
@@ -54,6 +58,7 @@ async def trigger_pipeline(
     request: Request,
     repository: PostgresJobRepository = Depends(_jobs),
 ):
+    """Enqueue an allowed pipeline mode as a durable job and return its ID."""
     if payload.source not in PIPELINE_JOB_TYPES[:4]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -80,6 +85,7 @@ async def get_pipeline_jobs(
     limit: int = Query(default=50, ge=1, le=100),
     repository: PostgresJobRepository = Depends(_jobs),
 ):
+    """Return a bounded window of recent durable job runs."""
     jobs = await repository.history(limit=limit)
     return {
         "jobs": [
@@ -104,6 +110,7 @@ async def get_pipeline_logs(
     limit: int = Query(default=100, ge=1, le=100),
     repository: PostgresJobRepository = Depends(_jobs),
 ):
+    """Return the last structured job events, redacted for administrator review."""
     events = [
         serialize_exposed_fields(
             event,
@@ -121,6 +128,7 @@ async def get_pipeline_logs(
 async def get_pipeline_sources(
     repository: PipelineRepository = Depends(_pipelines),
 ):
+    """Return governance-gated source schedules with credentials masked."""
     return {
         "sources": [
             serialize_exposed_fields(
@@ -150,6 +158,7 @@ async def update_pipeline_source_schedule(
     payload: SourceScheduleUpdate,
     repository: PipelineRepository = Depends(_pipelines),
 ):
+    """Set a source schedule; unresolved legal status blocks enablement."""
     try:
         return await repository.set_source_enabled(source_name, enabled=payload.enabled)
     except ValueError as exc:

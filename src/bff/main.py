@@ -48,6 +48,7 @@ else:
 
 
 def _shadow_log(payload):
+    """Emit a shadow-comparison evidence record to the structured log."""
     logger.info("shadow_comparison", extra={"shadow": payload})
 
 
@@ -157,6 +158,7 @@ _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Assign request and trace IDs, enforce limits, and log one structured line."""
     start_time = time.time()
     supplied_request_id = request.headers.get("x-request-id", "")
     request.state.request_id = (
@@ -296,6 +298,7 @@ async def log_requests(request: Request, call_next):
 # Custom centralized exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    """Return a redacted JSON error without leaking exception internals."""
     logger.error(
         "request_unhandled_exception",
         extra={

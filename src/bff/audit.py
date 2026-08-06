@@ -12,6 +12,7 @@ from bff.utils.logging import logger
 
 @dataclass(frozen=True)
 class AuditEvent:
+    """One security audit event with actor, action, target and outcome."""
     actor_id: str
     actor_role: str
     action: str
@@ -26,11 +27,17 @@ class AuditEvent:
 
 
 class AuditSink(Protocol):
-    def record(self, event: AuditEvent) -> object: ...
+    """Contract for durable audit event sinks."""
+
+    def record(self, event: AuditEvent) -> object:
+        """Append one audit event."""
+        ...
 
 
 class StructuredLogAuditSink:
+    """Audit sink writing events to the structured log."""
     def record(self, event: AuditEvent) -> None:
+        """Append one audit event to the structured log."""
         logger.info("security_audit %s", json.dumps(asdict(event), sort_keys=True, separators=(",", ":")))
 
 
@@ -38,16 +45,20 @@ class MemoryAuditSink:
     """Deterministic test sink; never selected by the application runtime."""
 
     def __init__(self) -> None:
+        """Create an in-memory sink for deterministic tests."""
         self.events: List[AuditEvent] = []
 
     def record(self, event: AuditEvent) -> None:
+        """Append one audit event to memory."""
         self.events.append(event)
 
     def clear(self) -> None:
+        """Discard all recorded events."""
         self.events.clear()
 
 
 def event_from_request(request, status_code: int, error_class: Optional[str] = None) -> AuditEvent:
+    """Build an audit event from the request state set by the route dependency."""
     principal = getattr(request.state, "principal", None)
     result = "success" if status_code < 400 else "denied" if status_code in {401, 403, 429} else "failed"
     reason = request.headers.get("x-action-reason", "not_provided").strip()[:500] or "not_provided"

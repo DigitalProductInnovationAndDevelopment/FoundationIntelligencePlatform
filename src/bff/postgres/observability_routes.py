@@ -20,6 +20,7 @@ router = APIRouter(
 
 @router.get("/metrics")
 async def metrics(request: Request):
+    """Return versioned metric definitions plus bounded local-process evidence."""
     configuration = request.app.state.observability_configuration
     registry = request.app.state.metrics_registry
     return {

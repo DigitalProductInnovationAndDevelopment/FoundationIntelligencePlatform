@@ -364,6 +364,7 @@ def merge_members(p_member, h_member):
     
     # Helper to resolve field value and check discrepancies
     def resolve_field(field_name, p_val, h_val, is_financial=False):
+        """Resolve one field across duplicate members without overwriting source facts."""
         if not is_informative_value(p_val):
             return h_val if is_informative_value(h_val) else p_val
         if not is_informative_value(h_val):
@@ -533,6 +534,7 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
     ingestion_timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def parse_charity_number_from_org_id(org_id):
+        """Extract a Charity Commission number from a 360Giving organisation ID."""
         if not org_id or not isinstance(org_id, str):
             return None
         # Match GB-CHC-XXXXX or numeric sequences
@@ -557,6 +559,7 @@ def consolidate_uk_datasets(charity_records, threesixty_records):
     grants_by_id = {}
 
     def parse_grant(g, default_funder_id=None, default_recipient_id=None):
+        """Map one 360Giving grant into the common grant record shape."""
         if not isinstance(g, dict):
             return None
         g_data = g.get("data") if isinstance(g.get("data"), dict) else g

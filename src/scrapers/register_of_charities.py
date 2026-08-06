@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 # Load environment variables from .env file if it exists
 def load_env():
+    """Load local environment variables for optional live source access."""
     scrapers_dir = os.path.dirname(os.path.abspath(__file__))
     src_dir = os.path.dirname(scrapers_dir)
     workspace_root = os.path.dirname(src_dir)
@@ -44,6 +45,7 @@ class CharityCommissionAPI:
 
     def __init__(self, api_key=None, timeout=10.0, max_retries=3, backoff_factor=2):
         # Read API key from parameter or environment variables
+        """Create a Charity Commission client using CHARITY_COMMISSION_API_KEY."""
         self.api_key = api_key if api_key is not None else os.environ.get("CHARITY_COMMISSION_API_KEY")
         self.timeout = timeout
         self.max_retries = max_retries
@@ -188,26 +190,32 @@ class CharityCommissionAPI:
 
 # Module-level convenience functions
 def get_all_charity_details(registered_number, suffix=0, api_key=None):
+    """Fetch one charity's full registration detail."""
     client = CharityCommissionAPI(api_key=api_key)
     return client.all_charity_details(registered_number, suffix)
 
 def get_charity_assets_liabilities(registered_number, suffix=0, api_key=None):
+    """Fetch one charity's reported assets and liabilities."""
     client = CharityCommissionAPI(api_key=api_key)
     return client.charity_assets_liabilities(registered_number, suffix)
 
 def get_check_primary_grants(registered_number, suffix=0, api_key=None):
+    """Fetch the charity's primary grant-making indicators."""
     client = CharityCommissionAPI(api_key=api_key)
     return client.check_primary_grants(registered_number, suffix)
 
 def get_charity_who_what_how(registered_number, suffix=0, api_key=None):
+    """Fetch the charity's declared purposes, beneficiaries and activities."""
     client = CharityCommissionAPI(api_key=api_key)
     return client.charity_who_what_how(registered_number, suffix)
 
 def get_charity_financial_history(registered_number, suffix=0, api_key=None):
+    """Fetch the charity's reported financial history."""
     client = CharityCommissionAPI(api_key=api_key)
     return client.charity_financial_history(registered_number, suffix)
 
 def search_charity_name(charity_name, api_key=None):
+    """Search the register by charity name."""
     client = CharityCommissionAPI(api_key=api_key)
     return client.search_charity_name(charity_name)
 
@@ -292,6 +300,7 @@ def scrape(registered_numbers=None, search_name=None, limit=None, sleep_time=1.0
 
 
 def save_data(data, path):
+    """Write a fetched payload to the raw source cache."""
     logging.info(f"Saving scraped data to {path}...")
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)

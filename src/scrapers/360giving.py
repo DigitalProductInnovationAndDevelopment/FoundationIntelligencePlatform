@@ -8,6 +8,7 @@ from urllib.parse import urlparse, parse_qs
 
 # Load environment variables from .env file if it exists
 def load_env():
+    """Load local environment variables for optional live source access."""
     scrapers_dir = os.path.dirname(os.path.abspath(__file__))
     src_dir = os.path.dirname(scrapers_dir)
     workspace_root = os.path.dirname(src_dir)
@@ -43,6 +44,7 @@ class ThreeSixtyGivingAPI:
     BASE_URL = "https://api.threesixtygiving.org/api/v1"
 
     def __init__(self, timeout=10.0, max_retries=3, backoff_factor=2, user_agent=None):
+        """Create a 360Giving client with bounded timeouts and retries."""
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
@@ -314,15 +316,19 @@ class ThreeSixtyGivingAPI:
 
 # Module-level convenience functions
 def get_organisations(limit=None, offset=None):
+    """Fetch publisher organisations from the 360Giving API."""
     return ThreeSixtyGivingAPI().get_organisations(limit=limit, offset=offset)
 
 def get_organisation_detail(org_id):
+    """Fetch one organisation's detail from the 360Giving API."""
     return ThreeSixtyGivingAPI().get_organisation_detail(org_id)
 
 def get_grants_made(org_id, limit=None, offset=None):
+    """Fetch grants made by one organisation."""
     return ThreeSixtyGivingAPI().get_grants_made(org_id, limit=limit, offset=offset)
 
 def get_grants_received(org_id, limit=None, offset=None):
+    """Fetch grants received by one organisation."""
     return ThreeSixtyGivingAPI().get_grants_received(org_id, limit=limit, offset=offset)
 
 
@@ -419,6 +425,7 @@ def scrape(org_ids=None, all_organisations=False, scrape_grants=False, limit=Non
 
 
 def save_data(data, path):
+    """Write a fetched payload to the raw source cache."""
     logging.info(f"Saving scraped data to {path}...")
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
