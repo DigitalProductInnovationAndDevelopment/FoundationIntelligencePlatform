@@ -6,6 +6,7 @@ from migration.aws_entrypoint import (
     _connect_admin,
     _configure_application_role,
     _identifier,
+    _run_alembic,
     _verify_application_role,
 )
 
@@ -46,6 +47,7 @@ class _VerifiedApplicationConnection:
 
 class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
     async def test_admin_connection_requires_tls_for_rds(self):
+        password = "A@b:%/+#?&xyz"
         connection = AsyncMock()
         with patch(
             "migration.aws_entrypoint.asyncpg.connect",
@@ -56,12 +58,25 @@ class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
                     "DATABASE_HOST": "private-postgresql.internal",
                     "DATABASE_NAME": "foundation_intelligence",
                     "DATABASE_ADMIN_USER": "foundation_admin",
-                    "DATABASE_ADMIN_PASSWORD": "runtime-only-secret",
+                    "DATABASE_ADMIN_PASSWORD": password,
                     "DATABASE_SSL_MODE": "require",
                 }
             )
         self.assertIs(result, connection)
         self.assertEqual(connect.await_args.kwargs["ssl"], "require")
+        self.assertEqual(connect.await_args.kwargs["password"], password)
+
+    def test_alembic_environment_receives_unmodified_reserved_password(self):
+        password = "A@b:%/+#?&xyz"
+        with patch("migration.aws_entrypoint.subprocess.run") as run:
+            _run_alembic(
+                {
+                    "DATABASE_ADMIN_USER": "foundation_admin",
+                    "DATABASE_ADMIN_PASSWORD": password,
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+        self.assertEqual(run.call_args.kwargs["env"]["DATABASE_PASSWORD"], password)
 
     async def test_application_role_verification_requires_tls_and_denied_update(self):
         connection = _VerifiedApplicationConnection()

@@ -153,6 +153,14 @@ class DatabaseSettings:
             url = url.update_query_dict({"ssl": "require"})
         return url
 
+    def raw_sqlalchemy_url(self) -> str:
+        """Render a normal URL for direct SQLAlchemy/asyncpg consumption.
+
+        The returned value is deliberately not escaped for ConfigParser. Callers
+        crossing a real ConfigParser boundary must perform that escaping there.
+        """
+        return self.sqlalchemy_url().render_as_string(hide_password=False)
+
 
 class DatabaseManager:
     def __init__(self, settings: DatabaseSettings):

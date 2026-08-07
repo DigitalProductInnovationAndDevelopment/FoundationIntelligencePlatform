@@ -20,9 +20,9 @@ target_metadata = None
 
 
 def _configured_url() -> str:
-    url = DatabaseSettings.from_env().sqlalchemy_url()
-    # Alembic interpolates percent signs in configuration values.
-    return url.render_as_string(hide_password=False).replace("%", "%%")
+    # Both consumers below receive this value directly. No ConfigParser boundary
+    # exists here, so percent-encoded credentials must remain untouched.
+    return DatabaseSettings.from_env().raw_sqlalchemy_url()
 
 
 def run_migrations_offline() -> None:

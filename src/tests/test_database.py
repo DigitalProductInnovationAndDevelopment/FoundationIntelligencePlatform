@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
 
 from bff.database import DatabaseConfigurationError, DatabaseSettings
 from bff.main import app
@@ -108,6 +109,38 @@ class TestDatabaseFoundation(unittest.TestCase):
         self.assertEqual(url.query["ssl"], "require")
         self.assertNotIn("sslmode", url.query)
 
+    def test_raw_database_url_round_trips_combined_reserved_password(self):
+        password = "A@b:%/+#?&xyz"
+        settings = DatabaseSettings.from_env(
+            {
+                "DATABASE_HOST": "private-postgresql.internal",
+                "DATABASE_NAME": "foundation_intelligence",
+                "DATABASE_USER": "foundation_admin",
+                "DATABASE_PASSWORD": password,
+                "DATABASE_SSL_MODE": "require",
+            }
+        )
+        raw_url = settings.raw_sqlalchemy_url()
+        self.assertNotIn("%%", raw_url)
+        self.assertEqual(make_url(raw_url).password, password)
+
+    def test_raw_database_url_round_trips_each_reserved_password_character(self):
+        for character in ("%", "@", ":", "/", "+", "#", "?", "&"):
+            with self.subTest(character=character):
+                password = f"prefix{character}suffix"
+                settings = DatabaseSettings.from_env(
+                    {
+                        "DATABASE_HOST": "private-postgresql.internal",
+                        "DATABASE_NAME": "foundation_intelligence",
+                        "DATABASE_USER": "foundation_admin",
+                        "DATABASE_PASSWORD": password,
+                        "DATABASE_SSL_MODE": "require",
+                    }
+                )
+                raw_url = settings.raw_sqlalchemy_url()
+                self.assertNotIn("%%", raw_url)
+                self.assertEqual(make_url(raw_url).password, password)
+
     def test_database_url_sslmode_is_normalized_without_losing_query_parameters(self):
         settings = DatabaseSettings.from_env(
             {
@@ -121,6 +154,24 @@ class TestDatabaseFoundation(unittest.TestCase):
         self.assertEqual(url.query["ssl"], "require")
         self.assertEqual(url.query["prepared_statement_cache_size"], "0")
         self.assertNotIn("sslmode", url.query)
+        raw_url = settings.raw_sqlalchemy_url()
+        self.assertEqual(raw_url.count("ssl=require"), 1)
+        self.assertNotIn("sslmode=", raw_url)
+
+    def test_database_url_asyncpg_ssl_remains_single_and_required(self):
+        settings = DatabaseSettings.from_env(
+            {
+                "DATABASE_URL": (
+                    "postgresql+asyncpg://foundation_app:secret@postgres/database"
+                    "?prepared_statement_cache_size=0&ssl=require"
+                )
+            }
+        )
+        raw_url = settings.raw_sqlalchemy_url()
+        parsed = make_url(raw_url)
+        self.assertEqual(parsed.query["ssl"], "require")
+        self.assertEqual(parsed.query["prepared_statement_cache_size"], "0")
+        self.assertEqual(raw_url.count("ssl=require"), 1)
 
     def test_conflicting_database_ssl_configuration_is_rejected(self):
         with self.assertRaises(DatabaseConfigurationError):
@@ -131,6 +182,17 @@ class TestDatabaseFoundation(unittest.TestCase):
                         "?sslmode=disable"
                     ),
                     "DATABASE_SSL_MODE": "require",
+                }
+            )
+
+    def test_conflicting_database_url_ssl_keys_are_rejected(self):
+        with self.assertRaises(DatabaseConfigurationError):
+            DatabaseSettings.from_env(
+                {
+                    "DATABASE_URL": (
+                        "postgresql+asyncpg://foundation_app:secret@postgres/database"
+                        "?ssl=require&sslmode=disable"
+                    )
                 }
             )
 
