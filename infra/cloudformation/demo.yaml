@@ -174,8 +174,8 @@ Resources:
       Description: ALB to the ECS frontend only
       GroupId: !GetAtt EcsSecurityGroup.GroupId
       IpProtocol: tcp
-      FromPort: 80
-      ToPort: 80
+      FromPort: 8080
+      ToPort: 8080
       SourceSecurityGroupId: !GetAtt AlbSecurityGroup.GroupId
 
   DatabaseIngressFromEcs:
@@ -470,8 +470,8 @@ Resources:
               Condition: HEALTHY
           PortMappings:
             - Name: http
-              ContainerPort: 80
-              HostPort: 80
+              ContainerPort: 8080
+              HostPort: 8080
               Protocol: tcp
               AppProtocol: http
           HealthCheck:
@@ -481,7 +481,7 @@ Resources:
               - -q
               - -O
               - /dev/null
-              - http://127.0.0.1:80/
+              - http://127.0.0.1:8080/
             Interval: 30
             Timeout: 5
             Retries: 3
@@ -682,7 +682,7 @@ Resources:
           Subnets: !Ref PublicSubnetIds
       LoadBalancers:
         - ContainerName: frontend
-          ContainerPort: 80
+          ContainerPort: 8080
           TargetGroupArn: !Ref FrontendTargetGroup
       Tags:
         - Key: Environment

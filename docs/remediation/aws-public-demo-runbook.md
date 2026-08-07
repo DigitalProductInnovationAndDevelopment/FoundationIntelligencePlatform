@@ -49,7 +49,7 @@ The template is `infra/cloudformation/demo.yaml`.
 | Component | Exact demo configuration |
 |---|---|
 | Application task | Fargate Linux/ARM64, 512 CPU units, 2,048 MiB, default 20 GiB ephemeral storage, desired count 0 initially then 1 |
-| Frontend | Same task, port 80, target of the ALB, Nginx proxies `/api` to `127.0.0.1:8000` |
+| Frontend | Same task, unprivileged port 8080 behind the ALB listener on port 80; Nginx proxies `/api` to `127.0.0.1:8000` |
 | Backend | Same task, port 8000 not exposed by any security-group ingress rule |
 | Migration task | Fargate Linux/ARM64, 1,024 CPU units, 4,096 MiB, default 20 GiB ephemeral storage, one-off only |
 | RDS import | PostgreSQL 16.14, `db.t4g.medium`, Single-AZ, 30 GiB gp3, autoscaling maximum 100 GiB |
@@ -61,7 +61,7 @@ The template is `infra/cloudformation/demo.yaml`.
 
 There is no NAT gateway, autoscaling, Multi-AZ database, replica, Performance
 Insights or VPC endpoint. The application task receives a public IP solely for
-outbound AWS/API access. Its inbound port 80 accepts traffic only from the ALB
+outbound AWS/API access. Its inbound port 8080 accepts traffic only from the ALB
 security group. RDS port 5432 accepts traffic only from the shared ECS security
 group.
 
