@@ -1,15 +1,132 @@
-version: '3.8'
+name: foundation-intelligence
+
+x-backend-common: &backend-common
+  image: foundation-intelligence-backend:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: backend-runtime
+  environment: &backend-environment
+    APP_ENV: development
+    DATA_RUNTIME_MODE: postgresql
+    AUTH_MODE: disabled
+    CORS_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+    DATABASE_HOST: postgres
+    DATABASE_PORT: "5432"
+    DATABASE_NAME: foundation_intelligence
+    DATABASE_USER: foundation_app
+    DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+    DATABASE_CONNECT_TIMEOUT_SECONDS: "5"
+    DATABASE_STATEMENT_TIMEOUT_MS: "30000"
+  secrets:
+    - postgres_password
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m,uid=10001,gid=10001,mode=0700
+  init: true
+  stop_grace_period: 35s
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
 
 services:
-  bff:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./src:/app/src
+  postgres:
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
-      - JWT_SECRET_KEY=bff_super_secret_signing_key_for_session_tokens_2026
-      - CORE_API_URL=http://localhost:8080
-      - DATA_PATH=/app/src/data/raw/register_of_charities_results.json
-    # Command overridden with --reload for development hot-reloading
-    command: uvicorn bff.main:app --host 0.0.0.0 --port 8000 --reload
+      POSTGRES_DB: foundation_intelligence
+      POSTGRES_USER: foundation_app
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run/postgresql:rw,nosuid,size=16m
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundation_app -d foundation_intelligence"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  backend:
+    <<: *backend-common
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2).read()
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    image: foundation-intelligence-frontend:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-runtime
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,uid=101,gid=101
+      - /var/cache/nginx:rw,noexec,nosuid,size=32m,uid=101,gid=101
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  migration:
+    <<: *backend-common
+    profiles: ["operations"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    restart: "no"
+
+  worker:
+    <<: *backend-common
+    profiles: ["operations"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    entrypoint: ["python", "-m"]
+    command: ["pipelines.run_pipeline", "--source", "consolidate"]
+    restart: "no"
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:?Set POSTGRES_PASSWORD_FILE to a local secret file}
+
+volumes:
+  postgres_data:

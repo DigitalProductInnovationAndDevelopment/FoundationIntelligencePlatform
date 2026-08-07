@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, LoaderCircle, Search, X } from "lucide-react";
 import { validateOptionalNumericRange } from "../lib/numericRange";
+import { mutationHeaders } from "../lib/http";
 
 interface RegistrySummary {
   registry_id: string;
@@ -117,6 +118,10 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
   const enrichmentRequestRef = useRef<AbortController | null>(null);
   const requestVersion = useRef(0);
   const enrichmentVersion = useRef(0);
+  const filterDrawerRef = useRef<HTMLElement | null>(null);
+  const filterTriggerRef = useRef<HTMLElement | null>(null);
+  const detailDialogRef = useRef<HTMLElement | null>(null);
+  const detailTriggerRef = useRef<HTMLElement | null>(null);
   const selectedRegistryIdRef = useRef(selectedRegistryId);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   selectedRegistryIdRef.current = selectedRegistryId;
@@ -294,7 +299,7 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
         fetch(`${apiBase}/api/charities/directory/organizations/enrich`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: mutationHeaders("enrich registry organization", true),
           body: JSON.stringify({ reg_numbers: [charityNumber] }),
           signal: controller.signal,
         }),
@@ -371,6 +376,13 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
     setSelectedRegistryId(null);
   };
 
+  const closeFilters = () => setFiltersOpen(false);
+  const closeDetail = () => setSelectedRegistryId(null);
+  const openDetail = (registryId: string, trigger: HTMLElement) => {
+    detailTriggerRef.current = trigger;
+    setSelectedRegistryId(registryId);
+  };
+
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("registry-header-state", {
       detail: {
@@ -383,6 +395,9 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
 
   useEffect(() => {
     const openFilters = () => {
+      filterTriggerRef.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement
+        : document.querySelector<HTMLButtonElement>(".app-header-filter");
       setFiltersOpen(true);
     };
     window.addEventListener("registry-open-filters", openFilters);
@@ -396,13 +411,83 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
     };
   }, []);
 
+  useEffect(() => {
+    if (!filtersOpen) {
+      if (!filterTriggerRef.current) return;
+      const trigger = filterTriggerRef.current;
+      const frame = window.requestAnimationFrame(() => {
+        trigger.focus();
+        if (filterTriggerRef.current === trigger) filterTriggerRef.current = null;
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+    filterDrawerRef.current?.focus();
+    const handleKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeFilters();
+        return;
+      }
+      if (event.key !== "Tab" || !filterDrawerRef.current) return;
+      const controls = Array.from(filterDrawerRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      ));
+      if (!controls.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeys);
+    return () => window.removeEventListener("keydown", handleKeys);
+  }, [filtersOpen]);
+
+  useEffect(() => {
+    if (!selectedRegistryId) {
+      if (!detailTriggerRef.current) return;
+      const trigger = detailTriggerRef.current;
+      const frame = window.requestAnimationFrame(() => {
+        trigger.focus();
+        if (detailTriggerRef.current === trigger) detailTriggerRef.current = null;
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+    detailDialogRef.current?.focus();
+    const handleKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDetail();
+        return;
+      }
+      if (event.key !== "Tab" || !detailDialogRef.current) return;
+      const controls = Array.from(detailDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      ));
+      if (!controls.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeys);
+    return () => window.removeEventListener("keydown", handleKeys);
+  }, [selectedRegistryId]);
+
   return (
     <section className="registry-directory">
-      {filtersOpen && <div className="filter-drawer-backdrop" onMouseDown={() => setFiltersOpen(false)}>
-        <aside className="filter-drawer registry-filters registry-filter-drawer" role="dialog" aria-modal="true" aria-label="Advanced Charity Commission Search filters" onMouseDown={event => event.stopPropagation()}>
+      {filtersOpen && <div className="filter-drawer-backdrop" onMouseDown={closeFilters}>
+        <aside className="filter-drawer registry-filters registry-filter-drawer" ref={filterDrawerRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Advanced Charity Commission Search filters" onMouseDown={event => event.stopPropagation()}>
           <div className="filter-drawer-header">
             <div><span>Advanced Charity Search</span><h3>Filters</h3></div>
-            <button type="button" onClick={() => setFiltersOpen(false)} aria-label="Close filters"><X size={18} /></button>
+            <button type="button" onClick={closeFilters} aria-label="Close filters"><X size={18} /></button>
           </div>
           <div id="advanced-registry-filters" className="filter-drawer-body">
         <p className="registry-filter-intro">Official Charity Commission records. Registry presence does not imply funding activity.</p>
@@ -482,12 +567,12 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
           {page && <span className="status-badge">{page.search_strategy === "fts5" ? "Indexed name search" : "Indexed directory"}</span>}
         </div>
         {rangeValidationError && <div className="data-notice data-notice-warning" role="alert">{rangeValidationError} Results are not refreshed until the range is valid.</div>}
-        {error && <div className="data-notice data-notice-warning">{error}</div>}
+        {error && <div className="data-notice data-notice-warning" role="alert">{error}</div>}
         {loading && !page ? <div className="registry-loading"><LoaderCircle size={22} /> Loading organization directory…</div> : (
           <>
             <div className="registry-result-grid">
               {(page?.results || []).map(organization => (
-                <button type="button" className="glass-card registry-result-card" key={organization.registry_id} onClick={() => setSelectedRegistryId(organization.registry_id)}>
+                <button type="button" className="glass-card registry-result-card" key={organization.registry_id} onClick={event => openDetail(organization.registry_id, event.currentTarget)}>
                   <div className="registry-result-heading"><span className="charity-card-id">Charity #{organization.charity_number}</span><ArrowRight size={16} /></div>
                   <h3>{organization.registered_name}</h3>
                   <div className="registry-badges">
@@ -507,9 +592,9 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
       </div>
 
       {selectedRegistryId && (
-        <div className="registry-detail-backdrop" role="presentation" onMouseDown={() => setSelectedRegistryId(null)}>
-          <section className="glass-card registry-detail-modal" role="dialog" aria-modal="true" aria-label="Registry organization detail" onMouseDown={event => event.stopPropagation()}>
-            <button type="button" className="registry-detail-close" onClick={() => setSelectedRegistryId(null)} aria-label="Close organization detail"><X size={18} /></button>
+        <div className="registry-detail-backdrop" role="presentation" onMouseDown={closeDetail}>
+          <section className="glass-card registry-detail-modal" ref={detailDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Registry organization detail" onMouseDown={event => event.stopPropagation()}>
+            <button type="button" className="registry-detail-close" onClick={closeDetail} aria-label="Close organization detail"><X size={18} /></button>
             {detailLoading || !detail ? <div className="registry-loading"><LoaderCircle size={22} /> Loading registry detail…</div> : <>
               <span className="charity-card-id">Charity Commission · #{detail.charity_number}</span>
               <h2>{detail.registered_name}</h2>

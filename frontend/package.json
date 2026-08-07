@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run check:bundle",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "lint": "oxlint",
     "test": "tsc -p tsconfig.tests.json && node --test .test-dist/tests/*.test.js",
+    "test:e2e": "npm run build && env -u NO_COLOR playwright test",
+    "test:runtime": "npm run build && node scripts/check-runtime-layout.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,6 +23,8 @@
     "recharts": "^3.9.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.62.0",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",

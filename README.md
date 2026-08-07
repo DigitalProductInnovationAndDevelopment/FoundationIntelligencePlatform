@@ -9,10 +9,11 @@ The platform deliberately separates source facts, normalized source values, dete
 | Capability | Status | Current evidence / limitation |
 |---|---|---|
 | Cached UK organization ingestion | Complete | 65 normalized UK-side organizations in the current rebuilt database |
-| Cached 360Giving grant ingestion | Sampled | 200,000 observed 360Giving transactions with source provenance; the active database is a reproducible capped sample, not complete 360Giving coverage |
+| Cached 360Giving grant ingestion | Sampled | 302,546 observed transactions with source provenance in the current migration source; coverage is not complete 360Giving |
 | Cached Philea organization ingestion | Complete | 299 records; organization-level only, with no grants assigned |
 | DACH foundation intelligence | Partial | Philea and deterministic geography normalization provide some European/DACH discoverability; this is not a complete DACH registry or grant dataset |
-| Organization directory and detail | Complete | SQLite-backed API and UI, with source/type/coverage labels |
+| Organization directory and detail | Complete | PostgreSQL-backed operational API/UI; SQLite is retained only as a local migration source |
+| PostgreSQL migration/cutover | Complete locally | Exact reconciliation, 18 zero-difference shadow projections, full restore and dataset rollback pass; AWS/production cutover is unexecuted |
 | Programme-area enrichment | Complete | Versioned deterministic taxonomy/rules and evidence; accuracy has not been externally validated |
 | Geographic-focus enrichment | Complete | Versioned deterministic rules and evidence; distinct from headquarters and beneficiary geography |
 | Grant list and network summary | Complete | Observed 360Giving transactions only |
@@ -37,15 +38,18 @@ scrapers ──► consolidation ──► deterministic enrichment ──► JS
                      Philea normalization/dedup ───────────┘
                                                             │
                                                             ▼
-                                               atomic SQLite rebuild
+                                         coherent SQLite migration source
+                                                            │
+                                   deterministic versioned migration/reconcile
                                                             │
                                                             ▼
 React/Vite UI ◄── cookie-authenticated JSON ── FastAPI BFF
                                                     │
-                                                    ├── organization/grant repository
+                                                    ├── async PostgreSQL repositories
+                                                    ├── versioned analytics/materialisations
+                                                    ├── durable job/outbox workers
                                                     ├── experimental score engine/config
-                                                    ├── pipeline monitor/trigger
-                                                    └── optional news service
+                                                    └── optional approval-gated news service
 ```
 
 The major components are:
@@ -54,7 +58,8 @@ The major components are:
 - `src/preprocessing/consolidate.py`: maps Charity Commission and 360Giving records into common organization and grant records.
 - `src/preprocessing/enrichment.py`: the one active, versioned source of programme and geography taxonomy/rules. It keeps source values and inferred values separate.
 - `src/preprocessing/philea_adapter.py`: normalizes all cached Philea records, assigns stable negative local IDs, maps organization types, records provenance, and performs conservative cross-source deduplication.
-- `src/data/db_loader.py`: owns schema version 6, validates tables/version, loads JSONL strictly into a staging database, and publishes it atomically only after validation.
+- `src/data/db_loader.py`: maintains the coherent SQLite migration source for local ingestion compatibility; it is not an operational production datastore.
+- `alembic/`, `src/migration/`, and `src/bff/postgres/`: own the PostgreSQL schema, lossless versioned migration/reconciliation, rollback controls and operational repositories.
 - `src/pipelines/backfill_ecb_exchange_rates.py`: fetches/caches official ECB daily EXR rates and atomically backfills reproducible EUR values without altering source amounts.
 - `src/pipelines/run_pipeline.py`: orchestrates collection, consolidation, enrichment, reports, and database publication.
 - `src/bff/`: FastAPI entry point, demo cookie authentication, repositories, organization/grant endpoints, pipeline controls, proxy, and optional news summary.
@@ -66,10 +71,11 @@ The major components are:
 
 The checked-in source caches currently contain 62 Charity Commission records, a baseline 360Giving cache, an observed 360Giving publisher-pilot import, and 299 Philea member records. Consolidation creates 65 UK-side organization rows alongside the Philea records.
 
-The current regenerated database contains:
+The current preserved SQLite migration source and reconciled PostgreSQL active dataset contain:
 
-- 364 organizations: 65 primarily from the Charity Commission/360Giving and 299 from Philea.
-- 200,000 observed 360Giving grants in GBP, USD, EUR, ILS, and CHF. Original amount and currency remain source facts; this is the current reproducible ingestion cap, not the complete 360Giving dataset.
+- 373 organizations across Charity Commission/360Giving and Philea identities.
+- 302,546 observed grants in GBP, USD, EUR, ILS, and CHF. Original amount and currency remain source facts; this is a reproducible sampled source, not complete 360Giving coverage.
+- 397,469 current registry rows and 345 accepted registry/profile links.
 - Auto EUR display uses the official daily ECB EXR reference rate for the award date; weekends and ECB holidays use the previous published business-day rate. Each converted grant stores the conversion status, rate, rate date, and source. 34 pre-1999 GBP grants remain explicitly unconverted because no ECB EUR reference rate exists for their award dates.
 - 299 Philea organizations marked `organization_level_only`; no grant is attached to a synthetic Philea ID.
 
@@ -124,7 +130,7 @@ Geographic concepts are intentionally distinct:
 - Geographic focus: where an organization says it works or funds; source and inferred values remain separate.
 - Beneficiary/project geography: a transaction's destination; used by recipient-region filters and the map.
 
-The `Global Grant Distribution` map currently resolves beneficiary-country geography for 71,286 of the 200,000 ingested grants (35.64%). These produce 71,403 country associations; 62 grants have multiple associated countries. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 128,714 records are reported as unmapped rather than assigned a fabricated country.
+The `Global Grant Distribution` map currently resolves beneficiary-country geography for 104,191 of the 302,546 ingested grants (34.44%). These produce 104,309 country associations because explicitly multi-country grants retain every supported association. It uses `beneficiary_geography_normalized` first and falls back only to explicit ISO country codes or explicit country names in the original `beneficiary_geography` source field. It never consults funder headquarters, recipient registered offices, or inferred operating regions. England, Scotland, Wales, and Northern Ireland roll up to the United Kingdom shape while their original labels are retained in country detail. The remaining 198,355 records are reported as unmapped rather than assigned a fabricated country.
 
 The Overview `Filters` button opens a non-layout-shifting, scrollable global grant-filter drawer for award date, currency, beneficiary geography, programme area, donor, recipient, and time aggregation. `Auto · EUR converted` includes every eligible source currency using stored historical ECB rates; selecting `GBP`, `USD`, `EUR`, `CHF`, or `ILS` instead shows only grants originally recorded in that currency. One applied grant scope drives the Overview KPIs, map, trends, and programme allocation; coverage counters explicitly change from ingested to filtered grants. The map header retains only display controls and the illustrative-connections toggle. Organization-directory search, income/expenditure, and headquarters filters remain independent because they describe organization records rather than the filtered grant population.
 
@@ -138,7 +144,7 @@ The endpoint requires `beneficiary_country` as a canonical ISO alpha-2 code and 
 
 For a selected country, multi-country grants count once for activity and recency, but their full amount is excluded from the country-attributable funding total. In `currency=auto`, only stored EUR values with `native_eur`, `ecb_award_date`, or `ecb_previous_business_day` conversion status are monetary eligible. In an explicit currency mode, only original grants in that selected currency are considered. A verified Directory profile is linked only where it already exists; source-only funders remain source-only and must never be converted into invented profiles.
 
-The current active 200,000-grant database is a reproducible **sampled ingestion cap**, not a complete 360Giving dataset. The import record is `src/data/processed/360giving_registry_publisher_pilot_import_200000.json`. The optimized source-funder list uses normalized beneficiary/programme indexes and a versioned narrow fact table; supported loaders invalidate it after data changes. See `docs/donor_directory_performance_report.md` for measured GB/US repository timings and the explicit HTTP/browser validation limits.
+The current active 302,546-grant dataset is reproducible and checksum-bound, but remains sampled rather than complete 360Giving coverage. Its exact source/target counts and controls are recorded in `docs/remediation/evidence/phase4-migration-manifest.json`. The optimized source-funder list uses normalized beneficiary/programme indexes and a versioned narrow fact table; supported loaders invalidate it after data changes. See the Phase-6 performance evidence for current PostgreSQL timings; older donor-directory reports remain historical evidence.
 
 The map CTA writes `funder_country` plus canonical `grant_*` filters to the URL. Search, status, sorting, page, sources, and selected donor also survive refresh/back/forward and copied URLs. Desktop uses a compact list plus right-side detail panel; tablet/mobile use a full-width/full-screen sheet. Real-browser acceptance is still outstanding and the legacy donor view remains available; see `docs/donor_directory_responsive_validation.md`.
 
@@ -168,24 +174,24 @@ To use a reviewed configuration, copy the example, preserve the validated schema
 
 ## Local setup
 
-Prerequisites: Python 3.12, Node.js 22, and npm.
+Prerequisites: Python 3.12, Node.js 22/npm, Docker Desktop and Compose.
 
 ```bash
-git checkout 86-implement-ui-for-final-presentation
+git checkout 91-clean-up-code-for-aws-integration
 python3.12 -m venv venv
-./venv/bin/python -m pip install --upgrade pip
-./venv/bin/pip install -r requirements.txt
+./venv/bin/python -m pip install --require-hashes -r requirements-locking.txt
+./venv/bin/python -m pip install --require-hashes -r requirements.txt
 cp .env.example .env
 
 cd frontend
-npm ci
+npm ci --ignore-scripts --no-audit --no-fund
 cp .env.example .env
 cd ..
 ```
 
 The root `.env` is ignored by Git and loaded by the BFF configuration. `frontend/.env` is also ignored, but every `VITE_*` value is embedded in browser code and must not contain a real secret. The demo username/password are visible client configuration and are not production authentication.
 
-Relevant backend variables are `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `BFF_ADMIN_USER`, `BFF_ADMIN_PASSWORD`, `CORE_API_URL`, `DB_PATH`, `DATA_PATH`, `SCORE_CONFIG_PATH`, and the optional `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and `CLAUDE_MODEL`. Frontend variables are `VITE_API_BASE_URL`, `VITE_BFF_USERNAME`, and `VITE_BFF_PASSWORD`; the two demo credentials must match the BFF values.
+Operationally relevant variables include `DATA_RUNTIME_MODE` (PostgreSQL by default), `DATABASE_*`, `AUTH_MODE`, `OIDC_*`, `CORS_ORIGINS`, request/rate limits, proxy allowlists and `SCORE_CONFIG_PATH`. See `docs/remediation/environment-variable-reference.md`. Optional news credentials remain separately approval-gated. Every frontend `VITE_*` value is public build-time configuration and must not contain a secret.
 
 ### Build the presentation database
 

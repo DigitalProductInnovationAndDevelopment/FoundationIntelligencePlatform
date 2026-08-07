@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foundation-intelligence.local/schemas/migration-manifest.schema.json",
+  "title": "Foundation Intelligence PostgreSQL Migration Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "migration_run_id",
+    "source_database_checksum",
+    "source_schema_version",
+    "source_fact_version",
+    "target_schema_version",
+    "dataset_version",
+    "code_revision",
+    "started_at",
+    "completed_at",
+    "source_counts",
+    "target_counts",
+    "reconciliation_results",
+    "activation_status",
+    "rollback_dataset_version",
+    "errors",
+    "actor"
+  ],
+  "properties": {
+    "migration_run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source_database_checksum": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "source_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_fact_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dataset_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "code_revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "source_counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "target_counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["integer", "number", "string"]
+      }
+    },
+    "reconciliation_results": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/reconciliationResult"
+      }
+    },
+    "activation_status": {
+      "enum": [
+        "created",
+        "loading",
+        "validating",
+        "rejected",
+        "approved",
+        "active",
+        "rolled_back",
+        "failed"
+      ]
+    },
+    "rollback_dataset_version": {
+      "type": ["string", "null"]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "record_identity": {"type": ["string", "null"]},
+          "details": {"type": "object"}
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "type": {"enum": ["human", "service", "ci"]}
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_bytes",
+        "estimated_postgres_and_indexes_bytes",
+        "estimated_wal_and_temp_bytes",
+        "safety_margin_bytes",
+        "minimum_free_bytes",
+        "available_bytes",
+        "sufficient"
+      ],
+      "properties": {
+        "source_bytes": {"type": "integer", "minimum": 0},
+        "estimated_postgres_and_indexes_bytes": {"type": "integer", "minimum": 0},
+        "estimated_wal_and_temp_bytes": {"type": "integer", "minimum": 0},
+        "safety_margin_bytes": {"type": "integer", "minimum": 0},
+        "minimum_free_bytes": {"type": "integer", "minimum": 0},
+        "available_bytes": {"type": "integer", "minimum": 0},
+        "sufficient": {"type": "boolean"}
+      }
+    },
+    "idempotent_noop": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "reconciliationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source", "target"],
+      "properties": {
+        "status": {"enum": ["pass", "fail", "approved_difference", "not_tested"]},
+        "source": {},
+        "target": {},
+        "difference": {},
+        "reason": {"type": ["string", "null"]},
+        "approval_reference": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

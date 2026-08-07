@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Building2, CalendarRange, ChevronRight, ExternalLink, LoaderCircle, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import {
   Bar,
@@ -10,11 +10,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import GrantWorldMap, {
-  type GrantMapFilters,
-  type GrantMapResponse,
-  type MapCountrySelection,
-  type SourceFunderCountrySelection,
+import type {
+  GrantMapFilters,
+  GrantMapResponse,
+  MapCountrySelection,
+  SourceFunderCountrySelection,
 } from "./GrantWorldMap";
 import {
   applyGrantScopeToParams,
@@ -23,6 +23,8 @@ import {
   grantScopeToApiParams,
   type GrantScope,
 } from "../lib/grantScope";
+
+const GrantWorldMap = lazy(() => import("./GrantWorldMap"));
 
 type PeriodPreset = "all" | "last12" | "last24" | "currentYear" | "custom";
 type Granularity = "auto" | "monthly" | "yearly";
@@ -94,6 +96,13 @@ interface OverviewPayload {
     allocated_amount: number;
   };
   available_date_range: { from: string | null; to: string | null };
+}
+
+interface MapConnectionsPayload {
+  status: string;
+  connections: GrantMapResponse["connections"];
+  connection_grant_count: number;
+  selected_currency: string | null;
 }
 
 interface EntitySuggestion {
@@ -334,7 +343,7 @@ function EntitySuggestionInput({
               <span>Loading cached names…</span>
             ) : matches.length ? matches.map(item => (
               <button
-                key={item.name}
+                key={`${item.name}:${item.grant_count}`}
                 type="button"
                 role="option"
                 onMouseDown={event => event.preventDefault()}
@@ -368,6 +377,9 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedMapCountryCode, setSelectedMapCountryCode] = useState<string | null>(null);
   const [includeConnections, setIncludeConnections] = useState(false);
+  const [mapConnections, setMapConnections] = useState<MapConnectionsPayload | null>(null);
+  const [mapConnectionsLoading, setMapConnectionsLoading] = useState(false);
+  const [mapConnectionsError, setMapConnectionsError] = useState<string | null>(null);
   const [trendPeriodOpen, setTrendPeriodOpen] = useState(false);
   const [trendDateFrom, setTrendDateFrom] = useState(filters.dateFrom);
   const [trendDateTo, setTrendDateTo] = useState(filters.dateTo);
@@ -383,8 +395,10 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const requestVersion = useRef(0);
   const trendRequestVersion = useRef(0);
   const drilldownRequestVersion = useRef(0);
+  const mapConnectionsRequestVersion = useRef(0);
   const handledRefreshNonce = useRef(refreshNonce);
   const drawerRef = useRef<HTMLElement>(null);
+  const drawerTriggerRef = useRef<HTMLElement | null>(null);
   const entitySuggestionCache = useRef(new Map<string, EntitySuggestionResponse>());
   const overviewSourcesKey = selectedSources
     .filter(source => !ORGANIZATION_ONLY_SOURCES.has(source.trim()))
@@ -401,6 +415,14 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     + filters.beneficiaryGeographies.length + filters.programmeAreas.length
     + Number(Boolean(filters.donor.trim())) + Number(Boolean(filters.recipient.trim()))
     + Number(filters.granularity !== "auto");
+  const connectionsDisabledReason = (
+    filters.dateFrom
+    || filters.dateTo
+    || filters.beneficiaryGeographies.length
+    || filters.programmeAreas.length
+    || filters.donor.trim()
+    || filters.recipient.trim()
+  ) ? "Connections are available only for the unfiltered map or a currency-only scope." : null;
 
   const updateUrl = useCallback((next: OverviewFilters) => {
     const query = applyGrantScopeToParams(
@@ -460,7 +482,6 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     };
     const params = grantScopeToApiParams(requestScope);
     params.set("granularity", "auto");
-    if (includeConnections) params.set("include_connections", "true");
     const requestUrl = `${apiBase}/api/charities/grants/overview?${params.toString()}`;
     const forceRefresh = handledRefreshNonce.current !== refreshNonce;
     handledRefreshNonce.current = refreshNonce;
@@ -491,7 +512,61 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         if (currentVersion === requestVersion.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, includeConnections, online, overviewRequestFilters, overviewSources, presentation, refreshNonce]);
+  }, [apiBase, online, overviewRequestFilters, overviewSources, presentation, refreshNonce]);
+
+  useEffect(() => {
+    if (connectionsDisabledReason && includeConnections) setIncludeConnections(false);
+  }, [connectionsDisabledReason, includeConnections]);
+
+  useEffect(() => {
+    if (!includeConnections || !online || connectionsDisabledReason) {
+      setMapConnectionsLoading(false);
+      setMapConnectionsError(null);
+      return;
+    }
+    const controller = new AbortController();
+    const currentVersion = ++mapConnectionsRequestVersion.current;
+    const params = new URLSearchParams({ limit: "250" });
+    if (filters.currency) params.set("currency", filters.currency);
+    setMapConnectionsLoading(true);
+    setMapConnections(null);
+    setMapConnectionsError(null);
+    fetch(`${apiBase}/api/charities/grants/map/connections?${params.toString()}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || `Map connections failed (${response.status}).`);
+        return result as MapConnectionsPayload;
+      })
+      .then(result => {
+        if (currentVersion !== mapConnectionsRequestVersion.current) return;
+        setMapConnections(result);
+      })
+      .catch(requestError => {
+        if ((requestError as Error).name !== "AbortError" && currentVersion === mapConnectionsRequestVersion.current) {
+          setMapConnections(null);
+          setMapConnectionsError((requestError as Error).message || "Country connections are temporarily unavailable.");
+        }
+      })
+      .finally(() => {
+        if (currentVersion === mapConnectionsRequestVersion.current) setMapConnectionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiBase, connectionsDisabledReason, filters.currency, includeConnections, online]);
+
+  const mapPayload = useMemo<GrantMapResponse>(() => {
+    const base = payload?.map || EMPTY_MAP;
+    if (!includeConnections || !mapConnections) {
+      return { ...base, connections: [], connection_grant_count: 0 };
+    }
+    return {
+      ...base,
+      connections: mapConnections.connections,
+      connection_grant_count: mapConnections.connection_grant_count,
+    };
+  }, [includeConnections, mapConnections, payload?.map]);
 
   useEffect(() => {
     if (!online || presentation === "favorite-explorer" || filters.granularity === "auto") {
@@ -650,11 +725,13 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
 
   const closeDrawer = () => {
     setDrawerOpen(false);
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>(".header-overview-filter")?.focus(), 0);
   };
 
   useEffect(() => {
     const openFilters = () => {
+      drawerTriggerRef.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement
+        : document.querySelector<HTMLButtonElement>(".app-header-filter, .header-overview-filter");
       setDraft(filters);
       setDrawerOpen(true);
     };
@@ -716,6 +793,16 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     };
     window.addEventListener("keydown", keepFocusInDrawer);
     return () => window.removeEventListener("keydown", keepFocusInDrawer);
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (drawerOpen || !drawerTriggerRef.current) return;
+    const trigger = drawerTriggerRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      trigger.focus();
+      if (drawerTriggerRef.current === trigger) drawerTriggerRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [drawerOpen]);
 
   const applyPreset = (preset: PeriodPreset, current = draft): OverviewFilters => {
@@ -859,6 +946,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
   const drilldownIsFavorite = Boolean(drilldownFavorite && favoriteGrantExplorerKeys.includes(drilldownFavorite.key));
   return (
     <div className={`overview-dashboard${presentation === "favorite-explorer" ? " favorite-explorer-dashboard" : ""}`}>
+      <h2 className="visually-hidden">Funding Landscape overview</h2>
       {presentation !== "favorite-explorer" && <>
       {overviewScopeChips.length > 0 && <div className="active-filter-chips" aria-label="Active Funding Landscape filters">
         {overviewScopeChips.slice(0, 3).map(chip => <span key={`${chip.key}-${chip.label}`}>{chip.label}</span>)}
@@ -873,19 +961,25 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
         <div className="glass-card overview-kpi"><span>Project coverage</span><strong>{kpis?.programme_coverage_percentage != null ? `${kpis.programme_coverage_percentage}%` : "—"}</strong><small>{kpis?.classified_grant_count?.toLocaleString("en-GB") ?? "—"} classified grants</small></div>
       </div>
 
-      <GrantWorldMap
-        data={payload?.map || EMPTY_MAP}
-        loading={loading && !payload}
-        error={null}
-        filters={legacyMapFilters}
-        onOpenOrganizationDirectory={onOpenOrganizationDirectory}
-        onExploreSourceFunders={(selection) => onExploreSourceFunders(selection, filters)}
-        selectedCountryCode={selectedMapCountryCode}
-        onCountrySelectionChange={selectMapCountry}
-        refreshing={loading && Boolean(payload)}
-        onConnectionsVisibilityChange={setIncludeConnections}
-        onResetScope={() => window.dispatchEvent(new Event("overview-reset-filters"))}
-      />
+      <Suspense fallback={<section className="glass-card route-loading" aria-label="Loading world map"><LoaderCircle className="spin" size={22} /> Loading world map…</section>}>
+        <GrantWorldMap
+          data={mapPayload}
+          loading={loading && !payload}
+          error={null}
+          filters={legacyMapFilters}
+          onOpenOrganizationDirectory={onOpenOrganizationDirectory}
+          onExploreSourceFunders={(selection) => onExploreSourceFunders(selection, filters)}
+          selectedCountryCode={selectedMapCountryCode}
+          onCountrySelectionChange={selectMapCountry}
+          refreshing={loading && Boolean(payload)}
+          connectionsVisible={includeConnections}
+          connectionsLoading={mapConnectionsLoading}
+          connectionsError={mapConnectionsError}
+          connectionsDisabledReason={connectionsDisabledReason}
+          onConnectionsVisibilityChange={setIncludeConnections}
+          onResetScope={() => window.dispatchEvent(new Event("overview-reset-filters"))}
+        />
+      </Suspense>
 
       <div className="analytics-charts-grid overview-analytics-grid">
         <section className="glass-card analytics-chart-card compact-chart" aria-labelledby="grant-trend-title">

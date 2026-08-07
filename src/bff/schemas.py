@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 # Authentication Schemas
 class UserLogin(BaseModel):
@@ -622,11 +623,12 @@ class ScoreResponse(BaseModel):
     not_a_prediction: bool = True
 
 class PipelineStatus(BaseModel):
-    status: str = Field(..., description="idle, running, success, failed")
+    status: str = Field(..., description="idle, queued, running, success, failed")
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     last_run_source: Optional[str] = None
     error: Optional[str] = None
+    job_id: Optional[str] = None
 
 class PipelineTrigger(BaseModel):
     source: str = Field(..., description="quick_consolidate, refresh_charities, refresh_grants, full_run")
@@ -635,6 +637,41 @@ class PipelineTrigger(BaseModel):
     search_term: Optional[str] = None
     reg_numbers: Optional[List[int]] = None
     skip_contact_crawler: Optional[bool] = False
+
+
+class SourceScheduleUpdate(BaseModel):
+    enabled: bool
+
+
+class RetentionDryRunRequest(BaseModel):
+    target_type: str = Field(..., min_length=1, max_length=120)
+    target_id: str = Field(..., min_length=1, max_length=500)
+    retention_class: str = Field(..., min_length=1, max_length=120)
+    last_modified_at: datetime
+    object_count: int = Field(default=0, ge=0)
+    record_count: int = Field(default=0, ge=0)
+    total_bytes: int = Field(default=0, ge=0)
+    target_checksums: List[str] = Field(default=[], max_length=100)
+
+
+class DataHoldRequest(BaseModel):
+    hold_type: str = Field(..., pattern="^(legal|incident)$")
+    scope_type: str = Field(..., min_length=1, max_length=120)
+    scope_id: str = Field(..., min_length=1, max_length=500)
+    reason: str = Field(..., min_length=1, max_length=1000)
+    expires_at: Optional[datetime] = None
+
+
+class DataHoldRelease(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class DataSubjectRequestCreate(BaseModel):
+    request_type: str = Field(
+        ..., pattern="^(access|correction|deletion|restriction|objection)$"
+    )
+    subject_reference_hash: str = Field(..., pattern="^[a-f0-9]{64}$")
+    due_at: Optional[datetime] = None
 
 
 class SourceFunderEnrichmentRequest(BaseModel):

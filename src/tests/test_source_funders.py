@@ -442,6 +442,7 @@ class TestSourceFunders(unittest.IsolatedAsyncioTestCase):
                 reset = client.post(
                     f"/api/charities/grants/funders/{payload['items'][0]['source_funder_key']}/reset-to-observed",
                     cookies=login.cookies,
+                    headers={"Idempotency-Key": "test-source-funder-reset"},
                 )
                 self.assertEqual(reset.status_code, 200)
                 self.assertEqual(reset.json()["status"], "observed_only")

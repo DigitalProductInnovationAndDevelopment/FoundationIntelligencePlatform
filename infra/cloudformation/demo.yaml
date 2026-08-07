@@ -1,0 +1,710 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Cost-conscious, non-production Foundation Intelligence public read-only demo.
+  HTTP is temporary and not production-ready. DesiredCount defaults to zero and
+  no data, image or stack operation is performed by this template file itself.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0348ad96c2afcf8dd
+    Description: Existing VPC confirmed in account 208337080387, eu-west-1.
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-04d4e3e5af84a7ea4,subnet-076f66fcdd86cd28f
+    Description: Two existing public subnets in distinct Availability Zones.
+  DatabaseAvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-1a
+  DatabaseAvailabilityZoneB:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-1b
+  DatabaseSubnetCidrA:
+    Type: String
+    Default: 172.31.240.0/28
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/28$'
+  DatabaseSubnetCidrB:
+    Type: String
+    Default: 172.31.240.16/28
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/28$'
+  BackendImageUri:
+    Type: String
+    Description: Immutable ARM64 backend ECR URI, preferably pinned by digest.
+    AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  FrontendImageUri:
+    Type: String
+    Description: Immutable ARM64 frontend-runtime-ecs ECR URI, preferably pinned by digest.
+    AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/frontend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  AwsCliImageUri:
+    Type: String
+    Default: public.ecr.aws/aws-cli/aws-cli:2.27.41
+    Description: Multi-architecture AWS CLI image used only by migration init/evidence containers.
+  ApplicationDesiredCount:
+    Type: Number
+    Default: 0
+    AllowedValues: [0, 1]
+    Description: Keep zero until migration and release-gate evidence pass.
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.medium
+    AllowedValues: [db.t4g.small, db.t4g.medium]
+  DatabaseEngineVersion:
+    Type: String
+    Default: '16.14'
+    AllowedPattern: '^16\.[0-9]+$'
+  ApplicationDatabaseUser:
+    Type: String
+    Default: foundation_app
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+  SourceObjectKey:
+    Type: String
+    Default: imports/charities.db
+    AllowedPattern: '^[A-Za-z0-9!_.*()/''-]+$'
+  SourceSha256:
+    Type: String
+    Default: 8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651
+    AllowedPattern: '^[a-f0-9]{64}$'
+  SourceSchemaVersion:
+    Type: String
+    Default: '7'
+    AllowedPattern: '^[0-9]+$'
+  DatasetVersion:
+    Type: String
+    Default: demo-initial-2026-08-06
+    AllowedPattern: '^[A-Za-z0-9._-]{1,200}$'
+  CodeRevision:
+    Type: String
+    Description: Full Git commit SHA used to build the approved backend image.
+    AllowedPattern: '^[a-f0-9]{40}$'
+
+Resources:
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref DatabaseAvailabilityZoneA
+      CidrBlock: !Ref DatabaseSubnetCidrA
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-database-a'
+        - Key: Environment
+          Value: demo
+
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref DatabaseAvailabilityZoneB
+      CidrBlock: !Ref DatabaseSubnetCidrB
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-database-b'
+        - Key: Environment
+          Value: demo
+
+  DatabaseRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-database-isolated'
+
+  DatabaseSubnetRouteAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      SubnetId: !Ref DatabaseSubnetA
+
+  DatabaseSubnetRouteAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      SubnetId: !Ref DatabaseSubnetB
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Temporary public HTTP ingress for the non-production demo
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: Temporary HTTP demo only
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-alb'
+
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Shared application and one-off task ENIs
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: TLS to ECR, S3, Secrets Manager, logs and approved sources
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: PostgreSQL to the private RDS security group
+          IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ecs'
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL only from the ECS task security group
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-rds'
+
+  FrontendIngressFromAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: ALB to the ECS frontend only
+      GroupId: !GetAtt EcsSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !GetAtt AlbSecurityGroup.GroupId
+
+  DatabaseIngressFromEcs:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: ECS application and one-off tasks to PostgreSQL
+      GroupId: !GetAtt DatabaseSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt EcsSecurityGroup.GroupId
+
+  ImportBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTemporaryImports
+            Status: Enabled
+            Prefix: imports/
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: Purpose
+          Value: one-off-private-import
+
+  ImportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImportBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt ImportBucket.Arn
+              - !Sub '${ImportBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/frontend'
+      RetentionInDays: 7
+
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/backend'
+      RetentionInDays: 7
+
+  MigrationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/migration'
+      RetentionInDays: 7
+
+  AppDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Restricted application database role for the public demo
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${ApplicationDatabaseUser}"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Two isolated database subnets without internet routes
+      SubnetIds:
+        - !Ref DatabaseSubnetA
+        - !Ref DatabaseSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-postgresql'
+
+  DatabaseParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: PostgreSQL 16 encrypted transport for the demo
+      Family: postgres16
+      Parameters:
+        rds.force_ssl: '1'
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${AWS::StackName}-postgresql'
+      Engine: postgres
+      EngineVersion: !Ref DatabaseEngineVersion
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBName: foundation_intelligence
+      MasterUsername: foundation_admin
+      ManageMasterUserPassword: true
+      Port: 5432
+      AllocatedStorage: '30'
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 1
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+      EnablePerformanceInsights: false
+      DeletionProtection: false
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      DBParameterGroupName: !Ref DatabaseParameterGroup
+      VPCSecurityGroups:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: ResizeAfterImport
+          Value: db.t4g.small
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  EcsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadDemoDatabaseSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AppDatabaseSecret
+                  - !GetAtt Database.MasterUserSecret.SecretArn
+
+  ApplicationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  MigrationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: OneOffImportObjectAndEvidence
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadApprovedSourceObject
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub '${ImportBucket.Arn}/${SourceObjectKey}'
+              - Sid: WriteMigrationEvidence
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ImportBucket.Arn}/migration-evidence/${DatasetVersion}/*'
+
+  ApplicationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-application'
+      Cpu: '512'
+      Memory: '2048'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
+      TaskRoleArn: !GetAtt ApplicationTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: backend
+          Image: !Ref BackendImageUri
+          Essential: true
+          User: '10001:10001'
+          StopTimeout: 30
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: AUTH_MODE
+              Value: public_readonly
+            - Name: DEV_AUTH_ENABLED
+              Value: 'false'
+            - Name: CORE_PROXY_ENABLED
+              Value: 'false'
+            - Name: CORS_ORIGINS
+              Value: ''
+            - Name: DATA_RUNTIME_MODE
+              Value: postgresql
+            - Name: DATABASE_HOST
+              Value: !GetAtt Database.Endpoint.Address
+            - Name: DATABASE_PORT
+              Value: '5432'
+            - Name: DATABASE_NAME
+              Value: foundation_intelligence
+            - Name: DATABASE_USER
+              Value: !Ref ApplicationDatabaseUser
+            - Name: DATABASE_SSL_MODE
+              Value: require
+            - Name: DATABASE_POOL_SIZE
+              Value: '5'
+            - Name: DATABASE_MAX_OVERFLOW
+              Value: '5'
+          Secrets:
+            - Name: DATABASE_PASSWORD
+              ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+          HealthCheck:
+            Command:
+              - CMD
+              - python
+              - -c
+              - >-
+                import urllib.request;
+                urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 120
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+        - Name: frontend
+          Image: !Ref FrontendImageUri
+          Essential: true
+          User: '101:101'
+          DependsOn:
+            - ContainerName: backend
+              Condition: HEALTHY
+          PortMappings:
+            - Name: http
+              ContainerPort: 8080
+              HostPort: 8080
+              Protocol: tcp
+              AppProtocol: http
+          HealthCheck:
+            Command:
+              - CMD
+              - wget
+              - -q
+              - -O
+              - /dev/null
+              - http://127.0.0.1:8080/
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FrontendLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: EphemeralStorageGiB
+          Value: '20-default'
+
+  MigrationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-migration'
+      Cpu: '1024'
+      Memory: '4096'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
+      TaskRoleArn: !GetAtt MigrationTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      Volumes:
+        - Name: migration-work
+      ContainerDefinitions:
+        - Name: download-source
+          Image: !Ref AwsCliImageUri
+          Essential: false
+          EntryPoint: [sh, -c]
+          Command:
+            - >-
+              aws s3 cp "$SOURCE_URI" /migration-work/charities.db --only-show-errors
+              && mkdir -p /migration-work/evidence
+              && chown -R 10001:10001 /migration-work
+          Environment:
+            - Name: SOURCE_URI
+              Value: !Sub 's3://${ImportBucket}/${SourceObjectKey}'
+          MountPoints:
+            - SourceVolume: migration-work
+              ContainerPath: /migration-work
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: download
+        - Name: migrate
+          Image: !Ref BackendImageUri
+          Essential: false
+          User: '10001:10001'
+          EntryPoint: [python, -m]
+          Command: [migration.aws_entrypoint]
+          DependsOn:
+            - ContainerName: download-source
+              Condition: SUCCESS
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: DATABASE_HOST
+              Value: !GetAtt Database.Endpoint.Address
+            - Name: DATABASE_PORT
+              Value: '5432'
+            - Name: DATABASE_NAME
+              Value: foundation_intelligence
+            - Name: DATABASE_APP_USER
+              Value: !Ref ApplicationDatabaseUser
+            - Name: DATABASE_SSL_MODE
+              Value: require
+            - Name: MIGRATION_SOURCE_PATH
+              Value: /migration-work/charities.db
+            - Name: MIGRATION_OUTPUT_DIRECTORY
+              Value: /migration-work/evidence
+            - Name: MIGRATION_EXPECTED_CHECKSUM
+              Value: !Ref SourceSha256
+            - Name: MIGRATION_EXPECTED_SCHEMA_VERSION
+              Value: !Ref SourceSchemaVersion
+            - Name: MIGRATION_DATASET_VERSION
+              Value: !Ref DatasetVersion
+            - Name: MIGRATION_CODE_REVISION
+              Value: !Ref CodeRevision
+          Secrets:
+            - Name: DATABASE_ADMIN_USER
+              ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:username::'
+            - Name: DATABASE_ADMIN_PASSWORD
+              ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:password::'
+            - Name: DATABASE_APP_PASSWORD
+              ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+          MountPoints:
+            - SourceVolume: migration-work
+              ContainerPath: /migration-work
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: migrate
+        - Name: upload-evidence
+          Image: !Ref AwsCliImageUri
+          Essential: true
+          EntryPoint: [aws]
+          Command:
+            - s3
+            - cp
+            - /migration-work/evidence/
+            - !Sub 's3://${ImportBucket}/migration-evidence/${DatasetVersion}/'
+            - --recursive
+            - --only-show-errors
+          DependsOn:
+            - ContainerName: migrate
+              Condition: SUCCESS
+          MountPoints:
+            - SourceVolume: migration-work
+              ContainerPath: /migration-work
+              ReadOnly: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: evidence
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: EphemeralStorageGiB
+          Value: '20-default'
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Type: application
+      IpAddressType: ipv4
+      SecurityGroups:
+        - !GetAtt AlbSecurityGroup.GroupId
+      Subnets: !Ref PublicSubnetIds
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: TransportNotice
+          Value: temporary-http-not-production-ready
+
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VpcId
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /health/live
+      HealthCheckPort: traffic-port
+      Matcher:
+        HttpCode: '200'
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  ApplicationService:
+    Type: AWS::ECS::Service
+    DependsOn: HttpListener
+    Properties:
+      ServiceName: application
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref ApplicationTaskDefinition
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      DesiredCount: !Ref ApplicationDesiredCount
+      EnableExecuteCommand: false
+      HealthCheckGracePeriodSeconds: 180
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt EcsSecurityGroup.GroupId
+          Subnets: !Ref PublicSubnetIds
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: 8080
+          TargetGroupArn: !Ref FrontendTargetGroup
+      Tags:
+        - Key: Environment
+          Value: demo
+
+Outputs:
+  TemporaryDemoUrl:
+    Description: HTTP-only temporary demo URL; do not treat as production-ready.
+    Value: !Sub 'http://${LoadBalancer.DNSName}'
+  ClusterArn:
+    Value: !GetAtt EcsCluster.Arn
+  ApplicationServiceArn:
+    Value: !Ref ApplicationService
+  MigrationTaskDefinitionArn:
+    Value: !Ref MigrationTaskDefinition
+  ImportBucketName:
+    Value: !Ref ImportBucket
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabaseInstanceClass:
+    Value: !Ref DatabaseInstanceClass
+  ApplicationDesiredCount:
+    Value: !Ref ApplicationDesiredCount
+  DatabaseSubnetIds:
+    Value: !Join [',', [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]]

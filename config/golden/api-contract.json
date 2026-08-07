@@ -1,0 +1,25 @@
+{
+  "health": {
+    "legacy": {"status": "healthy", "service": "bff"},
+    "live": {"status": "healthy", "service": "bff"},
+    "ready": {
+      "status": "ready",
+      "checks": {
+        "postgresql": "healthy",
+        "schema_version": "healthy",
+        "active_dataset": "healthy",
+        "critical_configuration": "healthy",
+        "queue": "healthy"
+      }
+    }
+  },
+  "required_paths": [
+    "/health/live",
+    "/health/ready",
+    "/api/charities",
+    "/api/charities/grants/overview",
+    "/api/charities/grants/map",
+    "/api/charities/directory/organizations",
+    "/api/admin/pipeline/status"
+  ]
+}

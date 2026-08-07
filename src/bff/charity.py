@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from starlette.concurrency import run_in_threadpool
 from typing import Any, Dict, List, Optional
-from bff.auth import get_current_user_token
+from bff.security import Role, require_roles
 from bff.config import DB_PATH
 from bff.schemas import (
     CharityBase,
@@ -36,7 +36,7 @@ from preprocessing.enrichment import enrich_organization
 router = APIRouter(
     prefix="/api/charities", 
     tags=["Organization and Grant Data"],
-    dependencies=[Depends(get_current_user_token)]
+    dependencies=[Depends(require_roles(Role.VIEWER, action="charity.read"))],
 )
 
 @router.get("", response_model=List[CharityBase])
@@ -681,7 +681,11 @@ async def _start_confirmed_profile_enrichment(
     }
 
 
-@router.post("/grants/funders/enrich", response_model=PipelineStatus)
+@router.post(
+    "/grants/funders/enrich",
+    response_model=PipelineStatus,
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="funder.enrich", idempotent=True))],
+)
 async def enrich_source_funders(
     payload: SourceFunderEnrichmentRequest,
 ):
@@ -692,7 +696,11 @@ async def enrich_source_funders(
     )
 
 
-@router.post("/directory/organizations/enrich", response_model=PipelineStatus)
+@router.post(
+    "/directory/organizations/enrich",
+    response_model=PipelineStatus,
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="registry.enrich", idempotent=True))],
+)
 async def enrich_registry_organization(
     payload: SourceFunderEnrichmentRequest,
 ):
@@ -708,7 +716,10 @@ async def enrich_registry_organization(
     )
 
 
-@router.post("/grants/funders/{source_funder_key}/reset-to-observed")
+@router.post(
+    "/grants/funders/{source_funder_key}/reset-to-observed",
+    dependencies=[Depends(require_roles(Role.ADMINISTRATOR, action="funder.reset", idempotent=True))],
+)
 async def reset_source_funder_to_observed(
     source_funder_key: str,
     repo: CharityRepository = Depends(get_charity_repository),
@@ -728,7 +739,10 @@ async def reset_source_funder_to_observed(
     return {"status": "observed_only", **reset}
 
 
-@router.post("/grants/funders/{source_funder_key}/relink")
+@router.post(
+    "/grants/funders/{source_funder_key}/relink",
+    dependencies=[Depends(require_roles(Role.ADMINISTRATOR, action="funder.relink", idempotent=True))],
+)
 async def relink_source_funder_profile(
     source_funder_key: str,
     payload: SourceFunderRelinkRequest,
@@ -749,7 +763,10 @@ async def relink_source_funder_profile(
     return {"status": "linked", **relinked}
 
 
-@router.post("/grants/funders/{source_funder_key}/profile-cache")
+@router.post(
+    "/grants/funders/{source_funder_key}/profile-cache",
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="profile_cache.refresh", idempotent=True))],
+)
 async def queue_source_funder_profile_cache(
     source_funder_key: str,
     background_tasks: BackgroundTasks,
@@ -968,7 +985,25 @@ async def get_charity_sankey(
     return await repo.get_sankey_data(reg_charity_number, currency=currency, limit=limit)
 
 
-@router.post("/{reg_charity_number}/score", response_model=ScoreResponse)
+@router.get("/{reg_charity_number}/score", response_model=ScoreResponse)
+async def get_default_charity_relevance_score(
+    reg_charity_number: int,
+    repo: CharityRepository = Depends(get_charity_repository),
+):
+    charity = await repo.get_by_id(reg_charity_number)
+    if not charity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization {reg_charity_number} not found.",
+        )
+    return await repo.get_score(reg_charity_number, target_profile=None)
+
+
+@router.post(
+    "/{reg_charity_number}/score",
+    response_model=ScoreResponse,
+    dependencies=[Depends(require_roles(Role.ANALYST, action="score.calculate"))],
+)
 async def score_charity_relevance(
     reg_charity_number: int,
     request: ScoreRequest,

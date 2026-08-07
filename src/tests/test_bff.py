@@ -15,7 +15,6 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 from bff.main import app
-from bff.config import JWT_SECRET_KEY, JWT_ALGORITHM, DATA_PATH
 from bff.repositories import JSONCharityRepository, get_charity_repository
 from bff import admin as admin_module
 
@@ -305,7 +304,7 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
 
     @patch("httpx.AsyncClient.request")
-    def test_proxy_success_translates_cookie_to_bearer(self, mock_request):
+    def test_proxy_success_does_not_forward_browser_credentials(self, mock_request):
         # Create token and login
         login_resp = self.client.post(
             "/api/auth/login",
@@ -337,15 +336,12 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(kwargs["method"], "GET")
         # Ensure query string was preserved and path appended to core url
         self.assertTrue(kwargs["url"].endswith("/v1/data?filter=active"))
-        # Ensure cookie was stripped and replaced with Bearer Authorization
+        # Browser credentials and unlisted headers must not cross the boundary.
         headers = kwargs["headers"]
-        self.assertNotIn("Cookie", headers)
-        self.assertIn("Authorization", headers)
-        self.assertTrue(headers["Authorization"].startswith("Bearer "))
-        # Ensure other request headers were forwarded
-        # ASGI lowercases header names, so check case-insensitively
-        test_header_val = headers.get("x-test-header") or headers.get("X-Test-Header")
-        self.assertEqual(test_header_val, "yes")
+        self.assertNotIn("cookie", headers)
+        self.assertNotIn("authorization", headers)
+        self.assertNotIn("x-test-header", headers)
+        self.assertIn("x-request-id", headers)
 
 
     @patch("httpx.AsyncClient.request")
@@ -526,6 +522,7 @@ class TestBFF(unittest.TestCase):
             "/api/charities/grants/funders/enrich",
             json={"reg_numbers": [1002, 1001, 1001]},
             cookies={"session_id": session_cookie},
+            headers={"Idempotency-Key": "test-enrich-source-funders-success"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -543,6 +540,7 @@ class TestBFF(unittest.TestCase):
             "/api/charities/grants/funders/enrich",
             json={"reg_numbers": [1, 2, 3, 4, 5, 6]},
             cookies={"session_id": session_cookie},
+            headers={"Idempotency-Key": "test-enrich-source-funders-too-many"},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -559,6 +557,7 @@ class TestBFF(unittest.TestCase):
             "/api/charities/directory/organizations/enrich",
             json={"reg_numbers": [1165944]},
             cookies={"session_id": session_cookie},
+            headers={"Idempotency-Key": "test-registry-enrichment-success"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -576,6 +575,7 @@ class TestBFF(unittest.TestCase):
             "/api/charities/directory/organizations/enrich",
             json={"reg_numbers": [1001, 1002]},
             cookies={"session_id": session_cookie},
+            headers={"Idempotency-Key": "test-registry-enrichment-too-many"},
         )
         self.assertEqual(response.status_code, 400)
 
@@ -591,7 +591,8 @@ class TestBFF(unittest.TestCase):
             response = self.client.post(
                 "/api/admin/pipeline/trigger",
                 json={"source": "quick_consolidate"},
-                cookies={"session_id": session_cookie}
+                cookies={"session_id": session_cookie},
+                headers={"Idempotency-Key": "test-trigger-pipeline-success"},
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
@@ -609,7 +610,8 @@ class TestBFF(unittest.TestCase):
             response = self.client.post(
                 "/api/admin/pipeline/trigger",
                 json={"source": "full_run", "limit": 10, "fresh": True},
-                cookies={"session_id": session_cookie}
+                cookies={"session_id": session_cookie},
+                headers={"Idempotency-Key": "test-trigger-pipeline-full-run"},
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["status"], "running")
@@ -831,7 +833,8 @@ class TestAdminPipelineExtra(unittest.TestCase):
             response = self.client.post(
                 "/api/admin/pipeline/trigger",
                 json={"source": "quick_consolidate"},
-                cookies={"session_id": self.session_cookie}
+                cookies={"session_id": self.session_cookie},
+                headers={"Idempotency-Key": "test-trigger-pipeline-running"},
             )
             self.assertEqual(response.status_code, 409)
             self.assertIn("already in progress", response.json()["detail"])
@@ -840,7 +843,8 @@ class TestAdminPipelineExtra(unittest.TestCase):
         response = self.client.post(
             "/api/admin/pipeline/trigger",
             json={"source": "invalid_mode"},
-            cookies={"session_id": self.session_cookie}
+            cookies={"session_id": self.session_cookie},
+            headers={"Idempotency-Key": "test-trigger-pipeline-invalid"},
         )
         self.assertEqual(response.status_code, 400)
 

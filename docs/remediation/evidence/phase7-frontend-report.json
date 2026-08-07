@@ -1,0 +1,51 @@
+{
+  "phase": 7,
+  "status": "passed",
+  "generated_on": "2026-07-29",
+  "local_checks": {
+    "unit_contract_tests": { "passed": 13, "failed": 0 },
+    "lint_warnings": 0,
+    "typescript_build": "passed",
+    "vite_build": "passed",
+    "bundle_budget": "passed",
+    "runtime_layout_gate": "passed",
+    "playwright_axe_gate": { "passed": 8, "failed": 0, "skipped": 4, "axe_violations": 0 }
+  },
+  "bundle_gzip_kib": {
+    "initial_javascript": 87.81,
+    "initial_javascript_budget": 120,
+    "initial_css": 18.59,
+    "initial_css_budget": 25,
+    "largest_deferred_javascript_chunk": 392.36,
+    "deferred_javascript_chunk_budget": 425
+  },
+  "runtime": {
+    "browser": "Google Chrome 150.0.7871.187",
+    "viewports": [320, 390, 768, 1024, 1440, 1920],
+    "page_overflow_failures": 0,
+    "clipped_visible_control_failures": 0,
+    "cropped_kpi_failures": 0,
+    "unnamed_visible_control_failures": 0,
+    "console_warning_error_events": 0,
+    "runtime_exceptions": 0,
+    "initial_overview_requests_per_navigation": 1,
+    "lazy_connection_requests_after_activation": 1
+  },
+  "named_test_dependencies": {
+    "@playwright/test": "1.62.0",
+    "playwright": "1.62.0",
+    "playwright-core": "1.62.0",
+    "@axe-core/playwright": "4.12.1",
+    "axe-core": "4.12.1"
+  },
+  "approved_network_actions": [
+    "Version resolution and exact locked package downloads from registry.npmjs.org"
+  ],
+  "browser_download_performed": false,
+  "push_performed": false,
+  "aws_actions_performed": false,
+  "protected_checksums": {
+    "sqlite_sha256": "8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651",
+    "docs_audits_aggregate_sha256": "d40c8b0114f8c5ef728884dd0e8632ecc6f9f03912fdf8ba709556f9ba3c1f2a"
+  }
+}

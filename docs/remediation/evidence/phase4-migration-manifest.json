@@ -1,0 +1,287 @@
+{
+  "activation_status": "active",
+  "actor": {
+    "id": "codex-local-remediation",
+    "type": "ci"
+  },
+  "capacity": {
+    "available_bytes": 64959250432,
+    "estimated_postgres_and_indexes_bytes": 6301630464,
+    "estimated_wal_and_temp_bytes": 4201086976,
+    "minimum_free_bytes": 23340679168,
+    "safety_margin_bytes": 10737418240,
+    "source_bytes": 2100543488,
+    "sufficient": true
+  },
+  "code_revision": "d6d2b69d1f9ff7dd8bc6f58021060586b3c17757",
+  "completed_at": "2026-07-28T23:36:05.934003+00:00",
+  "controls": {
+    "business_key_duplicate_groups": 4271,
+    "classified_grants": 134554,
+    "distinct_mapped_grants": 104191,
+    "duplicate_charity_number_groups": 9073,
+    "duplicate_source_identity_groups": 0,
+    "foreign_key_violations": 0,
+    "future_dated_grants": 1,
+    "missing_eur_conversions": 432,
+    "negative_grants": 2,
+    "overview_total_eur": "22435986707.70",
+    "zero_grants": 2101
+  },
+  "dataset_version": "sqlite-v7-8fc0cce61c81-r2",
+  "errors": [],
+  "idempotent_noop": false,
+  "migration_run_id": "60af368e-c440-5521-9648-5ab272f9ddb6",
+  "reconciliation_results": {
+    "baseline_count.charities": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 373,
+      "status": "pass",
+      "target": 373
+    },
+    "baseline_count.charity_registry_organizations": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 397469,
+      "status": "pass",
+      "target": 397469
+    },
+    "baseline_count.grants": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 302546,
+      "status": "pass",
+      "target": 302546
+    },
+    "baseline_count.organization_registry_links": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 345,
+      "status": "pass",
+      "target": 345
+    },
+    "control.business_key_duplicate_groups": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 4271,
+      "status": "pass",
+      "target": 4271
+    },
+    "control.classified_grants": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 134554,
+      "status": "pass",
+      "target": 134554
+    },
+    "control.distinct_mapped_grants": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 104191,
+      "status": "pass",
+      "target": 104191
+    },
+    "control.duplicate_charity_number_groups": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 9073,
+      "status": "pass",
+      "target": 9073
+    },
+    "control.duplicate_source_identity_groups": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 0,
+      "status": "pass",
+      "target": 0
+    },
+    "control.foreign_key_violations": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 0,
+      "status": "pass",
+      "target": 0
+    },
+    "control.future_dated_grants": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 1,
+      "status": "pass",
+      "target": 1
+    },
+    "control.missing_eur_conversions": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 432,
+      "status": "pass",
+      "target": 432
+    },
+    "control.negative_grants": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 2,
+      "status": "pass",
+      "target": 2
+    },
+    "control.overview_total_eur": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": "22435986707.70",
+      "status": "pass",
+      "target": "22435986707.70"
+    },
+    "control.zero_grants": {
+      "approval_reference": null,
+      "difference": null,
+      "reason": null,
+      "source": 2101,
+      "status": "pass",
+      "target": 2101
+    },
+    "count.charities": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 373,
+      "status": "pass",
+      "target": 373
+    },
+    "count.charity_registry_organizations": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 397469,
+      "status": "pass",
+      "target": 397469
+    },
+    "count.exchange_rates": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 18964,
+      "status": "pass",
+      "target": 18964
+    },
+    "count.grant_beneficiary_countries": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 104309,
+      "status": "pass",
+      "target": 104309
+    },
+    "count.grant_beneficiary_terms": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 556719,
+      "status": "pass",
+      "target": 556719
+    },
+    "count.grant_overview_facts": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 302546,
+      "status": "pass",
+      "target": 302546
+    },
+    "count.grant_programme_categories": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 358883,
+      "status": "pass",
+      "target": 358883
+    },
+    "count.grant_source_funder_facts": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 104309,
+      "status": "pass",
+      "target": 104309
+    },
+    "count.grants": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 302546,
+      "status": "pass",
+      "target": 302546
+    },
+    "count.organization_registry_links": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 345,
+      "status": "pass",
+      "target": 345
+    },
+    "count.source_funder_link_overrides": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 1,
+      "status": "pass",
+      "target": 1
+    },
+    "count.source_funder_profile_cache": {
+      "approval_reference": null,
+      "difference": 0,
+      "reason": null,
+      "source": 1,
+      "status": "pass",
+      "target": 1
+    }
+  },
+  "rollback_dataset_version": "sqlite-v7-8fc0cce61c81",
+  "source_counts": {
+    "charities": 373,
+    "charity_registry_organizations": 397469,
+    "exchange_rates": 18964,
+    "grant_beneficiary_countries": 104309,
+    "grant_beneficiary_terms": 556719,
+    "grant_overview_facts": 302546,
+    "grant_programme_categories": 358883,
+    "grant_source_funder_facts": 104309,
+    "grants": 302546,
+    "organization_registry_links": 345,
+    "source_funder_link_overrides": 1,
+    "source_funder_profile_cache": 1
+  },
+  "source_database_checksum": "8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651",
+  "source_fact_version": "2026-07-overview-facts-v5",
+  "source_schema_version": "7",
+  "started_at": "2026-07-28T23:30:57.020098+00:00",
+  "target_counts": {
+    "charities": 373,
+    "charity_registry_organizations": 397469,
+    "exchange_rates": 18964,
+    "grant_beneficiary_countries": 104309,
+    "grant_beneficiary_terms": 556719,
+    "grant_overview_facts": 302546,
+    "grant_programme_categories": 358883,
+    "grant_source_funder_facts": 104309,
+    "grants": 302546,
+    "organization_registry_links": 345,
+    "source_funder_link_overrides": 1,
+    "source_funder_profile_cache": 1
+  },
+  "target_schema_version": "0003_grant_award_timestamp"
+}

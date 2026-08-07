@@ -6,9 +6,9 @@ import tempfile
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from typing import Optional, List
-from bff.auth import get_current_user_token
+from bff.security import Role, require_roles
 from bff.schemas import PipelineStatus, PipelineTrigger
-from bff.utils.logging import logger
+from bff.utils.logging import logger, redact_text
 
 # Set up directories relative to project root
 BFF_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +23,7 @@ LOCK_STALE_AFTER_SECONDS = 6 * 60 * 60
 router = APIRouter(
     prefix="/api/admin", 
     tags=["Administrative & Monitoring Data"],
-    dependencies=[Depends(get_current_user_token)]
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="administration.access"))],
 )
 
 def read_status():
@@ -261,7 +261,11 @@ async def get_pipeline_status():
     return read_status()
 
 
-@router.post("/pipeline/trigger", response_model=PipelineStatus)
+@router.post(
+    "/pipeline/trigger",
+    response_model=PipelineStatus,
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="pipeline.trigger", idempotent=True))],
+)
 async def trigger_pipeline(
     payload: PipelineTrigger,
     background_tasks: BackgroundTasks
@@ -304,7 +308,10 @@ async def trigger_pipeline(
 
 
 
-@router.get("/pipeline/logs")
+@router.get(
+    "/pipeline/logs",
+    dependencies=[Depends(require_roles(Role.ADMINISTRATOR, action="pipeline.logs.read"))],
+)
 async def get_pipeline_logs():
     """Returns the tail output (last 100 lines) of the execution log file."""
     if not os.path.exists(LOG_FILE):
@@ -314,9 +321,9 @@ async def get_pipeline_logs():
         with open(LOG_FILE, "r", encoding="utf-8") as f:
             lines = f.readlines()
             tail_lines = lines[-100:]
-            return {"logs": "".join(tail_lines)}
-    except Exception as e:
+            return {"logs": redact_text("".join(tail_lines))}
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to read execution logs: {e}"
+            detail="Failed to read execution logs."
         )
