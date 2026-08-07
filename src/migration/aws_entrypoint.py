@@ -157,6 +157,60 @@ async def _configure_application_role(
     await connection.execute(f"ALTER ROLE {role} SET default_transaction_read_only = on")
 
 
+async def _verify_application_role(
+    environment: Mapping[str, str],
+) -> dict[str, bool]:
+    application_environment = dict(environment)
+    application_environment["DATABASE_USER"] = _required(
+        environment, "DATABASE_APP_USER"
+    )
+    application_environment["DATABASE_PASSWORD"] = _required(
+        environment, "DATABASE_APP_PASSWORD"
+    )
+    settings = DatabaseSettings.from_env(application_environment)
+    url = settings.sqlalchemy_url()
+    connection = await asyncpg.connect(
+        host=url.host,
+        port=url.port or 5432,
+        user=url.username,
+        password=url.password,
+        database=url.database,
+        ssl=settings.ssl_mode,
+        command_timeout=None,
+    )
+    try:
+        select_succeeded = await connection.fetchval("SELECT 1") == 1
+        tls_in_use = bool(
+            await connection.fetchval(
+                "SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()"
+            )
+        )
+        default_read_only = (
+            await connection.fetchval("SHOW default_transaction_read_only") == "on"
+        )
+        update_denied = False
+        try:
+            await connection.execute(
+                "UPDATE dataset_versions SET status=status WHERE FALSE"
+            )
+        except (
+            asyncpg.InsufficientPrivilegeError,
+            asyncpg.ReadOnlySQLTransactionError,
+        ):
+            update_denied = True
+        result = {
+            "select_succeeded": select_succeeded,
+            "tls_in_use": tls_in_use,
+            "default_read_only": default_read_only,
+            "update_denied": update_denied,
+        }
+        if not all(result.values()):
+            raise RuntimeError("application database role verification failed")
+        return result
+    finally:
+        await connection.close()
+
+
 async def run(environment: Mapping[str, str] | None = None) -> dict[str, object]:
     task_environment = dict(os.environ if environment is None else environment)
     source = Path(_required(task_environment, "MIGRATION_SOURCE_PATH"))
@@ -212,6 +266,7 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, object]
                 remote_postgres=True,
             )
             await _configure_application_role(admin, task_environment)
+            application_role = await _verify_application_role(task_environment)
             os.environ.update(
                 {
                     "DATABASE_USER": _required(task_environment, "DATABASE_APP_USER"),
@@ -239,6 +294,7 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, object]
         result = {
             "dataset_version": report["dataset_version"],
             "activation_status": report["activation_status"],
+            "application_role": application_role,
             "release_gate_ready": True,
         }
         output_directory.mkdir(parents=True, exist_ok=True, mode=0o700)

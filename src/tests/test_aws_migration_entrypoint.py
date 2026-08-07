@@ -1,9 +1,12 @@
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from migration.aws_entrypoint import (
     AwsMigrationConfigurationError,
+    _connect_admin,
     _configure_application_role,
     _identifier,
+    _verify_application_role,
 )
 
 
@@ -20,7 +23,72 @@ class _RecordingConnection:
         self.statements.append(statement)
 
 
+class _VerifiedApplicationConnection:
+    async def fetchval(self, statement: str):
+        if statement == "SELECT 1":
+            return 1
+        if statement.startswith("SELECT ssl FROM pg_stat_ssl"):
+            return True
+        if statement == "SHOW default_transaction_read_only":
+            return "on"
+        raise AssertionError(f"Unexpected query: {statement}")
+
+    async def execute(self, statement: str):
+        if statement.startswith("UPDATE dataset_versions"):
+            import asyncpg
+
+            raise asyncpg.ReadOnlySQLTransactionError("read-only transaction")
+        raise AssertionError(f"Unexpected statement: {statement}")
+
+    async def close(self):
+        return None
+
+
 class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_connection_requires_tls_for_rds(self):
+        connection = AsyncMock()
+        with patch(
+            "migration.aws_entrypoint.asyncpg.connect",
+            new=AsyncMock(return_value=connection),
+        ) as connect:
+            result = await _connect_admin(
+                {
+                    "DATABASE_HOST": "private-postgresql.internal",
+                    "DATABASE_NAME": "foundation_intelligence",
+                    "DATABASE_ADMIN_USER": "foundation_admin",
+                    "DATABASE_ADMIN_PASSWORD": "runtime-only-secret",
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+        self.assertIs(result, connection)
+        self.assertEqual(connect.await_args.kwargs["ssl"], "require")
+
+    async def test_application_role_verification_requires_tls_and_denied_update(self):
+        connection = _VerifiedApplicationConnection()
+        with patch(
+            "migration.aws_entrypoint.asyncpg.connect",
+            new=AsyncMock(return_value=connection),
+        ) as connect:
+            result = await _verify_application_role(
+                {
+                    "DATABASE_HOST": "private-postgresql.internal",
+                    "DATABASE_NAME": "foundation_intelligence",
+                    "DATABASE_APP_USER": "foundation_app",
+                    "DATABASE_APP_PASSWORD": "runtime-only-secret",
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+        self.assertEqual(connect.await_args.kwargs["ssl"], "require")
+        self.assertEqual(
+            result,
+            {
+                "select_succeeded": True,
+                "tls_in_use": True,
+                "default_read_only": True,
+                "update_denied": True,
+            },
+        )
+
     async def test_application_role_is_select_only_and_default_read_only(self):
         connection = _RecordingConnection()
         await _configure_application_role(

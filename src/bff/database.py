@@ -28,6 +28,42 @@ def _positive_int(value: Optional[str], default: int) -> int:
     return parsed
 
 
+def _ssl_mode(environment: Mapping[str, str]) -> str:
+    """Resolve one unambiguous asyncpg SSL mode from env or DATABASE_URL."""
+    explicit = environment.get("DATABASE_SSL_MODE")
+    url = environment.get("DATABASE_URL")
+    query_modes: set[str] = set()
+    if url:
+        try:
+            query = make_url(url).query
+        except Exception:
+            query = {}
+        for key in ("ssl", "sslmode"):
+            value = query.get(key)
+            if value is None:
+                continue
+            values = value if isinstance(value, tuple) else (value,)
+            query_modes.update(str(item).strip().lower() for item in values)
+    if len(query_modes) > 1:
+        raise DatabaseConfigurationError(
+            "DATABASE_URL contains conflicting PostgreSQL SSL modes"
+        )
+    query_mode = next(iter(query_modes), None)
+    if explicit is not None:
+        mode = explicit.strip().lower()
+        if query_mode is not None and query_mode != mode:
+            raise DatabaseConfigurationError(
+                "DATABASE_SSL_MODE conflicts with DATABASE_URL SSL configuration"
+            )
+    else:
+        mode = query_mode or "disable"
+    if mode not in {"disable", "require"}:
+        raise DatabaseConfigurationError(
+            "DATABASE_SSL_MODE must be disable or require"
+        )
+    return mode
+
+
 @dataclass(frozen=True)
 class DatabaseSettings:
     url: Optional[str]
@@ -55,7 +91,7 @@ class DatabaseSettings:
             user=env.get("DATABASE_USER"),
             password=env.get("DATABASE_PASSWORD"),
             password_file=env.get("DATABASE_PASSWORD_FILE"),
-            ssl_mode=env.get("DATABASE_SSL_MODE", "disable").strip().lower(),
+            ssl_mode=_ssl_mode(env),
             pool_size=_positive_int(env.get("DATABASE_POOL_SIZE"), 5),
             max_overflow=_positive_int(env.get("DATABASE_MAX_OVERFLOW"), 5),
             pool_timeout_seconds=_positive_int(env.get("DATABASE_POOL_TIMEOUT_SECONDS"), 5),
@@ -74,10 +110,6 @@ class DatabaseSettings:
         )
 
     def sqlalchemy_url(self) -> URL:
-        if self.ssl_mode not in {"disable", "require"}:
-            raise DatabaseConfigurationError(
-                "DATABASE_SSL_MODE must be disable or require"
-            )
         if self.url:
             parsed = make_url(self.url)
             if parsed.get_backend_name() != "postgresql":
@@ -86,6 +118,9 @@ class DatabaseSettings:
                 parsed = parsed.set(drivername="postgresql+asyncpg")
             if parsed.drivername != "postgresql+asyncpg":
                 raise DatabaseConfigurationError("DATABASE_URL must use the asyncpg driver")
+            parsed = parsed.difference_update_query(["ssl", "sslmode"])
+            if self.ssl_mode == "require":
+                parsed = parsed.update_query_dict({"ssl": "require"})
             return parsed
 
         if not self.configured:
@@ -106,7 +141,7 @@ class DatabaseSettings:
                 ) from exc
         if not password:
             raise DatabaseConfigurationError("Database password file is empty")
-        return URL.create(
+        url = URL.create(
             "postgresql+asyncpg",
             username=self.user,
             password=password,
@@ -114,6 +149,9 @@ class DatabaseSettings:
             port=self.port,
             database=self.name,
         )
+        if self.ssl_mode == "require":
+            url = url.update_query_dict({"ssl": "require"})
+        return url
 
 
 class DatabaseManager:
@@ -137,8 +175,6 @@ class DatabaseManager:
                     "statement_timeout": str(self.settings.statement_timeout_ms),
                 },
             }
-            if self.settings.ssl_mode != "disable":
-                connect_args["ssl"] = self.settings.ssl_mode
             self._engine = create_async_engine(
                 url,
                 pool_size=self.settings.pool_size,
@@ -161,8 +197,6 @@ class DatabaseManager:
                     "statement_timeout": "5000",
                 },
             }
-            if self.settings.ssl_mode != "disable":
-                connect_args["ssl"] = self.settings.ssl_mode
             self._health_engine = create_async_engine(
                 self.settings.sqlalchemy_url(),
                 poolclass=NullPool,

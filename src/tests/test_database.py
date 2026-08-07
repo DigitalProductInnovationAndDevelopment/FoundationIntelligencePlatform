@@ -94,6 +94,60 @@ class TestDatabaseFoundation(unittest.TestCase):
         self.assertEqual(url.password, "runtime-only-secret")
         self.assertNotIn("runtime-only-secret", url.render_as_string(hide_password=True))
 
+    def test_tls_required_is_embedded_for_every_sqlalchemy_connection(self):
+        settings = DatabaseSettings.from_env(
+            {
+                "DATABASE_HOST": "private-postgresql.internal",
+                "DATABASE_NAME": "foundation_intelligence",
+                "DATABASE_USER": "foundation_app",
+                "DATABASE_PASSWORD": "runtime-only-secret",
+                "DATABASE_SSL_MODE": "require",
+            }
+        )
+        url = settings.sqlalchemy_url()
+        self.assertEqual(url.query["ssl"], "require")
+        self.assertNotIn("sslmode", url.query)
+
+    def test_database_url_sslmode_is_normalized_without_losing_query_parameters(self):
+        settings = DatabaseSettings.from_env(
+            {
+                "DATABASE_URL": (
+                    "postgresql+asyncpg://foundation_app:secret@postgres/database"
+                    "?prepared_statement_cache_size=0&sslmode=require&sslmode=require"
+                )
+            }
+        )
+        url = settings.sqlalchemy_url()
+        self.assertEqual(url.query["ssl"], "require")
+        self.assertEqual(url.query["prepared_statement_cache_size"], "0")
+        self.assertNotIn("sslmode", url.query)
+
+    def test_conflicting_database_ssl_configuration_is_rejected(self):
+        with self.assertRaises(DatabaseConfigurationError):
+            DatabaseSettings.from_env(
+                {
+                    "DATABASE_URL": (
+                        "postgresql+asyncpg://foundation_app:secret@postgres/database"
+                        "?sslmode=disable"
+                    ),
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+
+    def test_local_postgresql_keeps_tls_disabled_by_default(self):
+        settings = DatabaseSettings.from_env(
+            {
+                "DATABASE_URL": (
+                    "postgresql+asyncpg://foundation_app:secret@postgres/database"
+                    "?prepared_statement_cache_size=0"
+                )
+            }
+        )
+        url = settings.sqlalchemy_url()
+        self.assertEqual(settings.ssl_mode, "disable")
+        self.assertNotIn("ssl", url.query)
+        self.assertEqual(url.query["prepared_statement_cache_size"], "0")
+
     def test_readiness_reflects_postgresql_state(self):
         original = app.state.database
         client = TestClient(app)

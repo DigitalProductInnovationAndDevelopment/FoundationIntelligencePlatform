@@ -65,6 +65,11 @@ outbound AWS/API access. Its inbound port 80 accepts traffic only from the ALB
 security group. RDS port 5432 accepts traffic only from the shared ECS security
 group.
 
+The demo uses asyncpg's `ssl=require` mode for every PostgreSQL connection. It
+encrypts transport to RDS but does not verify the server identity. Production
+hardening should use `verify-full` with the AWS RDS CA certificate after that
+mode and certificate distribution are added to the runtime contract.
+
 The RDS-managed master secret is injected only into the one-off migration task.
 CloudFormation generates a second application secret. The migration bootstrap
 applies Alembic and runs the existing migration as the master, then
