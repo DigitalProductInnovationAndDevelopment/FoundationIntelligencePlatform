@@ -29,7 +29,9 @@ class _ExplodingDatabase:
     def pool_status():
         return {"checked_out": 0.0, "capacity": 0.0, "utilization_ratio": 0.0}
 
-    async def readiness(self, *, expected_schema_version):
+    async def readiness(
+        self, *, expected_schema_version, require_critical_configuration=True
+    ):
         raise AssertionError("liveness must not query PostgreSQL")
 
 

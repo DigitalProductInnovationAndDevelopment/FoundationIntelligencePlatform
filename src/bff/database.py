@@ -233,7 +233,12 @@ class DatabaseManager:
             logger.warning("PostgreSQL readiness check failed; class=%s", exc.__class__.__name__)
             return False
 
-    async def readiness(self, *, expected_schema_version: str) -> dict[str, object]:
+    async def readiness(
+        self,
+        *,
+        expected_schema_version: str,
+        require_critical_configuration: bool = True,
+    ) -> dict[str, object]:
         unavailable = {
             "ready": False,
             "checks": {
@@ -276,7 +281,12 @@ class DatabaseManager:
             dataset_healthy = bool(row["active_dataset"])
             configuration_healthy = int(row["source_count"]) > 0 and int(row["policy_count"]) > 0
             queue_healthy = bool(row["queue_available"])
-            ready = schema_healthy and dataset_healthy and configuration_healthy and queue_healthy
+            ready = (
+                schema_healthy
+                and dataset_healthy
+                and queue_healthy
+                and (configuration_healthy or not require_critical_configuration)
+            )
             return {
                 "ready": ready,
                 "checks": {
@@ -284,7 +294,13 @@ class DatabaseManager:
                     "schema_version": "healthy" if schema_healthy else "mismatch",
                     "active_dataset": "healthy" if dataset_healthy else "missing",
                     "critical_configuration": (
-                        "healthy" if configuration_healthy else "missing"
+                        "healthy"
+                        if configuration_healthy
+                        else (
+                            "not_required"
+                            if not require_critical_configuration
+                            else "missing"
+                        )
                     ),
                     "queue": "healthy" if queue_healthy else "unavailable",
                 },

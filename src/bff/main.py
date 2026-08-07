@@ -372,12 +372,13 @@ async def liveness_check():
 @app.get("/health/ready", tags=["Health Check"])
 async def readiness_check():
     """Check schema, dataset, critical controls and durable queue independently."""
+    settings = app.state.security_settings
     result = await app.state.database.readiness(
-        expected_schema_version=app.state.observability_configuration.expected_schema_version
+        expected_schema_version=app.state.observability_configuration.expected_schema_version,
+        require_critical_configuration=settings.auth_mode != "public_readonly",
     )
     metadata = result.get("metadata", {})
     registry = app.state.metrics_registry
-    settings = app.state.security_settings
     registry.set_gauge(
         "readiness_success",
         1.0 if result["ready"] else 0.0,

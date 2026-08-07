@@ -19,7 +19,9 @@ class _GoldenDatabase:
     def pool_status():
         return {"checked_out": 0.0, "capacity": 1.0, "utilization_ratio": 0.0}
 
-    async def readiness(self, *, expected_schema_version):
+    async def readiness(
+        self, *, expected_schema_version, require_critical_configuration=True
+    ):
         return {
             "ready": True,
             "checks": CONTRACT["health"]["ready"]["checks"],

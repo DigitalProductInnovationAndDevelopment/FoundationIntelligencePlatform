@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import make_url
@@ -10,7 +11,13 @@ from bff.main import app
 
 
 class _HealthyDatabase:
-    async def readiness(self, *, expected_schema_version):
+    def __init__(self):
+        self.require_critical_configuration = None
+
+    async def readiness(
+        self, *, expected_schema_version, require_critical_configuration=True
+    ):
+        self.require_critical_configuration = require_critical_configuration
         return {
             "ready": True,
             "checks": {
@@ -32,7 +39,9 @@ class _HealthyDatabase:
 
 
 class _UnavailableDatabase:
-    async def readiness(self, *, expected_schema_version):
+    async def readiness(
+        self, *, expected_schema_version, require_critical_configuration=True
+    ):
         return {
             "ready": False,
             "checks": {
@@ -214,11 +223,13 @@ class TestDatabaseFoundation(unittest.TestCase):
         original = app.state.database
         client = TestClient(app)
         try:
-            app.state.database = _HealthyDatabase()
+            healthy_database = _HealthyDatabase()
+            app.state.database = healthy_database
             ready = client.get("/health/ready")
             self.assertEqual(ready.status_code, 200)
             self.assertEqual(ready.json()["checks"]["postgresql"], "healthy")
             self.assertEqual(ready.json()["checks"]["schema_version"], "healthy")
+            self.assertTrue(healthy_database.require_critical_configuration)
 
             app.state.database = _UnavailableDatabase()
             unavailable = client.get("/health/ready")
@@ -226,6 +237,27 @@ class TestDatabaseFoundation(unittest.TestCase):
             self.assertEqual(unavailable.json()["checks"]["postgresql"], "unavailable")
         finally:
             app.state.database = original
+
+    def test_public_readonly_readiness_does_not_require_pipeline_configuration(self):
+        original_database = app.state.database
+        original_security = app.state.security_settings
+        database = _HealthyDatabase()
+        try:
+            app.state.database = database
+            app.state.security_settings = replace(
+                original_security,
+                app_env="demo",
+                data_runtime_mode="postgresql",
+                auth_mode="public_readonly",
+                dev_auth_enabled=False,
+                core_proxy_enabled=False,
+            )
+            response = TestClient(app).get("/health/ready")
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(database.require_critical_configuration)
+        finally:
+            app.state.database = original_database
+            app.state.security_settings = original_security
 
 
 if __name__ == "__main__":
