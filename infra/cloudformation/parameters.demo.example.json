@@ -16,6 +16,22 @@
     "ParameterValue": "0"
   },
   {
+    "ParameterKey": "OriginLockdownEnabled",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "CloudFrontOriginPrefixListId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "OriginVerificationToken",
+    "ParameterValue": "REPLACE_WITH_43_PLUS_BASE64URL_RANDOM_VALUE"
+  },
+  {
+    "ParameterKey": "CognitoDomainPrefix",
+    "ParameterValue": "replace-with-available-fip-demo-prefix"
+  },
+  {
     "ParameterKey": "DatabaseInstanceClass",
     "ParameterValue": "db.t4g.medium"
   }

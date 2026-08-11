@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, LoaderCircle, Search, X } from "lucide-react";
 import { validateOptionalNumericRange } from "../lib/numericRange";
-import { mutationHeaders } from "../lib/http";
+import { apiFetch, mutationHeaders } from "../lib/http";
 
 interface RegistrySummary {
   registry_id: string;
@@ -64,6 +64,7 @@ interface RegistryDetail {
 interface RegistryDirectoryProps {
   apiBase: string;
   online: boolean;
+  canOperate: boolean;
   initialQuery?: string;
   initialBeneficiaryGeography?: string;
   onOpenEnrichedProfile: (id: number, name: string) => void;
@@ -90,7 +91,7 @@ type RegistryEnrichmentRun = {
 
 const LOCAL_PROFILE_LINK_DURATION_MS = 7_000;
 
-export default function RegistryDirectory({ apiBase, online, initialQuery = "", initialBeneficiaryGeography = "", onOpenEnrichedProfile }: RegistryDirectoryProps) {
+export default function RegistryDirectory({ apiBase, online, canOperate, initialQuery = "", initialBeneficiaryGeography = "", onOpenEnrichedProfile }: RegistryDirectoryProps) {
   const [query, setQuery] = useState(initialQuery);
   const [charityNumber, setCharityNumber] = useState("");
   const [status, setStatus] = useState("");
@@ -181,9 +182,9 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
     const currentVersion = ++requestVersion.current;
     const controller = append ? new AbortController() : requestRef.current;
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${apiBase}/api/charities/directory/organizations?${buildSearchParams(cursor).toString()}`,
-        { credentials: "include", signal: controller?.signal },
+        { credentials: "omit", signal: controller?.signal },
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || `Directory request failed (${response.status}).`);
@@ -217,9 +218,9 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
   const loadDetail = useCallback(async (registryId: string, signal?: AbortSignal) => {
     setDetailLoading(true);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${apiBase}/api/charities/directory/organizations/${encodeURIComponent(registryId)}`,
-        { credentials: "include", signal },
+        { credentials: "omit", signal },
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Organization details are temporarily unavailable.");
@@ -260,7 +261,7 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
   }, [detailRefreshRevision, selectedRegistryId, loadDetail]);
 
   const startRegistryEnrichment = useCallback(async () => {
-    if (!detail || detail.enriched_profile || registryEnrichment?.status === "running" || registryEnrichment?.status === "starting") return;
+    if (!canOperate || !detail || detail.enriched_profile || registryEnrichment?.status === "running" || registryEnrichment?.status === "starting") return;
     const targetRegistryId = selectedRegistryId;
     if (!targetRegistryId || detail.registry_id !== targetRegistryId) return;
     const charityNumber = [detail.linked_charity_number, detail.charity_number]
@@ -296,9 +297,9 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
     });
     try {
       const [response] = await Promise.all([
-        fetch(`${apiBase}/api/charities/directory/organizations/enrich`, {
+        apiFetch(`${apiBase}/api/charities/directory/organizations/enrich`, {
           method: "POST",
-          credentials: "include",
+          credentials: "omit",
           headers: mutationHeaders("enrich registry organization", true),
           body: JSON.stringify({ reg_numbers: [charityNumber] }),
           signal: controller.signal,
@@ -337,7 +338,7 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
     } finally {
       if (enrichmentRequestRef.current === controller) enrichmentRequestRef.current = null;
     }
-  }, [apiBase, detail, loadPage, online, registryEnrichment?.status, selectedRegistryId]);
+  }, [apiBase, canOperate, detail, loadPage, online, registryEnrichment?.status, selectedRegistryId]);
 
   useEffect(() => {
     if (registryEnrichment?.status !== "starting") return;
@@ -615,7 +616,7 @@ export default function RegistryDirectory({ apiBase, online, initialQuery = "", 
                       ? "This official record is now linked to an Organization Research profile."
                       : "Creates a profile from this cached official record and links already observed grants with the exact Charity Commission identifier."}</small>
                   </div>
-                  {!detail.enriched_profile && <button
+                  {canOperate && !detail.enriched_profile && <button
                     type="button"
                     className="btn btn-primary"
                     disabled={!online || registryEnrichment?.status === "running" || registryEnrichment?.status === "starting"}

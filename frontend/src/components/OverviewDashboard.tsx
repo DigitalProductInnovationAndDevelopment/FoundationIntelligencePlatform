@@ -23,6 +23,7 @@ import {
   grantScopeToApiParams,
   type GrantScope,
 } from "../lib/grantScope";
+import { apiFetch } from "../lib/http";
 
 const GrantWorldMap = lazy(() => import("./GrantWorldMap"));
 
@@ -493,7 +494,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
       return;
     }
     setLoading(true);
-    fetch(requestUrl, { credentials: "include", signal: controller.signal })
+    apiFetch(requestUrl, { credentials: "omit", signal: controller.signal })
       .then(async response => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || `Overview request failed (${response.status}).`);
@@ -531,8 +532,8 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     setMapConnectionsLoading(true);
     setMapConnections(null);
     setMapConnectionsError(null);
-    fetch(`${apiBase}/api/charities/grants/map/connections?${params.toString()}`, {
-      credentials: "include",
+    apiFetch(`${apiBase}/api/charities/grants/map/connections?${params.toString()}`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {
@@ -588,7 +589,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     });
     params.set("granularity", filters.granularity);
     setTrendLoading(true);
-    fetch(`${apiBase}/api/charities/grants/overview/trends?${params.toString()}`, { credentials: "include", signal: controller.signal })
+    apiFetch(`${apiBase}/api/charities/grants/overview/trends?${params.toString()}`, { credentials: "omit", signal: controller.signal })
       .then(async response => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || `Trend request failed (${response.status}).`);
@@ -639,7 +640,7 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     const controller = new AbortController();
     setDrilldownLoading(true);
     setDrilldownError(null);
-    fetch(`${apiBase}/api/charities/grants/overview/drilldown?${params.toString()}`, { credentials: "include", signal: controller.signal })
+    apiFetch(`${apiBase}/api/charities/grants/overview/drilldown?${params.toString()}`, { credentials: "omit", signal: controller.signal })
       .then(async response => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || `Grant detail request failed (${response.status}).`);
@@ -696,8 +697,8 @@ export default function OverviewDashboard({ apiBase, online, selectedSources, on
     const params = new URLSearchParams({ limit: "2500" });
     params.set("sources", entitySuggestionSourceKey.split("\u001f").filter(Boolean).join(","));
     setEntitySuggestionsLoading(true);
-    fetch(`${apiBase}/api/charities/grants/overview/entity-suggestions?${params.toString()}`, {
-      credentials: "include",
+    apiFetch(`${apiBase}/api/charities/grants/overview/entity-suggestions?${params.toString()}`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {

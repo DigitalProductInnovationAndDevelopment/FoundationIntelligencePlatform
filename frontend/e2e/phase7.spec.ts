@@ -75,6 +75,7 @@ const overview = {
 };
 
 const responses = {
+  auth: { mode: "public_readonly" },
   health: { status: "ok" },
   stats: {
     total_charities: 42,
@@ -103,7 +104,8 @@ async function installApiRoutes(page: Page) {
     const key = `${url.pathname}${url.search}`;
     requestCounts.set(key, (requestCounts.get(key) || 0) + 1);
     let body: unknown;
-    if (url.pathname === "/api/charities/stats") body = responses.stats;
+    if (url.pathname === "/api/auth/config") body = responses.auth;
+    else if (url.pathname === "/api/charities/stats") body = responses.stats;
     else if (url.pathname === "/api/charities/grants/overview") body = responses.overview;
     else if (url.pathname === "/api/charities/grants/beneficiary-geographies") body = responses.geographies;
     else if (url.pathname === "/api/charities/grants/overview/entity-suggestions") body = responses.entitySuggestions;

@@ -895,7 +895,7 @@ def _parse_news_aliases(aliases: Optional[str]) -> list[str]:
 router = APIRouter(
     prefix="/api/news",
     tags=["Foundation News"],
-    dependencies=[Depends(require_roles(Role.ANALYST, action="news.read"))],
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="news.read"))],
 )
 
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 from typing import Mapping, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -76,6 +77,10 @@ class SecuritySettings:
     oidc_algorithms: Tuple[str, ...]
     oidc_role_claim: str
     oidc_jwks_cache_seconds: int
+    cognito_region: Optional[str]
+    cognito_user_pool_id: Optional[str]
+    cognito_client_id: Optional[str]
+    cognito_domain: Optional[str]
     dev_auth_enabled: bool
     dev_auth_username: Optional[str]
     dev_auth_password: Optional[str]
@@ -115,6 +120,10 @@ class SecuritySettings:
             oidc_algorithms=_as_csv(env.get("OIDC_ALGORITHMS"), "RS256"),
             oidc_role_claim=env.get("OIDC_ROLE_CLAIM", "roles").strip(),
             oidc_jwks_cache_seconds=_as_int(env.get("OIDC_JWKS_CACHE_SECONDS"), 300),
+            cognito_region=env.get("COGNITO_REGION"),
+            cognito_user_pool_id=env.get("COGNITO_USER_POOL_ID"),
+            cognito_client_id=env.get("COGNITO_CLIENT_ID"),
+            cognito_domain=env.get("COGNITO_DOMAIN"),
             dev_auth_enabled=_as_bool(env.get("DEV_AUTH_ENABLED")),
             dev_auth_username=env.get("DEV_AUTH_USERNAME"),
             dev_auth_password=env.get("DEV_AUTH_PASSWORD"),
@@ -167,12 +176,18 @@ def validate_security_settings(settings: SecuritySettings) -> None:
     errors = []
     production = settings.app_env in {"staging", "production"}
 
-    if settings.auth_mode not in {"disabled", "development", "oidc", "public_readonly"}:
+    if settings.auth_mode not in {
+        "disabled",
+        "development",
+        "oidc",
+        "public_readonly",
+        "cognito_rbac",
+    }:
         errors.append(
-            "AUTH_MODE must be disabled, development, oidc or public_readonly"
+            "AUTH_MODE must be disabled, development, oidc, public_readonly or cognito_rbac"
         )
-    if production and settings.auth_mode != "oidc":
-        errors.append("staging/production requires AUTH_MODE=oidc")
+    if production and settings.auth_mode not in {"oidc", "cognito_rbac"}:
+        errors.append("staging/production requires AUTH_MODE=oidc or cognito_rbac")
     if production and settings.dev_auth_enabled:
         errors.append("development authentication must be disabled outside local/test environments")
 
@@ -217,6 +232,40 @@ def validate_security_settings(settings: SecuritySettings) -> None:
             ):
                 if value and urlparse(value).scheme != "https":
                     errors.append(f"{name} must use HTTPS outside development")
+
+    if settings.auth_mode == "cognito_rbac":
+        if not all(
+            (
+                settings.cognito_region,
+                settings.cognito_user_pool_id,
+                settings.cognito_client_id,
+                settings.cognito_domain,
+            )
+        ):
+            errors.append(
+                "COGNITO_REGION, COGNITO_USER_POOL_ID, COGNITO_CLIENT_ID and "
+                "COGNITO_DOMAIN are required"
+            )
+        if settings.cognito_region and not re.fullmatch(
+            r"[a-z]{2}(?:-gov)?-[a-z]+-\d", settings.cognito_region
+        ):
+            errors.append("COGNITO_REGION is invalid")
+        if settings.cognito_user_pool_id and not re.fullmatch(
+            r"[\w-]+_[0-9A-Za-z]+", settings.cognito_user_pool_id
+        ):
+            errors.append("COGNITO_USER_POOL_ID is invalid")
+        if settings.cognito_domain:
+            parsed_domain = urlparse(settings.cognito_domain)
+            if (
+                parsed_domain.scheme != "https"
+                or not parsed_domain.hostname
+                or parsed_domain.path not in {"", "/"}
+                or parsed_domain.query
+                or parsed_domain.fragment
+            ):
+                errors.append("COGNITO_DOMAIN must be an HTTPS origin without path or query")
+        if settings.dev_auth_enabled:
+            errors.append("development authentication must be disabled in cognito_rbac mode")
 
     if production and not settings.session_cookie_secure:
         errors.append("SESSION_COOKIE_SECURE must be true outside development")

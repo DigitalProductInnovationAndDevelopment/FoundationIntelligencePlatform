@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  Cost-conscious, non-production Foundation Intelligence public read-only demo.
-  HTTP is temporary and not production-ready. DesiredCount defaults to zero and
-  no data, image or stack operation is performed by this template file itself.
+  Cost-conscious, non-production Foundation Intelligence customer pilot.
+  Browser TLS terminates at CloudFront while the CloudFront-to-ALB and ALB-to-ECS
+  hops remain HTTP-only accepted temporary residual risks. DesiredCount defaults
+  to zero and no data, image or stack operation is performed by this template.
 
 Parameters:
   VpcId:
@@ -76,6 +77,44 @@ Parameters:
     Type: String
     Description: Full Git commit SHA used to build the approved backend image.
     AllowedPattern: '^[a-f0-9]{40}$'
+  OriginLockdownEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: false for Deployment A; true only for the approved CloudFront-only origin lockdown.
+  CloudFrontOriginPrefixListId:
+    Type: String
+    Default: ''
+    Description: >-
+      Region-specific com.amazonaws.global.cloudfront.origin-facing prefix list.
+      It is intentionally supplied at deployment time and never hardcoded.
+    AllowedPattern: '^$|^pl-[a-f0-9]+$'
+  OriginVerificationToken:
+    Type: String
+    NoEcho: true
+    MinLength: 43
+    MaxLength: 128
+    AllowedPattern: '^[A-Za-z0-9_-]{43,128}$'
+    Description: >-
+      At least 32 bytes of cryptographic entropy encoded as base64url. NoEcho is
+      not protection from privileged principals who can inspect AWS configuration.
+  CognitoDomainPrefix:
+    Type: String
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+    Description: Globally available, project-specific Cognito managed-login prefix.
+
+Rules:
+  RequireCloudFrontPrefixListForLockdown:
+    RuleCondition: !Equals [!Ref OriginLockdownEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref CloudFrontOriginPrefixListId, '']]
+        AssertDescription: CloudFrontOriginPrefixListId is required when origin lockdown is enabled.
+
+Conditions:
+  OriginLockdown: !Equals [!Ref OriginLockdownEnabled, 'true']
+  PublicOriginAccess: !Equals [!Ref OriginLockdownEnabled, 'false']
 
 Resources:
   DatabaseSubnetA:
@@ -129,15 +168,31 @@ Resources:
     Properties:
       GroupDescription: Temporary public HTTP ingress for the non-production demo
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - Description: Temporary HTTP demo only
-          IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-alb'
+
+  PublicAlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: PublicOriginAccess
+    Properties:
+      Description: Deployment A public HTTP origin access
+      GroupId: !GetAtt AlbSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  CloudFrontAlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: OriginLockdown
+    Properties:
+      Description: Deployment B HTTP access from CloudFront origin-facing servers only
+      GroupId: !GetAtt AlbSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourcePrefixListId: !Ref CloudFrontOriginPrefixListId
 
   EcsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -257,6 +312,64 @@ Resources:
       LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/migration'
       RetentionInDays: 7
 
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: 'ON'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: Foundation Intelligence Platform invitation
+          EmailMessage: 'Your username is {username} and temporary password is {####}.'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+      UserPoolTier: ESSENTIALS
+      DeletionProtection: ACTIVE
+      UserPoolTags:
+        Environment: demo
+
+  CustomerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: customer
+      Description: Normal analytics and sanitized scraper status
+      Precedence: 30
+
+  OperatorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: operator
+      Description: Customer access plus operational scraper and pipeline controls
+      Precedence: 20
+
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: admin
+      Description: Full administration including users, roles and critical settings
+      Precedence: 10
+
   AppDatabaseSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
@@ -367,6 +480,24 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoUserAdministration
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListUsersInGroup
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminResetUserPassword
+                Resource: !GetAtt CognitoUserPool.Arn
 
   MigrationTaskRole:
     Type: AWS::IAM::Role
@@ -417,9 +548,17 @@ Resources:
             - Name: APP_ENV
               Value: demo
             - Name: AUTH_MODE
-              Value: public_readonly
+              Value: cognito_rbac
             - Name: DEV_AUTH_ENABLED
               Value: 'false'
+            - Name: COGNITO_REGION
+              Value: !Ref AWS::Region
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
+            - Name: COGNITO_DOMAIN
+              Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
             - Name: CORE_PROXY_ENABLED
               Value: 'false'
             - Name: CORS_ORIGINS
@@ -630,7 +769,7 @@ Resources:
         - Key: Environment
           Value: demo
         - Key: TransportNotice
-          Value: temporary-http-not-production-ready
+          Value: accepted-temporary-http-cloudfront-to-alb
 
   FrontendTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -656,12 +795,195 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
+        - !If
+          - OriginLockdown
+          - Type: fixed-response
+            FixedResponseConfig:
+              ContentType: text/plain
+              MessageBody: Forbidden
+              StatusCode: '403'
+          - Type: forward
+            TargetGroupArn: !Ref FrontendTargetGroup
+
+  OriginVerificationListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpListener
+      Priority: 1
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-FIP-Origin-Verify
+            Values: [!Ref OriginVerificationToken]
+      Actions:
         - Type: forward
           TargetGroupArn: !Ref FrontendTargetGroup
 
+  DisabledDefaultCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${AWS::StackName}-default-no-cache'
+        Comment: Disable caching for the first authenticated pilot
+        DefaultTTL: 0
+        MaxTTL: 0
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  DisabledApiCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${AWS::StackName}-api-auth-no-cache'
+        Comment: Disable API caching and forward Authorization through the cache policy
+        DefaultTTL: 0
+        MaxTTL: 0
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers: [Authorization]
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  DefaultOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub '${AWS::StackName}-default-origin'
+        Comment: Forward OAuth callback query strings without viewer Host or cookies
+        CookiesConfig:
+          CookieBehavior: none
+        HeadersConfig:
+          HeaderBehavior: none
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  ApiOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub '${AWS::StackName}-api-origin'
+        Comment: Minimal API headers and all query strings; Authorization comes from cache policy
+        CookiesConfig:
+          CookieBehavior: none
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers:
+            - Content-Type
+            - Origin
+            - Access-Control-Request-Headers
+            - Access-Control-Request-Method
+            - Idempotency-Key
+            - X-Action-Reason
+            - X-Request-ID
+            - X-Trace-ID
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: OriginVerificationListenerRule
+    Properties:
+      DistributionConfig:
+        Comment: !Sub '${AWS::StackName} authenticated customer pilot'
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+        Origins:
+          - Id: AlbOrigin
+            DomainName: !GetAtt LoadBalancer.DNSName
+            ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            OriginCustomHeaders:
+              - HeaderName: X-FIP-Origin-Verify
+                HeaderValue: !Ref OriginVerificationToken
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: AlbOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: !Ref DisabledDefaultCachePolicy
+          OriginRequestPolicyId: !Ref DefaultOriginRequestPolicy
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: AlbOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: !Ref DisabledApiCachePolicy
+            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
+            Compress: true
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Sub '${AWS::StackName}-browser'
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs:
+        - !Sub 'https://${CloudFrontDistribution.DomainName}/auth/callback'
+      LogoutURLs:
+        - !Sub 'https://${CloudFrontDistribution.DomainName}/'
+      DefaultRedirectURI: !Sub 'https://${CloudFrontDistribution.DomainName}/auth/callback'
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      ReadAttributes: [email, email_verified]
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 2
+
+  CognitoManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: CognitoUserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientId: !Ref CognitoUserPoolClient
+      UseCognitoProvidedValues: true
+
   ApplicationService:
     Type: AWS::ECS::Service
-    DependsOn: HttpListener
+    DependsOn: OriginVerificationListenerRule
     Properties:
       ServiceName: application
       Cluster: !Ref EcsCluster
@@ -690,8 +1012,22 @@ Resources:
 
 Outputs:
   TemporaryDemoUrl:
-    Description: HTTP-only temporary demo URL; do not treat as production-ready.
-    Value: !Sub 'http://${LoadBalancer.DNSName}'
+    Description: Legacy output name retained for automation; now points to CloudFront HTTPS.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  LoadBalancerDnsName:
+    Description: Raw HTTP origin name for diagnostics; not the customer URL.
+    Value: !GetAtt LoadBalancer.DNSName
+  CloudFrontUrl:
+    Description: Public customer URL using the CloudFront default certificate.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  CloudFrontDistributionId:
+    Value: !Ref CloudFrontDistribution
+  CognitoUserPoolId:
+    Value: !Ref CognitoUserPool
+  CognitoUserPoolClientId:
+    Value: !Ref CognitoUserPoolClient
+  CognitoManagedLoginDomain:
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
   ClusterArn:
     Value: !GetAtt EcsCluster.Arn
   ApplicationServiceArn:

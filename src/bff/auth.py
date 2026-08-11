@@ -23,6 +23,40 @@ from bff.security import (
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
+@router.get("/config")
+async def auth_config(request: Request):
+    """Return only the public browser configuration required for managed login."""
+    settings = getattr(request.app.state, "security_settings", SECURITY_SETTINGS)
+    if settings.auth_mode != "cognito_rbac":
+        return {"mode": settings.auth_mode}
+    return {
+        "mode": "cognito_rbac",
+        "region": settings.cognito_region,
+        "user_pool_id": settings.cognito_user_pool_id,
+        "client_id": settings.cognito_client_id,
+        "domain": settings.cognito_domain,
+        "scopes": ["openid", "email", "profile"],
+    }
+
+
+@router.get("/me")
+async def current_user(
+    principal: Principal = Depends(
+        require_roles(Role.CUSTOMER, action="auth.me")
+    ),
+):
+    payload = {
+        "sub": principal.actor_id,
+        "roles": sorted(role.value for role in principal.roles),
+    }
+    username = principal.claims.get("username") or principal.claims.get(
+        "cognito:username"
+    )
+    if isinstance(username, str) and username.strip():
+        payload["username"] = username.strip()
+    return payload
+
+
 @router.post("/login")
 async def login(
     request: Request,
@@ -41,8 +75,8 @@ async def login(
     token = create_development_access_token(credentials.username, settings=settings)
     request.state.principal = Principal(
         actor_id=credentials.username,
-        roles=frozenset({Role.ADMINISTRATOR}),
-        claims={"sub": credentials.username, "roles": [Role.ADMINISTRATOR.value]},
+        roles=frozenset({Role.ADMIN}),
+        claims={"sub": credentials.username, "roles": [Role.ADMIN.value]},
     )
     response.set_cookie(
         key=settings.session_cookie_name,
@@ -61,7 +95,7 @@ async def logout(
     request: Request,
     response: Response,
     principal: Principal = Depends(
-        require_roles(Role.VIEWER, action="auth.logout")
+        require_roles(Role.CUSTOMER, action="auth.logout")
     ),
 ):
     """Clear the development session cookie; OIDC logout is owned by the IdP."""

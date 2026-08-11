@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from bff.auth import router as auth_router
 from bff.proxy import router as proxy_router
 from bff.news import router as news_router
+from bff.user_management import router as user_management_router
 from bff.audit import StructuredLogAuditSink, event_from_request
 from bff.config import SECURITY_SETTINGS, validate_security_settings
 from bff.database import DatabaseManager, DatabaseSettings
@@ -37,6 +38,7 @@ if POSTGRESQL_ONLY_RUNTIME:
     from bff.postgres.observability_routes import router as observability_router
     from bff.postgres.pipeline_repository import PipelineRepository
     from bff.postgres.routes import router as charity_router
+    from bff.postgres.scraper_routes import router as scraper_router
     from governance.retention import load_governance_configuration
     from pipelines.durable import load_source_configurations
 else:
@@ -131,6 +133,9 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None if SECURITY_SETTINGS.auth_mode == "cognito_rbac" else "/docs",
+    redoc_url=None if SECURITY_SETTINGS.auth_mode == "cognito_rbac" else "/redoc",
+    openapi_url=None if SECURITY_SETTINGS.auth_mode == "cognito_rbac" else "/openapi.json",
 )
 
 app.state.security_settings = SECURITY_SETTINGS
@@ -154,8 +159,8 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(SECURITY_SETTINGS.cors_origins),
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_credentials=SECURITY_SETTINGS.auth_mode == "development",
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Accept",
         "Authorization",
@@ -347,13 +352,17 @@ app.include_router(charity_router)
 app.include_router(proxy_router)
 app.include_router(admin_router)
 if POSTGRESQL_ONLY_RUNTIME:
+    app.include_router(scraper_router)
     app.include_router(governance_router)
     app.include_router(observability_router)
 app.include_router(news_router)
+app.include_router(user_management_router)
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
     """Redirect root access to Swagger interactive documentation."""
+    if app.state.security_settings.auth_mode == "cognito_rbac":
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
     return RedirectResponse(url="/docs")
 
 

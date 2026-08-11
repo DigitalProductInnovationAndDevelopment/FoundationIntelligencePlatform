@@ -1,0 +1,153 @@
+from pathlib import Path
+import json
+import re
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+TEMPLATE = ROOT / "infra" / "cloudformation" / "demo.yaml"
+PARAMETERS = ROOT / "infra" / "cloudformation" / "parameters.demo.example.json"
+NGINX = ROOT / "docker" / "frontend-nginx.ecs.conf"
+
+
+def _block(source: str, name: str) -> str:
+    match = re.search(
+        rf"^  {re.escape(name)}:\n(?P<body>(?:(?!^  \S).*(?:\n|$))*)",
+        source,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise AssertionError(f"CloudFormation block {name} was not found")
+    return match.group(0)
+
+
+class TestCloudFormationCustomerAccessContract(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.template = TEMPLATE.read_text(encoding="utf-8")
+        cls.parameters = json.loads(PARAMETERS.read_text(encoding="utf-8"))
+        cls.nginx = NGINX.read_text(encoding="utf-8")
+
+    def test_deployment_states_and_prefix_list_assertion(self):
+        lockdown = _block(self.template, "OriginLockdownEnabled")
+        prefix = _block(self.template, "CloudFrontOriginPrefixListId")
+        rule = _block(self.template, "RequireCloudFrontPrefixListForLockdown")
+        self.assertIn("Default: 'false'", lockdown)
+        self.assertIn("AllowedValues: ['false', 'true']", lockdown)
+        self.assertIn("Default: ''", prefix)
+        self.assertIn("RuleCondition: !Equals [!Ref OriginLockdownEnabled, 'true']", rule)
+        self.assertIn("!Ref CloudFrontOriginPrefixListId", rule)
+        self.assertNotRegex(prefix, r"pl-[a-f0-9]{8,}")
+
+    def test_state_a_and_b_use_mutually_exclusive_ingress(self):
+        public = _block(self.template, "PublicAlbHttpIngress")
+        cloudfront = _block(self.template, "CloudFrontAlbHttpIngress")
+        self.assertIn("Condition: PublicOriginAccess", public)
+        self.assertIn("CidrIp: 0.0.0.0/0", public)
+        self.assertIn("FromPort: 80", public)
+        self.assertIn("Condition: OriginLockdown", cloudfront)
+        self.assertIn("SourcePrefixListId: !Ref CloudFrontOriginPrefixListId", cloudfront)
+        self.assertIn("FromPort: 80", cloudfront)
+        self.assertNotIn("CidrIp: 0.0.0.0/0", cloudfront)
+
+    def test_listener_forwards_in_a_and_defaults_to_403_in_b(self):
+        listener = _block(self.template, "HttpListener")
+        verification = _block(self.template, "OriginVerificationListenerRule")
+        self.assertIn("!If", listener)
+        self.assertIn("OriginLockdown", listener)
+        self.assertIn("Type: fixed-response", listener)
+        self.assertIn("StatusCode: '403'", listener)
+        self.assertIn("Type: forward", listener)
+        self.assertIn("HttpHeaderName: X-FIP-Origin-Verify", verification)
+        self.assertIn("Values: [!Ref OriginVerificationToken]", verification)
+        self.assertIn("TargetGroupArn: !Ref FrontendTargetGroup", verification)
+
+    def test_cloudfront_default_and_api_behaviors(self):
+        distribution = _block(self.template, "CloudFrontDistribution")
+        self.assertIn("CloudFrontDefaultCertificate: true", distribution)
+        self.assertIn("ViewerProtocolPolicy: redirect-to-https", distribution)
+        self.assertIn("DefaultRootObject: index.html", distribution)
+        self.assertIn("AllowedMethods: [GET, HEAD, OPTIONS]", distribution)
+        self.assertIn("PathPattern: /api/*", distribution)
+        self.assertIn(
+            "AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]",
+            distribution,
+        )
+        self.assertIn("OriginProtocolPolicy: http-only", distribution)
+        self.assertIn("HeaderName: X-FIP-Origin-Verify", distribution)
+        self.assertIn("HeaderValue: !Ref OriginVerificationToken", distribution)
+
+    def test_caching_authorization_query_and_host_contract(self):
+        default_cache = _block(self.template, "DisabledDefaultCachePolicy")
+        api_cache = _block(self.template, "DisabledApiCachePolicy")
+        default_origin = _block(self.template, "DefaultOriginRequestPolicy")
+        api_origin = _block(self.template, "ApiOriginRequestPolicy")
+        for policy in (default_cache, api_cache):
+            self.assertIn("DefaultTTL: 0", policy)
+            self.assertIn("MaxTTL: 0", policy)
+            self.assertIn("MinTTL: 0", policy)
+            self.assertIn("CookieBehavior: none", policy)
+        self.assertIn("Headers: [Authorization]", api_cache)
+        self.assertIn("QueryStringBehavior: all", default_origin)
+        self.assertIn("QueryStringBehavior: all", api_origin)
+        self.assertNotRegex(default_origin + api_origin, r"(?im)^\s*- Host\s*$")
+        self.assertNotIn("CookieBehavior: all", default_origin + api_origin)
+
+    def test_origin_verification_token_is_noecho_and_only_placeholder_is_committed(self):
+        token = _block(self.template, "OriginVerificationToken")
+        self.assertIn("NoEcho: true", token)
+        self.assertIn("MinLength: 43", token)
+        values = {item["ParameterKey"]: item["ParameterValue"] for item in self.parameters}
+        self.assertEqual(
+            values["OriginVerificationToken"],
+            "REPLACE_WITH_43_PLUS_BASE64URL_RANDOM_VALUE",
+        )
+
+    def test_cognito_managed_login_mfa_and_public_pkce_client(self):
+        pool = _block(self.template, "CognitoUserPool")
+        client = _block(self.template, "CognitoUserPoolClient")
+        domain = _block(self.template, "CognitoUserPoolDomain")
+        branding = _block(self.template, "CognitoManagedLoginBranding")
+        self.assertIn("AllowAdminCreateUserOnly: true", pool)
+        self.assertIn("MfaConfiguration: 'ON'", pool)
+        self.assertIn("EnabledMfas: [SOFTWARE_TOKEN_MFA]", pool)
+        self.assertNotIn("SMS_MFA", pool)
+        self.assertNotIn("SoftwareTokenMfaConfiguration", pool)
+        self.assertIn("MinimumLength: 12", pool)
+        self.assertIn("GenerateSecret: false", client)
+        self.assertIn("AllowedOAuthFlows: [code]", client)
+        self.assertNotIn("implicit", client.lower())
+        self.assertIn("${CloudFrontDistribution.DomainName}/auth/callback", client)
+        self.assertIn("${CloudFrontDistribution.DomainName}/'", client)
+        self.assertIn("ManagedLoginVersion: 2", domain)
+        self.assertIn("UseCognitoProvidedValues: true", branding)
+
+    def test_three_groups_and_least_privilege_task_role(self):
+        for logical_id, group in (
+            ("CustomerGroup", "customer"),
+            ("OperatorGroup", "operator"),
+            ("AdminGroup", "admin"),
+        ):
+            self.assertIn(f"GroupName: {group}", _block(self.template, logical_id))
+        task_role = _block(self.template, "ApplicationTaskRole")
+        self.assertIn("cognito-idp:AdminGetUser", task_role)
+        self.assertIn("cognito-idp:ListUsersInGroup", task_role)
+        self.assertNotIn("cognito-idp:*", task_role)
+        self.assertIn("Resource: !GetAtt CognitoUserPool.Arn", task_role)
+
+    def test_backend_and_nginx_runtime_contract(self):
+        task = _block(self.template, "ApplicationTaskDefinition")
+        self.assertIn("Value: cognito_rbac", task)
+        self.assertIn("Name: COGNITO_USER_POOL_ID", task)
+        self.assertIn("Name: COGNITO_CLIENT_ID", task)
+        self.assertIn("proxy_pass http://127.0.0.1:8000;", self.nginx)
+        self.assertNotIn("ssl_certificate", self.nginx)
+
+    def test_outputs_do_not_expose_origin_token(self):
+        outputs = self.template.split("\nOutputs:\n", 1)[1]
+        self.assertIn("https://${CloudFrontDistribution.DomainName}", outputs)
+        self.assertNotIn("OriginVerificationToken", outputs)
+
+
+if __name__ == "__main__":
+    unittest.main()

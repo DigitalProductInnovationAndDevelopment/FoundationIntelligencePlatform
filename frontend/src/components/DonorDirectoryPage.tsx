@@ -30,7 +30,7 @@ import {
   type DonorDirectoryState,
   type GrantScope,
 } from "../lib/grantScope";
-import { mutationHeaders } from "../lib/http";
+import { apiFetch, mutationHeaders } from "../lib/http";
 
 type ProfileLink =
   | { status: "none" }
@@ -212,6 +212,7 @@ export type HeaderContextState = {
 interface Props {
   apiBase: string;
   online: boolean;
+  canOperate: boolean;
   selectedSources: string[];
   onHeaderStateChange: (state: HeaderContextState) => void;
   onBackToLandscape: (scope: GrantScope) => void;
@@ -347,6 +348,7 @@ function evidenceOrganizationName(evidence: EvidenceLink): string {
 export default function DonorDirectoryPage({
   apiBase,
   online,
+  canOperate,
   selectedSources,
   onHeaderStateChange,
   onBackToLandscape,
@@ -522,8 +524,8 @@ export default function DonorDirectoryPage({
     params.set("page_size", "25");
     setLoading(true);
     setError(null);
-    fetch(`${apiBase}/api/charities/grants/funders?${params.toString()}`, {
-      credentials: "include",
+    apiFetch(`${apiBase}/api/charities/grants/funders?${params.toString()}`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {
@@ -553,8 +555,8 @@ export default function DonorDirectoryPage({
     params.set("detail_level", full ? "full" : "summary");
     setDetailLoading(true);
     setDetailError(null);
-    fetch(`${apiBase}/api/charities/grants/funders/${encodeURIComponent(key)}?${params.toString()}`, {
-      credentials: "include",
+    apiFetch(`${apiBase}/api/charities/grants/funders/${encodeURIComponent(key)}?${params.toString()}`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {
@@ -737,7 +739,7 @@ export default function DonorDirectoryPage({
   };
 
   const beginEnrichmentSelection = async (donor: DonorResult) => {
-    if (!online || enrichmentIsActive(enrichmentRun)) return;
+    if (!canOperate || !online || enrichmentIsActive(enrichmentRun)) return;
     const existing = enrichmentQueue.find(item => item.donorKey === donor.source_funder_key);
     if (existing) {
       removeFromEnrichmentQueue(donor.source_funder_key);
@@ -752,8 +754,8 @@ export default function DonorDirectoryPage({
     setEnrichmentDialog({ donor, candidates: [], loading: true, error: null });
     try {
       const params = new URLSearchParams({ query: donor.display_name, limit: "5", sort: "name" });
-      const response = await fetch(`${apiBase}/api/charities/directory/organizations?${params.toString()}`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/charities/directory/organizations?${params.toString()}`, {
+        credentials: "omit",
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || "Could not search the cached Charity Commission register.");
@@ -769,7 +771,7 @@ export default function DonorDirectoryPage({
   };
 
   const startEnrichmentRun = async () => {
-    if (!online || !enrichmentQueue.length || enrichmentIsActive(enrichmentRun)) return;
+    if (!canOperate || !online || !enrichmentQueue.length || enrichmentIsActive(enrichmentRun)) return;
     setEnrichmentError(null);
     const queue = [...enrichmentQueue];
     const total = queue.length;
@@ -793,9 +795,9 @@ export default function DonorDirectoryPage({
     });
     try {
       const [response] = await Promise.all([
-        fetch(`${apiBase}/api/charities/grants/funders/enrich`, {
+        apiFetch(`${apiBase}/api/charities/grants/funders/enrich`, {
           method: "POST",
-          credentials: "include",
+          credentials: "omit",
           headers: mutationHeaders("enrich source funders", true),
           body: JSON.stringify({ reg_numbers: queue.map(item => item.charityNumber) }),
         }),
@@ -1008,7 +1010,7 @@ export default function DonorDirectoryPage({
               <Star size={16} fill={requestIsFavorite ? "currentColor" : "none"} /> {requestIsFavorite ? "Saved request" : "Save request"}
             </button>
           )}
-          {!isFavoritePresentation && enrichmentQueue.length > 0 && (
+          {canOperate && !isFavoritePresentation && enrichmentQueue.length > 0 && (
             <button
               type="button"
               className="btn btn-primary donor-enrichment-start"
@@ -1252,7 +1254,7 @@ export default function DonorDirectoryPage({
                         ) : (
                           <>
                             <p>This funder appears in observed grant data. No linked organization profile is currently available.</p>
-                            {!isFavoritePresentation && <div className="donor-enrichment-panel">
+                            {canOperate && !isFavoritePresentation && <div className="donor-enrichment-panel">
                               <div>
                                 <strong>Add to Organization Research</strong>
                                 <small>{queuedEnrichment
@@ -1271,7 +1273,7 @@ export default function DonorDirectoryPage({
                                 {queuedEnrichment ? "Remove" : "Add organization"}
                               </button>
                             </div>}
-                            {!isFavoritePresentation && queuedEnrichment && <button
+                            {canOperate && !isFavoritePresentation && queuedEnrichment && <button
                               type="button"
                               className="btn btn-primary donor-enrichment-start-inline"
                               disabled={!online || enrichmentIsActive(enrichmentRun)}
@@ -1359,7 +1361,7 @@ export default function DonorDirectoryPage({
         </div>
       )}
 
-      {enrichmentDialog && (
+      {canOperate && enrichmentDialog && (
         <div className="registry-detail-backdrop donor-enrichment-backdrop" onMouseDown={event => {
           if (event.currentTarget === event.target) setEnrichmentDialog(null);
         }}>

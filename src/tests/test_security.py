@@ -309,6 +309,7 @@ class TestSecurityGate(unittest.TestCase):
                 "/api/charities/grants/summary",
                 "/api/charities/grants/themes",
                 "/api/charities/grants/trends",
+                "/api/scraper/status",
             },
         )
         self.assertEqual(PUBLIC_READONLY_METHOD_ALLOWLIST, {"GET", "HEAD"})

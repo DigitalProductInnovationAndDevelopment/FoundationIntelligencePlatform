@@ -33,6 +33,7 @@ def _ssl_mode(environment: Mapping[str, str]) -> str:
     explicit = environment.get("DATABASE_SSL_MODE")
     url = environment.get("DATABASE_URL")
     query_modes: set[str] = set()
+    query: Mapping[str, str | tuple[str, ...]] = {}
     if url:
         try:
             query = make_url(url).query

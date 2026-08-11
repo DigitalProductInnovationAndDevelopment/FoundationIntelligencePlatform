@@ -1002,7 +1002,7 @@ async def get_default_charity_relevance_score(
 @router.post(
     "/{reg_charity_number}/score",
     response_model=ScoreResponse,
-    dependencies=[Depends(require_roles(Role.ANALYST, action="score.calculate"))],
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="score.calculate"))],
 )
 async def score_charity_relevance(
     reg_charity_number: int,
