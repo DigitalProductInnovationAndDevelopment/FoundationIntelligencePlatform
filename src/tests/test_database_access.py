@@ -11,6 +11,7 @@ from migration.database_access import (
     DatabaseAccessConfigurationError,
     configure_reader_role,
     configure_writer_role,
+    default_integrity_evidence,
     identifier,
 )
 
@@ -22,18 +23,42 @@ class _RecordingConnection:
         role_exists: bool = False,
         column_grants: list[dict[str, object]] | None = None,
         memberships: list[dict[str, object]] | None = None,
+        role_attributes: dict[str, object] | None = None,
     ):
         self.role_exists = role_exists
         self.column_grants = column_grants or []
         self.memberships = memberships or []
+        self.role_attributes = role_attributes or {
+            "rolname": "runtime",
+            "rolsuper": False,
+            "rolcreaterole": False,
+            "rolcreatedb": False,
+            "rolreplication": False,
+            "rolbypassrls": False,
+            "rolinherit": False,
+            "rolcanlogin": True,
+        }
         self.statements: list[str] = []
 
     async def fetchval(self, statement: str, *_args):
         self.statements.append(statement)
         return self.role_exists
 
+    async def fetchrow(self, statement: str, *_args):
+        self.statements.append(statement)
+        if not self.role_exists:
+            return None
+        return dict(self.role_attributes)
+
     async def execute(self, statement: str, *_args):
         self.statements.append(statement)
+        if statement.startswith("CREATE ROLE"):
+            self.role_exists = True
+            self.role_attributes["rolinherit"] = False
+            self.role_attributes["rolcanlogin"] = True
+        if statement.startswith("ALTER ROLE") and "LOGIN NOINHERIT" in statement:
+            self.role_attributes["rolinherit"] = False
+            self.role_attributes["rolcanlogin"] = True
         return "INSERT 0 1"
 
     async def fetch(self, statement: str, *_args):
@@ -93,7 +118,7 @@ class TestDatabaseAccessContract(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('UPDATE ON TABLE "charities"', sql)
         self.assertNotIn('INSERT ON TABLE "retention_policies"', sql)
 
-    async def test_existing_writer_is_demoted_before_exact_grants(self):
+    async def test_existing_safe_writer_is_configured_without_superuser_attribute(self):
         connection = _RecordingConnection(
             role_exists=True,
             column_grants=[
@@ -103,15 +128,14 @@ class TestDatabaseAccessContract(unittest.IsolatedAsyncioTestCase):
                     "column_names": ["credentials_reference", "enabled"],
                 }
             ],
-            memberships=[{"parent_role": "legacy_writer"}],
         )
         await configure_writer_role(connection, ENVIRONMENT)  # type: ignore[arg-type]
         sql = "\n".join(connection.statements)
         self.assertIn(
-            'ALTER ROLE "foundation_app_writer" LOGIN NOSUPERUSER '
-            "NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
+            'ALTER ROLE "foundation_app_writer" LOGIN NOINHERIT PASSWORD',
             sql,
         )
+        self.assertNotIn("SUPERUSER", sql)
         self.assertIn(
             'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "foundation_app_writer"',
             sql,
@@ -121,9 +145,64 @@ class TestDatabaseAccessContract(unittest.IsolatedAsyncioTestCase):
             '"source_configurations" FROM "foundation_app_writer"',
             sql,
         )
-        self.assertIn(
-            'REVOKE "legacy_writer" FROM "foundation_app_writer"',
-            sql,
+
+    async def test_existing_role_with_dangerous_attribute_fails_closed(self):
+        connection = _RecordingConnection(
+            role_exists=True,
+            role_attributes={
+                "rolname": "foundation_app_writer",
+                "rolsuper": False,
+                "rolcreaterole": True,
+                "rolcreatedb": False,
+                "rolreplication": False,
+                "rolbypassrls": False,
+                "rolinherit": False,
+                "rolcanlogin": True,
+            },
+        )
+        with self.assertRaises(DatabaseAccessConfigurationError):
+            await configure_writer_role(connection, ENVIRONMENT)  # type: ignore[arg-type]
+        self.assertFalse(
+            any(statement.startswith("ALTER ROLE") for statement in connection.statements)
+        )
+
+    async def test_existing_role_with_membership_fails_closed(self):
+        connection = _RecordingConnection(
+            role_exists=True,
+            memberships=[{"parent_role": "legacy_writer"}],
+        )
+        with self.assertRaises(DatabaseAccessConfigurationError):
+            await configure_writer_role(connection, ENVIRONMENT)  # type: ignore[arg-type]
+        self.assertFalse(
+            any(statement.startswith("ALTER ROLE") for statement in connection.statements)
+        )
+
+    def test_default_integrity_evidence_requires_preservation_and_only_defaults(self):
+        evidence = default_integrity_evidence(
+            before={
+                "source_configurations": {"existing-source": "a" * 64},
+                "retention_policies": {"existing-policy": "b" * 64},
+            },
+            after={
+                "source_configurations": {
+                    "existing-source": "a" * 64,
+                    "default-source": "c" * 64,
+                },
+                "retention_policies": {
+                    "existing-policy": "b" * 64,
+                    "default-policy": "d" * 64,
+                },
+            },
+            expected_default_ids={
+                "source_configurations": ("default-source",),
+                "retention_policies": ("default-policy",),
+            },
+        )
+        self.assertTrue(
+            evidence["source_configurations"]["existing_checksums_unchanged"]
+        )
+        self.assertTrue(
+            evidence["retention_policies"]["only_missing_defaults_added"]
         )
 
     def test_unsafe_or_shared_principal_input_is_rejected(self):

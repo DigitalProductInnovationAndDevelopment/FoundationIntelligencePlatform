@@ -392,7 +392,7 @@ Resources:
   AppDatabaseSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Description: SELECT-only application database reader for the public demo
+      Description: Restricted application database role for the public demo
       GenerateSecretString:
         SecretStringTemplate: !Sub '{"username":"${ApplicationDatabaseUser}"}'
         GenerateStringKey: password
