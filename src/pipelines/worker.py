@@ -33,8 +33,9 @@ async def run() -> None:
     if not database.pipeline_configured:
         raise RuntimeError("The production worker requires the dedicated dataset publisher")
     sessions = database.write_sessions()
+    pipeline_sessions = database.pipeline_sessions()
     expected_schema = load_observability_configuration().expected_schema_version
-    async with sessions() as session:
+    async with pipeline_sessions() as session:
         actual_schema = await session.scalar(text("SELECT version_num FROM alembic_version"))
     if actual_schema != expected_schema:
         await database.close()
@@ -47,7 +48,7 @@ async def run() -> None:
     lease_seconds = int(_bounded_float("WORKER_LEASE_SECONDS", 90, 15, 3600))
     idle_seconds = _bounded_float("WORKER_IDLE_SECONDS", 2, 0.25, 60)
     repository = PostgresJobRepository(sessions)
-    handlers = build_handlers(database.pipeline_sessions())
+    handlers = build_handlers(pipeline_sessions)
     worker = DurableWorker(
         repository,
         handlers.mapping,

@@ -166,6 +166,12 @@ class TestWorkerStorageAndContracts(unittest.TestCase):
         self.assertIn("signal.SIGTERM", source)
         self.assertIn("fail_expired", source)
 
+    def test_worker_schema_gate_uses_pipeline_principal(self):
+        source = (ROOT / "src/pipelines/worker.py").read_text(encoding="utf-8")
+        self.assertIn("pipeline_sessions = database.pipeline_sessions()", source)
+        self.assertIn("async with pipeline_sessions() as session", source)
+        self.assertIn("handlers = build_handlers(pipeline_sessions)", source)
+
     def test_backlog_retirement_is_explicit_terminal_and_preserves_rows(self):
         source = (ROOT / "src/pipelines/job_admin.py").read_text(encoding="utf-8")
         self.assertIn("WHERE job_run_id=ANY($1::uuid[])", source)
