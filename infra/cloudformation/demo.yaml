@@ -32,6 +32,11 @@ Parameters:
     Type: String
     Description: Immutable ARM64 backend ECR URI, preferably pinned by digest.
     AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  MigrationImageUri:
+    Type: String
+    Default: ''
+    Description: Optional backend image used to apply schema before enabling its runtime.
+    AllowedPattern: '^$|^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
   FrontendImageUri:
     Type: String
     Description: Immutable ARM64 frontend-runtime-ecs ECR URI, preferably pinned by digest.
@@ -70,6 +75,29 @@ Parameters:
     Description: >-
       Output of the separately executed DB-access prerequisite stack. Keep empty
       until the writer role and grants have been provisioned and verified.
+  ApplicationDatabasePipelineUser:
+    Type: String
+    Default: foundation_pipeline_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: Dedicated versioned-dataset publisher used only by the worker.
+  ApplicationDatabasePipelineSecretArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: Output of the verified DB-access prerequisite stack.
+  AnthropicSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/anthropic-api-key-[A-Za-z0-9]{6}$'
+    Description: Existing JSON secret containing the server-side Anthropic api_key.
+  CharityCommissionSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/charity-commission-api-key-[A-Za-z0-9]{6}$'
+    Description: Existing JSON secret containing the worker-only Charity Commission api_key.
+  WorkerEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Enable only after schema and dedicated database grants are ready.
   SourceObjectKey:
     Type: String
     Default: imports/charities.db
@@ -124,6 +152,19 @@ Rules:
       - Assert: !Not
           - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabaseWriterUser]
         AssertDescription: Reader and writer PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabasePipelineUser]
+        AssertDescription: Reader and pipeline PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseWriterUser, !Ref ApplicationDatabasePipelineUser]
+        AssertDescription: Writer and pipeline PostgreSQL principals must differ.
+  RequireWorkerPrerequisites:
+    RuleCondition: !Equals [!Ref WorkerEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
+        AssertDescription: Runtime writer secret is required when the worker is enabled.
+      - Assert: !Not [!Equals [!Ref ApplicationDatabasePipelineSecretArn, '']]
+        AssertDescription: Pipeline publisher secret is required when the worker is enabled.
   RequireCloudFrontPrefixListForLockdown:
     RuleCondition: !Equals [!Ref OriginLockdownEnabled, 'true']
     Assertions:
@@ -134,6 +175,9 @@ Conditions:
   OriginLockdown: !Equals [!Ref OriginLockdownEnabled, 'true']
   PublicOriginAccess: !Equals [!Ref OriginLockdownEnabled, 'false']
   RuntimeWriterConfigured: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
+  RuntimePipelineConfigured: !Not [!Equals [!Ref ApplicationDatabasePipelineSecretArn, '']]
+  PipelineWorkerEnabled: !Equals [!Ref WorkerEnabled, 'true']
+  SeparateMigrationImage: !Not [!Equals [!Ref MigrationImageUri, '']]
 
 Resources:
   DatabaseSubnetA:
@@ -325,6 +369,12 @@ Resources:
       LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/backend'
       RetentionInDays: 7
 
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/worker'
+      RetentionInDays: 7
+
   MigrationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -479,7 +529,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: ReadRuntimeDatabaseSecrets
+        - PolicyName: ReadApplicationSecrets
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -487,9 +537,15 @@ Resources:
                 Action: secretsmanager:GetSecretValue
                 Resource:
                   - !Ref AppDatabaseSecret
+                  - !Ref AnthropicSecretArn
+                  - !Ref CharityCommissionSecretArn
                   - !If
                     - RuntimeWriterConfigured
                     - !Ref ApplicationDatabaseWriterSecretArn
+                    - !Ref AWS::NoValue
+                  - !If
+                    - RuntimePipelineConfigured
+                    - !Ref ApplicationDatabasePipelineSecretArn
                     - !Ref AWS::NoValue
 
   MigrationExecutionRole:
@@ -543,6 +599,20 @@ Resources:
                   - cognito-idp:AdminEnableUser
                   - cognito-idp:AdminResetUserPassword
                 Resource: !GetAtt CognitoUserPool.Arn
+        - PolicyName: PipelineSnapshotArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadApprovedBaselineAndCurrentSnapshot
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub '${ImportBucket.Arn}/${SourceObjectKey}'
+                  - !Sub '${ImportBucket.Arn}/pipeline-snapshots/current.db'
+              - Sid: PublishVersionedCurrentSnapshot
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ImportBucket.Arn}/pipeline-snapshots/current.db'
 
   MigrationTaskRole:
     Type: AWS::IAM::Role
@@ -574,8 +644,8 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: !Sub '${AWS::StackName}-application'
-      Cpu: '512'
-      Memory: '2048'
+      Cpu: !If [PipelineWorkerEnabled, '1024', '512']
+      Memory: !If [PipelineWorkerEnabled, '4096', '2048']
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
       ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
@@ -632,6 +702,8 @@ Resources:
           Secrets:
             - Name: DATABASE_PASSWORD
               ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+            - Name: ANTHROPIC_API_KEY
+              ValueFrom: !Sub '${AnthropicSecretArn}:api_key::'
             - !If
               - RuntimeWriterConfigured
               - Name: DATABASE_WRITE_PASSWORD
@@ -686,6 +758,68 @@ Resources:
               awslogs-group: !Ref FrontendLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: frontend
+        - !If
+          - PipelineWorkerEnabled
+          - Name: worker
+            Image: !Ref BackendImageUri
+            Essential: true
+            User: '10001:10001'
+            EntryPoint: [python, -m]
+            Command: [pipelines.worker]
+            StopTimeout: 120
+            Environment:
+              - Name: APP_ENV
+                Value: demo
+              - Name: AUTH_MODE
+                Value: cognito_rbac
+              - Name: DATA_RUNTIME_MODE
+                Value: postgresql
+              - Name: DATABASE_HOST
+                Value: !GetAtt Database.Endpoint.Address
+              - Name: DATABASE_PORT
+                Value: '5432'
+              - Name: DATABASE_NAME
+                Value: foundation_intelligence
+              - Name: DATABASE_USER
+                Value: !Ref ApplicationDatabaseUser
+              - Name: DATABASE_WRITE_USER
+                Value: !Ref ApplicationDatabaseWriterUser
+              - Name: DATABASE_PIPELINE_USER
+                Value: !Ref ApplicationDatabasePipelineUser
+              - Name: DATABASE_SSL_MODE
+                Value: require
+              - Name: WORKER_QUEUE_NAME
+                Value: pipeline
+              - Name: WORKER_LEASE_SECONDS
+                Value: '90'
+              - Name: WORKER_IDLE_SECONDS
+                Value: '2'
+              - Name: PIPELINE_SNAPSHOT_S3_URI
+                Value: !Sub 's3://${ImportBucket}/pipeline-snapshots/current.db'
+              - Name: PIPELINE_FALLBACK_S3_URI
+                Value: !Sub 's3://${ImportBucket}/${SourceObjectKey}'
+              - Name: PIPELINE_FALLBACK_SHA256
+                Value: !Ref SourceSha256
+              - Name: PIPELINE_SOURCE_SCHEMA_VERSION
+                Value: !Ref SourceSchemaVersion
+              - Name: CODE_REVISION
+                Value: !Ref CodeRevision
+            Secrets:
+              - Name: DATABASE_PASSWORD
+                ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+              - Name: DATABASE_WRITE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabaseWriterSecretArn}:password::'
+              - Name: DATABASE_PIPELINE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabasePipelineSecretArn}:password::'
+              - Name: CHARITY_COMMISSION_API_KEY
+                ValueFrom: !Sub '${CharityCommissionSecretArn}:api_key::'
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref WorkerLogGroup
+                awslogs-region: !Ref AWS::Region
+                awslogs-stream-prefix: worker
+          - !Ref AWS::NoValue
       Tags:
         - Key: Environment
           Value: demo
@@ -731,7 +865,7 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: download
         - Name: migrate
-          Image: !Ref BackendImageUri
+          Image: !If [SeparateMigrationImage, !Ref MigrationImageUri, !Ref BackendImageUri]
           Essential: false
           User: '10001:10001'
           EntryPoint: [python, -m]
@@ -1047,5 +1181,12 @@ Outputs:
   ApplicationDatabaseWriterSecretArn:
     Condition: RuntimeWriterConfigured
     Value: !Ref ApplicationDatabaseWriterSecretArn
+  ApplicationDatabasePipelineUser:
+    Value: !Ref ApplicationDatabasePipelineUser
+  ApplicationDatabasePipelineSecretArn:
+    Condition: RuntimePipelineConfigured
+    Value: !Ref ApplicationDatabasePipelineSecretArn
+  WorkerEnabled:
+    Value: !Ref WorkerEnabled
   DatabaseSubnetIds:
     Value: !Join [',', [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]]

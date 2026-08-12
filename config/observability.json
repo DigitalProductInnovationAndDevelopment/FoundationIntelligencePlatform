@@ -1,7 +1,7 @@
 {
   "configuration_version": "1",
   "service": "foundation-intelligence-api",
-  "expected_schema_version": "0006_governance_retention",
+  "expected_schema_version": "0007_worker_execution",
   "metrics": [
     {"name": "readiness_success", "type": "gauge", "unit": "None", "dimensions": ["service", "environment"]},
     {"name": "api_request_duration_ms", "type": "histogram", "unit": "Milliseconds", "dimensions": ["service", "environment", "operation", "status"]},

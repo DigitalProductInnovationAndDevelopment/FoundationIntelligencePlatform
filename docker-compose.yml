@@ -16,6 +16,8 @@ x-backend-common: &backend-common
     DATABASE_NAME: foundation_intelligence
     DATABASE_USER: foundation_app
     DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+    DATABASE_WRITE_USER: foundation_app
+    DATABASE_WRITE_PASSWORD_FILE: /run/secrets/postgres_password
     DATABASE_CONNECT_TIMEOUT_SECONDS: "5"
     DATABASE_STATEMENT_TIMEOUT_MS: "30000"
   secrets:
@@ -114,15 +116,24 @@ services:
 
   worker:
     <<: *backend-common
-    profiles: ["operations"]
     depends_on:
       postgres:
         condition: service_healthy
-      migration:
-        condition: service_completed_successfully
     entrypoint: ["python", "-m"]
-    command: ["pipelines.run_pipeline", "--source", "consolidate"]
-    restart: "no"
+    command: ["pipelines.worker"]
+    environment:
+      <<: *backend-environment
+      DATABASE_PIPELINE_USER: foundation_app
+      DATABASE_PIPELINE_PASSWORD_FILE: /run/secrets/postgres_password
+      CODE_REVISION: 0000000000000000000000000000000000000000
+      PIPELINE_SOURCE_SCHEMA_VERSION: "7"
+      PIPELINE_BASELINE_PATH: /runtime-baseline/charities.db
+      PIPELINE_SNAPSHOT_PATH: /pipeline-snapshot/charities.db
+      PIPELINE_FALLBACK_SHA256: 8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651
+    volumes:
+      - ./src/data/charities.db:/runtime-baseline/charities.db:ro
+      - pipeline_snapshot:/pipeline-snapshot
+    restart: unless-stopped
 
 secrets:
   postgres_password:
@@ -130,3 +141,4 @@ secrets:
 
 volumes:
   postgres_data:
+  pipeline_snapshot:

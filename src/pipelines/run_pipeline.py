@@ -83,6 +83,7 @@ def publish_full_run_database_with_ecb_conversion(
     staging_db_file: str,
     db_file: str,
     timeout: int,
+    report_path: str | None = None,
 ) -> dict:
     """Validate and convert one staging DB, then publish it exactly once.
 
@@ -95,11 +96,12 @@ def publish_full_run_database_with_ecb_conversion(
         repair = db_loader.prepare_staging_database_for_publish(staging_db_file)
         logger.info("Step F: Staging profile-link repair completed: %s", repair)
         logger.info("Step G: Applying official ECB EUR conversions in staging...")
-        report_path = os.path.join(
-            PROJECT_ROOT,
-            "data/processed/ecb_exchange_rate_backfill_report.json",
+        conversion_report_path = report_path or os.path.join(
+            PROJECT_ROOT, "data/processed/ecb_exchange_rate_backfill_report.json"
         )
-        report = apply_ecb_conversion_backfill(staging_db_file, report_path, timeout)
+        report = apply_ecb_conversion_backfill(
+            staging_db_file, conversion_report_path, timeout
+        )
         # backfill_database itself atomically replaces the staging path with its
         # converted clone; validate it again and make the only active publish.
         db_loader.publish_staging_database(staging_db_file, db_file)
@@ -120,13 +122,27 @@ def run_pipeline(args):
     logger.info(f"Starting {source.upper()} Data Pipeline Execution")
     logger.info("=========================================")
 
-    # Setup Paths
-    raw_cc_path = args.raw_cc_output or os.path.join(PROJECT_ROOT, "data/raw/register_of_charities_results.json")
-    raw_ts_path = args.raw_ts_output or os.path.join(PROJECT_ROOT, "data/raw/threesixtygiving_results.json")
-    raw_philea_path = os.path.join(PROJECT_ROOT, "data/raw/philea_members.json")
-    charities_jsonl_path = os.path.join(PROJECT_ROOT, "data/preprocessed/charities.jsonl")
-    grants_jsonl_path = os.path.join(PROJECT_ROOT, "data/preprocessed/grants.jsonl")
-    db_file = os.path.join(PROJECT_ROOT, "data/charities.db")
+    # Production workers receive an isolated writable directory. Developer CLI
+    # behavior remains unchanged when no work directory is supplied.
+    work_directory = getattr(args, "work_directory", None)
+    data_root = (
+        os.path.join(os.path.abspath(work_directory), "data")
+        if work_directory
+        else os.path.join(PROJECT_ROOT, "data")
+    )
+    raw_root = os.path.join(data_root, "raw")
+    preprocessed_root = os.path.join(data_root, "preprocessed")
+    processed_root = os.path.join(data_root, "processed")
+    os.makedirs(raw_root, exist_ok=True)
+    os.makedirs(preprocessed_root, exist_ok=True)
+    os.makedirs(processed_root, exist_ok=True)
+    raw_cc_path = args.raw_cc_output or os.path.join(raw_root, "register_of_charities_results.json")
+    raw_ts_path = args.raw_ts_output or os.path.join(raw_root, "threesixtygiving_results.json")
+    raw_philea_path = os.path.join(raw_root, "philea_members.json")
+    charities_jsonl_path = os.path.join(preprocessed_root, "charities.jsonl")
+    grants_jsonl_path = os.path.join(preprocessed_root, "grants.jsonl")
+    db_file = os.path.join(data_root, "charities.db")
+    successful_primary_imports = 0
 
     if source == "register_of_charities":
         existing = [] if args.fresh else load_existing_raw(raw_cc_path)
@@ -367,11 +383,11 @@ def run_pipeline(args):
         logger.info(f"Exported grants table to: {grants_jsonl_path}")
 
         enrichment_report = build_enrichment_report(charities_list, grants_list)
-        enrichment_report_path = os.path.join(PROJECT_ROOT, "data/preprocessed/enrichment_report.json")
+        enrichment_report_path = os.path.join(preprocessed_root, "enrichment_report.json")
         with open(enrichment_report_path, "w", encoding="utf-8") as f:
             json.dump(enrichment_report, f, ensure_ascii=False, indent=2)
         logger.info(f"Exported enrichment coverage report to: {enrichment_report_path}")
-        philea_report_path = os.path.join(PROJECT_ROOT, "data/preprocessed/philea_integration_report.json")
+        philea_report_path = os.path.join(preprocessed_root, "philea_integration_report.json")
         with open(philea_report_path, "w", encoding="utf-8") as f:
             json.dump(philea_report, f, ensure_ascii=False, indent=2)
         logger.info(f"Exported Philea integration report to: {philea_report_path}")
@@ -465,7 +481,11 @@ def run_pipeline(args):
                     "Fresh full run has no successful primary-source discovery; refusing to publish an empty or Philea-only database."
                 )
             logger.info("No foundations to process; active database remains unchanged.")
-            return
+            return {
+                "status": "no_changes",
+                "database_path": db_file,
+                "successful_primary_imports": 0,
+            }
             
         logger.info(f"Found {len(target_tuples)} target foundations to process.")
         
@@ -478,7 +498,7 @@ def run_pipeline(args):
         
         successful_primary_imports = 0
         for idx, (reg_no, suffix) in enumerate(target_tuples, 1):
-            if reg_no in completed_numbers and not args.fresh:
+            if reg_no in completed_numbers and not args.fresh and not args.reg_numbers:
                 logger.info(f"[{idx}/{len(target_tuples)}] Skipping Charity {reg_no} (already processed in database).")
                 continue
                 
@@ -591,6 +611,7 @@ def run_pipeline(args):
             staging_db_file,
             db_file,
             args.timeout,
+            os.path.join(processed_root, "ecb_exchange_rate_backfill_report.json"),
         )
 
     else:
@@ -600,6 +621,11 @@ def run_pipeline(args):
     logger.info("=========================================")
     logger.info(f"Pipeline Source '{source.upper()}' Completed Successfully!")
     logger.info("=========================================")
+    return {
+        "status": "success",
+        "database_path": db_file,
+        "successful_primary_imports": successful_primary_imports,
+    }
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Orchestrate UK Charities and 360Giving Data Pipelines.")
@@ -609,6 +635,12 @@ if __name__ == "__main__":
         choices=["360giving", "register_of_charities", "consolidate", "full_run"],
         default="consolidate",
         help="Pipeline phase to execute."
+    )
+    parser.add_argument(
+        "--work-directory",
+        type=str,
+        default=None,
+        help="Isolated writable root for worker execution artifacts.",
     )
     parser.add_argument(
         "--raw-cc-output",

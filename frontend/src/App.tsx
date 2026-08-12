@@ -45,6 +45,7 @@ import {
   type GrantScope,
 } from "./lib/grantScope";
 import { apiFetch, mutationHeaders } from "./lib/http";
+import { avatarInitials } from "./lib/avatar";
 import { useAuth } from "./auth/authState";
 import amplifyLogo from "./assets/amplify-logo.svg";
 import type {
@@ -1052,6 +1053,7 @@ function AuthenticatedApplication() {
   const [pipelineSearch, setPipelineSearch] = useState<string>("");
   const [pipelineIds, setPipelineIds] = useState<string>("");
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const authenticatedIdentity = auth.identity?.email || auth.identity?.username || "";
 
   const runHealthCheck = useEffectEvent((signal: AbortSignal) => {
     void checkBffHealth(signal);
@@ -2641,16 +2643,18 @@ function AuthenticatedApplication() {
 
         <div className="sidebar-footer">
           <div className="user-profile">
-            <div className="user-avatar" aria-hidden="true">NL</div>
+            <div className="user-avatar" aria-hidden="true">
+              {avatarInitials(authenticatedIdentity, auth.authenticated)}
+            </div>
             <div className="user-info">
               <span className="user-name">{auth.authenticated
                 ? auth.identity?.email || auth.identity?.username || "Authenticated user"
                 : "Netlight Guest"}</span>
               <span className="user-role">{auth.authenticated ? auth.role : "Not signed in"}</span>
+              {auth.mode === "cognito_rbac" && (auth.authenticated
+                ? <button type="button" className="sidebar-auth-action" onClick={auth.logout}><LogOut size={14} aria-hidden="true" /><span>Sign out</span></button>
+                : <button type="button" className="sidebar-auth-action" onClick={() => void auth.login()}><LogIn size={14} aria-hidden="true" /><span>Sign in</span></button>)}
             </div>
-            {auth.mode === "cognito_rbac" && (auth.authenticated
-              ? <button type="button" className="sidebar-auth-action" onClick={auth.logout}><LogOut size={16} aria-hidden="true" /><span>Sign out</span></button>
-              : <button type="button" className="sidebar-auth-action" onClick={() => void auth.login()}><LogIn size={16} aria-hidden="true" /><span>Sign in</span></button>)}
           </div>
           {auth.error && <div className="sidebar-auth-error" role="alert">{auth.error}</div>}
           {activeTab === "admin" && <button className="sidebar-health-check" onClick={() => checkBffHealth()}>
@@ -3441,7 +3445,7 @@ function AuthenticatedApplication() {
                       <button
                         className="btn btn-primary"
                         style={{ flexGrow: "1" }}
-                        disabled={isTriggering || pipelineStatus.status === "running"}
+                        disabled={isTriggering || pipelineStatus.status === "queued" || pipelineStatus.status === "running"}
                         onClick={() => triggerPipeline("full_run")}
                       >
                         <Play size={16} />
@@ -3538,7 +3542,7 @@ function AuthenticatedApplication() {
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "var(--text-secondary)" }}>Pipeline State:</span>
-                      <span className={`badge ${pipelineStatus.status === "running" ? "badge-warning" : pipelineStatus.status === "success" ? "badge-success" : "badge-tag"}`}>
+                      <span className={`badge ${pipelineStatus.status === "queued" || pipelineStatus.status === "running" ? "badge-warning" : pipelineStatus.status === "success" ? "badge-success" : "badge-tag"}`}>
                         {pipelineStatus.status}
                       </span>
                     </div>
@@ -3633,7 +3637,7 @@ function AuthenticatedApplication() {
                     <span className="dot dot-green"></span>
                   </div>
                 </div>
-                <div className={`terminal-body ${pipelineStatus.status === "running" ? "running" : ""}`}>
+                <div className={`terminal-body ${pipelineStatus.status === "queued" || pipelineStatus.status === "running" ? "running" : ""}`}>
                   {logs}
                   <div ref={logsEndRef}></div>
                 </div>

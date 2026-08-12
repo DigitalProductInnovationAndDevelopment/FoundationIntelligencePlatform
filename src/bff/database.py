@@ -157,6 +157,47 @@ class DatabaseSettings:
             )
         return settings
 
+    @classmethod
+    def pipeline_from_env(
+        cls, environ: Optional[Mapping[str, str]] = None
+    ) -> Optional["DatabaseSettings"]:
+        """Build the dataset-publisher connection without runtime-writer fallback."""
+        env = os.environ if environ is None else environ
+        pipeline_credentials = {
+            "DATABASE_PIPELINE_URL",
+            "DATABASE_PIPELINE_USER",
+            "DATABASE_PIPELINE_PASSWORD",
+            "DATABASE_PIPELINE_PASSWORD_FILE",
+        }
+        if not any(env.get(name) for name in pipeline_credentials):
+            return None
+        normalized = {
+            "DATABASE_URL": env.get("DATABASE_PIPELINE_URL"),
+            "DATABASE_HOST": env.get("DATABASE_PIPELINE_HOST") or env.get("DATABASE_HOST"),
+            "DATABASE_PORT": env.get("DATABASE_PIPELINE_PORT") or env.get("DATABASE_PORT"),
+            "DATABASE_NAME": env.get("DATABASE_PIPELINE_NAME") or env.get("DATABASE_NAME"),
+            "DATABASE_USER": env.get("DATABASE_PIPELINE_USER"),
+            "DATABASE_PASSWORD": env.get("DATABASE_PIPELINE_PASSWORD"),
+            "DATABASE_PASSWORD_FILE": env.get("DATABASE_PIPELINE_PASSWORD_FILE"),
+            "DATABASE_SSL_MODE": env.get("DATABASE_PIPELINE_SSL_MODE")
+            or env.get("DATABASE_SSL_MODE"),
+            "DATABASE_POOL_SIZE": "1",
+            "DATABASE_MAX_OVERFLOW": "1",
+            "DATABASE_POOL_TIMEOUT_SECONDS": env.get("DATABASE_POOL_TIMEOUT_SECONDS"),
+            "DATABASE_CONNECT_TIMEOUT_SECONDS": env.get(
+                "DATABASE_CONNECT_TIMEOUT_SECONDS"
+            ),
+            "DATABASE_STATEMENT_TIMEOUT_MS": "86400000",
+        }
+        settings = cls.from_env(
+            {key: value for key, value in normalized.items() if value is not None}
+        )
+        if not settings.configured:
+            raise DatabaseConfigurationError(
+                "Pipeline PostgreSQL credentials are incomplete; no runtime credential fallback is allowed"
+            )
+        return settings
+
     @property
     def configured(self) -> bool:
         return bool(
@@ -402,15 +443,17 @@ class DatabaseManager:
 
 
 class DatabaseAccess:
-    """Separate reader and optional writer pools for the long-running runtime."""
+    """Separate reader, API-writer and worker-publisher connection pools."""
 
     def __init__(
         self,
         reader_settings: DatabaseSettings,
         writer_settings: Optional[DatabaseSettings] = None,
+        pipeline_settings: Optional[DatabaseSettings] = None,
     ) -> None:
         self.reader = DatabaseManager(reader_settings)
         self.writer = DatabaseManager(writer_settings) if writer_settings else None
+        self.pipeline = DatabaseManager(pipeline_settings) if pipeline_settings else None
 
     @classmethod
     def from_env(
@@ -419,6 +462,7 @@ class DatabaseAccess:
         return cls(
             DatabaseSettings.from_env(environ),
             DatabaseSettings.writer_from_env(environ),
+            DatabaseSettings.pipeline_from_env(environ),
         )
 
     @property
@@ -429,6 +473,10 @@ class DatabaseAccess:
     def writer_configured(self) -> bool:
         return bool(self.writer and self.writer.configured)
 
+    @property
+    def pipeline_configured(self) -> bool:
+        return bool(self.pipeline and self.pipeline.configured)
+
     def sessions(self) -> async_sessionmaker[AsyncSession]:
         """Return the reader factory used by startup, health and all GET paths."""
         return self.reader.sessions()
@@ -438,6 +486,12 @@ class DatabaseAccess:
         if not self.writer_configured or self.writer is None:
             raise WriterDatabaseUnavailable("The runtime writer is not configured")
         return self.writer.sessions()
+
+    def pipeline_sessions(self) -> async_sessionmaker[AsyncSession]:
+        """Return the worker-only dataset publisher session factory."""
+        if not self.pipeline_configured or self.pipeline is None:
+            raise WriterDatabaseUnavailable("The pipeline publisher is not configured")
+        return self.pipeline.sessions()
 
     async def check(self) -> bool:
         return await self.reader.check()
@@ -464,3 +518,5 @@ class DatabaseAccess:
         await self.reader.close()
         if self.writer is not None:
             await self.writer.close()
+        if self.pipeline is not None:
+            await self.pipeline.close()

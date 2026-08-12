@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, LoaderCircle, Search, X } from "lucide-react";
 import { validateOptionalNumericRange } from "../lib/numericRange";
 import { apiFetch, mutationHeaders } from "../lib/http";
+import { pollDurableJob } from "../lib/jobs";
 
 interface RegistrySummary {
   registry_id: string;
@@ -82,14 +83,10 @@ const formatCurrency = (value: number | null) => {
 const queryBoolean = (value: boolean | null) => value === null ? "" : String(value);
 
 type RegistryEnrichmentRun = {
-  status: "starting" | "running" | "success" | "failed";
-  progress: number;
-  startedAt?: number;
+  status: "queued" | "running" | "success" | "failed";
   message: string;
   error?: string;
 };
-
-const LOCAL_PROFILE_LINK_DURATION_MS = 7_000;
 
 export default function RegistryDirectory({ apiBase, online, canOperate, initialQuery = "", initialBeneficiaryGeography = "", onOpenEnrichedProfile }: RegistryDirectoryProps) {
   const [query, setQuery] = useState(initialQuery);
@@ -261,7 +258,7 @@ export default function RegistryDirectory({ apiBase, online, canOperate, initial
   }, [detailRefreshRevision, selectedRegistryId, loadDetail]);
 
   const startRegistryEnrichment = useCallback(async () => {
-    if (!canOperate || !detail || detail.enriched_profile || registryEnrichment?.status === "running" || registryEnrichment?.status === "starting") return;
+    if (!canOperate || !detail || detail.enriched_profile || registryEnrichment?.status === "running" || registryEnrichment?.status === "queued") return;
     const targetRegistryId = selectedRegistryId;
     if (!targetRegistryId || detail.registry_id !== targetRegistryId) return;
     const charityNumber = [detail.linked_charity_number, detail.charity_number]
@@ -270,7 +267,6 @@ export default function RegistryDirectory({ apiBase, online, canOperate, initial
     if (!charityNumber) {
       setRegistryEnrichment({
         status: "failed",
-        progress: 0,
         message: "A usable Charity Commission number is required for this check.",
       });
       return;
@@ -278,51 +274,46 @@ export default function RegistryDirectory({ apiBase, online, canOperate, initial
     if (!online) {
       setRegistryEnrichment({
         status: "failed",
-        progress: 0,
         message: "Reconnect the local backend before starting the profile and grant check.",
       });
       return;
     }
 
-    const startedAt = Date.now();
     const currentVersion = ++enrichmentVersion.current;
     enrichmentRequestRef.current?.abort();
     const controller = new AbortController();
     enrichmentRequestRef.current = controller;
     setRegistryEnrichment({
-      status: "starting",
-      progress: 5,
-      startedAt,
-      message: "Linking the cached official record and observed grants",
+      status: "queued",
+      message: "Queued for worker processing",
     });
     try {
-      const [response] = await Promise.all([
-        apiFetch(`${apiBase}/api/charities/directory/organizations/enrich`, {
-          method: "POST",
-          credentials: "omit",
-          headers: mutationHeaders("enrich registry organization", true),
-          body: JSON.stringify({ reg_numbers: [charityNumber] }),
-          signal: controller.signal,
-        }),
-        new Promise(resolve => window.setTimeout(resolve, LOCAL_PROFILE_LINK_DURATION_MS)),
-      ]);
+      const response = await apiFetch(`${apiBase}/api/charities/directory/organizations/enrich`, {
+        method: "POST",
+        credentials: "omit",
+        headers: mutationHeaders("enrich registry organization", true),
+        body: JSON.stringify({ reg_numbers: [charityNumber] }),
+        signal: controller.signal,
+      });
       const payload = await response.json();
       if (currentVersion !== enrichmentVersion.current || selectedRegistryIdRef.current !== targetRegistryId) return;
       if (!response.ok) throw new Error(payload.detail || "Could not start the profile and grant check.");
-      // The selected official record and already-stored observed grants are
-      // linked locally, so this should complete without waiting on a global
-      // source pipeline or its progress log.
-      if (payload.status === "success") {
+      const completed = await pollDurableJob(apiBase, payload.job_id, job => {
+        if (job.status !== "queued" && job.status !== "running") return;
         setRegistryEnrichment({
-          status: "success",
-          progress: 100,
-          message: "Profile linked. Opening the available organization profile.",
+          status: job.status === "queued" ? "queued" : "running",
+          message: job.status === "queued" ? "Queued for worker processing" : "Linking the official record and profile",
         });
-        setDetailRefreshRevision(current => current + 1);
-        void loadPage();
-        return;
+      }, controller.signal);
+      if (completed.status !== "succeeded") {
+        throw new Error(completed.failure_reason || completed.error_message || "Profile linking failed.");
       }
-      throw new Error("The local profile link did not complete.");
+      setRegistryEnrichment({
+        status: "success",
+        message: "Profile linked. Persisted organization data is now available.",
+      });
+      setDetailRefreshRevision(current => current + 1);
+      void loadPage();
     } catch (requestError) {
       if (
         (requestError as Error).name === "AbortError"
@@ -331,7 +322,6 @@ export default function RegistryDirectory({ apiBase, online, canOperate, initial
       ) return;
       setRegistryEnrichment({
         status: "failed",
-        progress: 0,
         message: "Could not start the profile and grant check.",
         error: (requestError as Error).message,
       });
@@ -339,26 +329,6 @@ export default function RegistryDirectory({ apiBase, online, canOperate, initial
       if (enrichmentRequestRef.current === controller) enrichmentRequestRef.current = null;
     }
   }, [apiBase, canOperate, detail, loadPage, online, registryEnrichment?.status, selectedRegistryId]);
-
-  useEffect(() => {
-    if (registryEnrichment?.status !== "starting") return;
-    const startedAt = registryEnrichment.startedAt || Date.now();
-    const updateProgress = () => {
-      const elapsed = Math.max(0, Date.now() - startedAt);
-      const progress = Math.min(94, Math.round(5 + (elapsed / LOCAL_PROFILE_LINK_DURATION_MS) * 89));
-      const message = progress < 35
-        ? "Confirming the official Charity Commission record"
-        : progress < 72
-          ? "Creating the Organization Research profile"
-          : "Linking already observed grants";
-      setRegistryEnrichment(current => current?.status === "starting" && current.startedAt === startedAt
-        ? { ...current, progress, message }
-        : current);
-    };
-    updateProgress();
-    const timer = window.setInterval(updateProgress, 180);
-    return () => window.clearInterval(timer);
-  }, [registryEnrichment?.startedAt, registryEnrichment?.status]);
 
   const resetFilters = () => {
     setQuery("");
@@ -619,26 +589,22 @@ export default function RegistryDirectory({ apiBase, online, canOperate, initial
                   {canOperate && !detail.enriched_profile && <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={!online || registryEnrichment?.status === "running" || registryEnrichment?.status === "starting"}
+                    disabled={!online || registryEnrichment?.status === "running" || registryEnrichment?.status === "queued"}
                     onClick={() => void startRegistryEnrichment()}
                   >
-                    {registryEnrichment?.status === "running" || registryEnrichment?.status === "starting" ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}
-                    {registryEnrichment?.status === "running" || registryEnrichment?.status === "starting" ? "Adding…" : "Add profile"}
+                    {registryEnrichment?.status === "running" || registryEnrichment?.status === "queued" ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}
+                    {registryEnrichment?.status === "running" || registryEnrichment?.status === "queued" ? "Adding…" : "Add profile"}
                   </button>}
                 </div>
                 {registryEnrichment && <div className="registry-enrichment-progress" role="status" aria-live="polite">
                   <div className="registry-enrichment-progress-copy">
                     <span>{registryEnrichment.message}</span>
-                    <strong>{registryEnrichment.progress}%</strong>
+                    <strong>{registryEnrichment.status === "queued" ? "Queued" : registryEnrichment.status === "running" ? "Running" : registryEnrichment.status === "success" ? "Complete" : "Failed"}</strong>
                   </div>
-                  <div
-                    className="registry-enrichment-progress-track"
-                    role="progressbar"
-                    aria-label="Profile and grant check progress"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={registryEnrichment.progress}
-                  ><i style={{ width: `${registryEnrichment.progress}%` }} /></div>
+                  {(registryEnrichment.status === "queued" || registryEnrichment.status === "running") && <div
+                    className="registry-enrichment-progress-track is-indeterminate"
+                    aria-hidden="true"
+                  ><i /></div>}
                   {registryEnrichment.error && <small className="registry-enrichment-error">{registryEnrichment.error}</small>}
                 </div>}
               </div>}

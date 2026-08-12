@@ -7,7 +7,7 @@ class TestReleaseGate(unittest.TestCase):
     def test_approved_active_dataset_passes(self):
         result = evaluate_release_state(
             {
-                "schema_version": "0006_governance_retention",
+                "schema_version": "0007_worker_execution",
                 "active_dataset_count": 1,
                 "dataset_version": "dataset-approved",
                 "migration_status": "active",

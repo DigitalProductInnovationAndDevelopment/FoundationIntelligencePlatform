@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -73,6 +74,9 @@ async def trigger_pipeline(
         payload.model_dump(exclude={"source"}),
         actor_id=_actor(request),
         idempotency_key=str(request.headers.get("idempotency-key") or "").strip(),
+        active_dedupe_key=f"pipeline:{payload.source}",
+        max_attempts=1,
+        timeout_seconds=21_600 if payload.source == "full_run" else 3_600,
     )
     return {
         "status": job["status"],
@@ -103,6 +107,17 @@ async def get_pipeline_jobs(
             for job in jobs
         ]
     }
+
+
+@router.get("/pipeline/jobs/{job_id}")
+async def get_pipeline_job(
+    job_id: uuid.UUID,
+    repository: PostgresJobRepository = Depends(_jobs),
+):
+    job = await repository.get(str(job_id))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Pipeline job not found")
+    return job
 
 
 @router.get(

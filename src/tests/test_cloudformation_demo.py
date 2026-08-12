@@ -181,6 +181,50 @@ class TestCloudFormationCustomerAccessContract(unittest.TestCase):
         self.assertIn("ExecutionRoleArn: !GetAtt MigrationExecutionRole.Arn", migration)
         self.assertIn("MasterUserSecret", migration_execution)
 
+    def test_worker_sidecar_is_private_and_uses_backend_runtime(self):
+        application = _block(self.template, "ApplicationTaskDefinition")
+        service = _block(self.template, "ApplicationService")
+        worker = application.split("- Name: worker", 1)[1]
+        self.assertIn("Image: !Ref BackendImageUri", worker)
+        self.assertIn("EntryPoint: [python, -m]", worker)
+        self.assertIn("Command: [pipelines.worker]", worker)
+        self.assertIn("Name: DATABASE_PIPELINE_PASSWORD", worker)
+        self.assertIn("Name: PIPELINE_SNAPSHOT_S3_URI", worker)
+        self.assertNotIn("PortMappings:", worker)
+        self.assertNotIn("ContainerName: worker", service)
+        self.assertIn("ContainerName: frontend", service)
+        self.assertIn("Cpu: !If [PipelineWorkerEnabled, '1024', '512']", application)
+        self.assertIn("Memory: !If [PipelineWorkerEnabled, '4096', '2048']", application)
+
+    def test_pipeline_publisher_secret_and_snapshot_permissions_are_scoped(self):
+        execution = _block(self.template, "EcsExecutionRole")
+        task_role = _block(self.template, "ApplicationTaskRole")
+        prerequisite = _block(self.db_prerequisite, "DbAccessTaskDefinition")
+        self.assertIn("ApplicationDatabasePipelineSecretArn", execution)
+        self.assertIn("s3:GetObject", task_role)
+        self.assertIn("s3:PutObject", task_role)
+        self.assertIn("pipeline-snapshots/current.db", task_role)
+        self.assertNotIn("s3:*", task_role)
+        self.assertIn("DATABASE_PIPELINE_PASSWORD", prerequisite)
+
+    def test_external_api_secrets_are_injected_only_where_needed(self):
+        parameters = self.template.split("\nRules:\n", 1)[0]
+        application = _block(self.template, "ApplicationTaskDefinition")
+        execution = _block(self.template, "EcsExecutionRole")
+        backend, worker = application.split("- Name: worker", 1)
+        self.assertIn("AnthropicSecretArn", parameters)
+        self.assertIn("CharityCommissionSecretArn", parameters)
+        self.assertIn("Name: ANTHROPIC_API_KEY", backend)
+        self.assertIn("${AnthropicSecretArn}:api_key::", backend)
+        self.assertNotIn("CHARITY_COMMISSION_API_KEY", backend)
+        self.assertIn("Name: CHARITY_COMMISSION_API_KEY", worker)
+        self.assertIn("${CharityCommissionSecretArn}:api_key::", worker)
+        self.assertNotIn("ANTHROPIC_API_KEY", worker)
+        self.assertIn("!Ref AnthropicSecretArn", execution)
+        self.assertIn("!Ref CharityCommissionSecretArn", execution)
+        self.assertNotIn("Resource: '*'", execution)
+        self.assertNotIn("kms:Decrypt", execution)
+
     def test_db_prerequisite_stack_has_no_application_cutover_or_edge_resources(self):
         source = self.db_prerequisite
         self.assertIn("Type: AWS::SecretsManager::Secret", source)
@@ -204,7 +248,9 @@ class TestCloudFormationCustomerAccessContract(unittest.TestCase):
         self.assertIn("DATABASE_ADMIN_PASSWORD", task)
         self.assertIn("DATABASE_READER_PASSWORD", task)
         self.assertIn("DATABASE_WRITER_PASSWORD", task)
+        self.assertIn("DATABASE_PIPELINE_PASSWORD", task)
         self.assertIn("WriterDatabaseSecretArn", outputs)
+        self.assertIn("PipelineDatabaseSecretArn", outputs)
         self.assertNotIn("password", outputs.lower())
 
     def test_outputs_do_not_expose_origin_token(self):

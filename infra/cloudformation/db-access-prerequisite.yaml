@@ -28,6 +28,10 @@ Parameters:
     Type: String
     Default: foundation_app_writer
     AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+  DatabasePipelineUser:
+    Type: String
+    Default: foundation_pipeline_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
   DatabaseMasterSecretArn:
     Type: String
     AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@!-]+$'
@@ -45,6 +49,12 @@ Rules:
       - Assert: !Not
           - !Equals [!Ref DatabaseReaderUser, !Ref DatabaseWriterUser]
         AssertDescription: Reader and writer PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref DatabaseReaderUser, !Ref DatabasePipelineUser]
+        AssertDescription: Reader and pipeline PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref DatabaseWriterUser, !Ref DatabasePipelineUser]
+        AssertDescription: Writer and pipeline PostgreSQL principals must differ.
 
 Resources:
   WriterDatabaseSecret:
@@ -63,6 +73,23 @@ Resources:
           Value: demo
         - Key: Purpose
           Value: runtime-database-writer
+
+  PipelineDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Restricted versioned dataset publisher for the pipeline worker
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${DatabasePipelineUser}"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: Purpose
+          Value: pipeline-dataset-publisher
 
   DbAccessLogGroup:
     Type: AWS::Logs::LogGroup
@@ -93,6 +120,7 @@ Resources:
                   - !Ref DatabaseMasterSecretArn
                   - !Ref DatabaseReaderSecretArn
                   - !Ref WriterDatabaseSecret
+                  - !Ref PipelineDatabaseSecret
 
   DbAccessTaskRole:
     Type: AWS::IAM::Role
@@ -138,6 +166,8 @@ Resources:
               Value: !Ref DatabaseReaderUser
             - Name: DATABASE_WRITER_USER
               Value: !Ref DatabaseWriterUser
+            - Name: DATABASE_PIPELINE_USER
+              Value: !Ref DatabasePipelineUser
             - Name: DATABASE_SSL_MODE
               Value: require
           Secrets:
@@ -149,6 +179,8 @@ Resources:
               ValueFrom: !Sub '${DatabaseReaderSecretArn}:password::'
             - Name: DATABASE_WRITER_PASSWORD
               ValueFrom: !Sub '${WriterDatabaseSecret}:password::'
+            - Name: DATABASE_PIPELINE_PASSWORD
+              ValueFrom: !Sub '${PipelineDatabaseSecret}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -167,6 +199,11 @@ Outputs:
     Value: !Ref WriterDatabaseSecret
   WriterDatabaseUser:
     Value: !Ref DatabaseWriterUser
+  PipelineDatabaseSecretArn:
+    Description: Pass to the application stack only for the worker container.
+    Value: !Ref PipelineDatabaseSecret
+  PipelineDatabaseUser:
+    Value: !Ref DatabasePipelineUser
   DbAccessTaskDefinitionArn:
     Value: !Ref DbAccessTaskDefinition
   DbAccessLogGroupName:

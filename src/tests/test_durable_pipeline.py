@@ -33,6 +33,7 @@ from pipelines.durable_worker import DurableWorker, OutboxDispatcher
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_PATH = REPOSITORY_ROOT / "alembic" / "versions" / "0005_durable_pipeline.py"
+WORKER_MIGRATION_PATH = REPOSITORY_ROOT / "alembic" / "versions" / "0007_worker_execution.py"
 REQUIRED_SOURCES = {
     "360giving",
     "charity_commission",
@@ -226,6 +227,14 @@ class TestDurablePipelineContracts(unittest.IsolatedAsyncioTestCase):
             "pipeline_run.lock",
         ):
             self.assertNotIn(forbidden, combined)
+
+    def test_worker_migration_adds_active_dedupe_without_rewriting_job_history(self):
+        source = WORKER_MIGRATION_PATH.read_text(encoding="utf-8")
+        self.assertIn("ALTER TABLE job_runs ADD COLUMN active_dedupe_key", source)
+        self.assertIn("CREATE UNIQUE INDEX uq_job_runs_active_dedupe", source)
+        self.assertIn("status IN ('queued', 'running')", source)
+        for forbidden in ("DROP TABLE JOB_RUNS", "TRUNCATE", "DELETE FROM JOB_RUNS"):
+            self.assertNotIn(forbidden, source.upper())
 
 
 @unittest.skipUnless(

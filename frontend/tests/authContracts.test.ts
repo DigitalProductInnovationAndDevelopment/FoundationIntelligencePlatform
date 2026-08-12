@@ -68,7 +68,11 @@ test("Cognito guests use the footer login and the demo reset control is absent",
   assert.match(app, />Sign in<\/span>/);
   assert.match(app, />Sign out<\/span>/);
   assert.match(app, /auth\.identity\?\.email \|\| auth\.identity\?\.username/);
+  assert.match(app, /avatarInitials\(authenticatedIdentity, auth\.authenticated\)/);
   assert.match(app, /auth\.authenticated \? auth\.role : "Not signed in"/);
+  assert.match(app, /onClick=\{auth\.logout\}/);
+  assert.doesNotMatch(app, />NL</);
+  assert.doesNotMatch(app, />Administrator</);
   assert.doesNotMatch(app, /if \(!auth\.authenticated\)/);
   assert.doesNotMatch(app, /resetActiveSourceFunderToObserved/);
   assert.doesNotMatch(app, /reset-to-observed/);

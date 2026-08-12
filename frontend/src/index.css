@@ -188,12 +188,16 @@ body {
 
 .user-info {
   display: flex;
+  min-width: 0;
   flex-direction: column;
+  align-items: flex-start;
 }
 
 .user-name {
+  max-width: 100%;
   font-size: 14px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .user-role {
@@ -2519,6 +2523,7 @@ body {
   background: var(--nl-unicorn);
   transition: width .35s ease;
 }
+.registry-enrichment-progress-track.is-indeterminate i { width: 38%; animation: donor-link-indeterminate 1.2s ease-in-out infinite; }
 
 .registry-enrichment.is-success { border-color: rgba(22, 139, 14, .32); background: rgba(200, 255, 192, .2); }
 .registry-enrichment.is-success .registry-enrichment-progress-track i { background: var(--semantic-success); }
@@ -3630,6 +3635,8 @@ body {
 .donor-profile-link-steps .is-current { border-color: rgba(102,100,241,.34); color: var(--nl-unicorn-active); background: rgba(198,198,255,.3); }
 .donor-profile-link-progress { height: 6px; overflow: hidden; margin-top: 4px; border-radius: 999px; background: rgba(102,100,241,.12); }
 .donor-profile-link-progress i { display: block; height: 100%; border-radius: inherit; background: var(--nl-unicorn); transition: width .18s ease-out; }
+.donor-profile-link-progress.is-indeterminate i { width: 38%; animation: donor-link-indeterminate 1.2s ease-in-out infinite; }
+@keyframes donor-link-indeterminate { from { transform: translateX(-110%); } to { transform: translateX(285%); } }
 .donor-profile-link-progress-label { align-self: flex-end; color: var(--nl-unicorn-active); font-size: 9px; font-weight: 800; }
 .donor-enrichment-progress { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; border: 1px solid rgba(102,100,241,.22); border-radius: var(--radius-sm); padding: 9px; background: var(--nl-unicorn-glow); }
 .donor-enrichment-progress.success { border-color: rgba(50,223,25,.28); background: rgba(200,250,192,.28); }
@@ -3915,10 +3922,10 @@ textarea {
   min-height: 32px;
   align-items: center;
   gap: 5px;
-  margin-left: auto;
+  margin-top: 5px;
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-sm);
-  padding: 6px 8px;
+  padding: 4px 7px;
   color: var(--text-secondary);
   background: #fff;
   font: inherit;

@@ -99,6 +99,60 @@ WRITER_COLUMN_PRIVILEGES: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "source_configurations": {"UPDATE": ("enabled", "updated_at")},
 }
 WRITER_SEQUENCES: tuple[str, ...] = ()
+
+# The long-running worker gets a separate publisher principal. It can load and
+# atomically activate versioned datasets, but it cannot create schema objects,
+# roles or databases and is never shared with browser-facing API mutations.
+PIPELINE_VERSIONED_TABLES = (
+    "charities",
+    "charity_registry_organizations",
+    "grants",
+    "grant_beneficiary_countries",
+    "grant_beneficiary_terms",
+    "grant_programme_categories",
+    "grant_overview_facts",
+    "grant_source_funder_facts",
+    "organization_registry_links",
+    "source_funder_profile_cache",
+)
+PIPELINE_ANALYTICS_TABLES = (
+    "analytics_scope_totals",
+    "analytics_country_aggregates",
+    "analytics_country_connections",
+    "analytics_period_aggregates",
+    "analytics_programme_aggregates",
+    "analytics_entity_rankings",
+    "analytics_country_funder_rankings",
+    "analytics_funder_relationships",
+    "analytics_filter_values",
+    "materialization_versions",
+)
+PIPELINE_CONTROL_TABLES = (
+    "dataset_versions",
+    "migration_runs",
+    "data_quality_issues",
+)
+PIPELINE_GLOBAL_TABLES = (
+    "source_funder_link_overrides",
+    "exchange_rates",
+)
+PIPELINE_READ_TABLES = (
+    "alembic_version",
+    *PIPELINE_VERSIONED_TABLES,
+    *PIPELINE_ANALYTICS_TABLES,
+    *PIPELINE_CONTROL_TABLES,
+    *PIPELINE_GLOBAL_TABLES,
+)
+PIPELINE_TABLE_PRIVILEGES: Mapping[str, tuple[str, ...]] = {
+    table: ("INSERT", "UPDATE", "DELETE")
+    for table in (
+        *PIPELINE_VERSIONED_TABLES,
+        *PIPELINE_ANALYTICS_TABLES,
+        *PIPELINE_CONTROL_TABLES,
+        *PIPELINE_GLOBAL_TABLES,
+    )
+}
+PIPELINE_FUNCTIONS = ("refresh_analytics_materializations(TEXT)",)
 RUNTIME_ROLE_MEMBERSHIP_ALLOWLIST: tuple[str, ...] = ()
 PUBLIC_FUNCTION_EXTENSION_ALLOWLIST = ("pg_trgm",)
 
@@ -434,6 +488,42 @@ async def configure_writer_role(
             )
 
 
+async def configure_pipeline_role(
+    connection: asyncpg.Connection,
+    environment: Mapping[str, str],
+) -> None:
+    username = identifier(
+        _required(environment, "DATABASE_PIPELINE_USER"), "DATABASE_PIPELINE_USER"
+    )
+    password = _required(environment, "DATABASE_PIPELINE_PASSWORD")
+    owner = identifier(
+        _required(environment, "DATABASE_ADMIN_USER"), "DATABASE_ADMIN_USER"
+    )
+    database = identifier(_required(environment, "DATABASE_NAME"), "DATABASE_NAME")
+    await _configure_login_role(
+        connection,
+        username=username,
+        password=password,
+        default_read_only=False,
+    )
+    await _reset_runtime_privileges(
+        connection,
+        username=username,
+        database_name=database,
+        owner_username=owner,
+    )
+    role = _quoted_identifier(username)
+    tables = ", ".join(_quoted_identifier(table) for table in PIPELINE_READ_TABLES)
+    await connection.execute(f"GRANT SELECT ON TABLE {tables} TO {role}")
+    for table, privileges in PIPELINE_TABLE_PRIVILEGES.items():
+        await connection.execute(
+            f"GRANT {', '.join(privileges)} ON TABLE "
+            f"{_quoted_identifier(table)} TO {role}"
+        )
+    for function in PIPELINE_FUNCTIONS:
+        await connection.execute(f"GRANT EXECUTE ON FUNCTION {function} TO {role}")
+
+
 def _business_row_checksum(row: Mapping[str, Any], *, identifier_field: str) -> str:
     business_fields = dict(row)
     business_fields.pop(identifier_field)
@@ -763,6 +853,48 @@ async def verify_writer_role(environment: Mapping[str, str]) -> dict[str, bool]:
         await connection.close()
 
 
+async def verify_pipeline_role(environment: Mapping[str, str]) -> dict[str, bool]:
+    connection = await _connect_runtime(environment, prefix="PIPELINE")
+    pipeline = identifier(
+        _required(environment, "DATABASE_PIPELINE_USER"), "DATABASE_PIPELINE_USER"
+    )
+    reader = identifier(
+        _required(environment, "DATABASE_READER_USER"), "DATABASE_READER_USER"
+    )
+    try:
+        return {
+            "schema_select_succeeded": (
+                await connection.fetchval("SELECT COUNT(*) = 1 FROM alembic_version")
+            ),
+            "dataset_update_allowed": not await _statement_denied(
+                connection, "UPDATE dataset_versions SET status=status WHERE FALSE"
+            ),
+            "materialization_execute_allowed": bool(
+                await connection.fetchval(
+                    "SELECT has_function_privilege($1, "
+                    "'refresh_analytics_materializations(text)', 'EXECUTE')",
+                    pipeline,
+                )
+            ),
+            "runtime_job_update_denied": await _statement_denied(
+                connection, "UPDATE job_runs SET status=status WHERE FALSE"
+            ),
+            "ddl_denied": await _statement_denied(
+                connection, "CREATE TABLE fip_pipeline_permission_probe (id integer)"
+            ),
+            "drop_denied": await _statement_denied(connection, "DROP TABLE charities"),
+            "create_role_denied": await _statement_denied(
+                connection, "CREATE ROLE fip_pipeline_permission_probe"
+            ),
+            "grant_denied": await _statement_denied(
+                connection,
+                f"GRANT {_quoted_identifier(reader)} TO {_quoted_identifier(pipeline)}",
+            ),
+        }
+    finally:
+        await connection.close()
+
+
 async def grant_snapshot(
     connection: asyncpg.Connection, usernames: Iterable[str]
 ) -> dict[str, Any]:
@@ -893,7 +1025,7 @@ async def grant_snapshot(
 
 
 def _expected_grants(
-    *, reader: str, writer: str, database_name: str
+    *, reader: str, writer: str, database_name: str, pipeline: str | None = None
 ) -> dict[str, set[tuple[str, ...]]]:
     table_privileges: set[tuple[str, ...]] = {
         (reader, table, "SELECT") for table in READER_TABLES
@@ -912,15 +1044,29 @@ def _expected_grants(
         for privilege, columns in grants.items()
         for column in columns
     }
+    if pipeline:
+        table_privileges.update(
+            (pipeline, table, "SELECT") for table in PIPELINE_READ_TABLES
+        )
+        table_privileges.update(
+            (pipeline, table, privilege)
+            for table, privileges in PIPELINE_TABLE_PRIVILEGES.items()
+            for privilege in privileges
+        )
+    database_privileges: set[tuple[str, ...]] = {
+        (reader, database_name, "CONNECT"),
+        (writer, database_name, "CONNECT"),
+    }
+    schema_privileges: set[tuple[str, ...]] = {
+        (reader, "public", "USAGE"),
+        (writer, "public", "USAGE"),
+    }
+    if pipeline:
+        database_privileges.add((pipeline, database_name, "CONNECT"))
+        schema_privileges.add((pipeline, "public", "USAGE"))
     return {
-        "database_privileges": {
-            (reader, database_name, "CONNECT"),
-            (writer, database_name, "CONNECT"),
-        },
-        "schema_privileges": {
-            (reader, "public", "USAGE"),
-            (writer, "public", "USAGE"),
-        },
+        "database_privileges": database_privileges,
+        "schema_privileges": schema_privileges,
         "table_privileges": table_privileges,
         "column_privileges": column_privileges,
         "sequence_privileges": set(),
@@ -929,10 +1075,11 @@ def _expected_grants(
 
 
 def grant_equality_evidence(
-    snapshot: Mapping[str, Any], *, reader: str, writer: str, database_name: str
+    snapshot: Mapping[str, Any], *, reader: str, writer: str,
+    database_name: str, pipeline: str | None = None
 ) -> dict[str, bool]:
     expected = _expected_grants(
-        reader=reader, writer=writer, database_name=database_name
+        reader=reader, writer=writer, database_name=database_name, pipeline=pipeline
     )
     projections = {
         "database_privileges": ("grantee", "database_name", "privilege_type"),
@@ -957,9 +1104,17 @@ def grant_equality_evidence(
         if name != "function_privileges"
     }
     evidence["function_privileges"] = all(
-        str(row["grantee"]) == "PUBLIC"
-        and str(row["privilege_type"]) == "EXECUTE"
-        and str(row["extension_name"]) in PUBLIC_FUNCTION_EXTENSION_ALLOWLIST
+        (
+            str(row["grantee"]) == "PUBLIC"
+            and str(row["privilege_type"]) == "EXECUTE"
+            and str(row["extension_name"]) in PUBLIC_FUNCTION_EXTENSION_ALLOWLIST
+        )
+        or (
+            pipeline is not None
+            and str(row["grantee"]) == pipeline
+            and str(row["privilege_type"]) == "EXECUTE"
+            and str(row["object_name"]) == "refresh_analytics_materializations"
+        )
         for row in snapshot["function_privileges"]
     )
     evidence["all_grants_equal_allowlist"] = all(evidence.values())
@@ -1070,8 +1225,13 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, Any]:
     writer = identifier(
         _required(task_environment, "DATABASE_WRITER_USER"), "DATABASE_WRITER_USER"
     )
-    if reader == writer:
-        raise DatabaseAccessConfigurationError("Reader and writer principals must differ")
+    pipeline = identifier(
+        _required(task_environment, "DATABASE_PIPELINE_USER"), "DATABASE_PIPELINE_USER"
+    )
+    if len({reader, writer, pipeline}) != 3:
+        raise DatabaseAccessConfigurationError(
+            "Reader, writer and pipeline principals must be distinct"
+        )
     admin = await connect_admin(task_environment)
     try:
         acquired = await admin.fetchval(
@@ -1081,7 +1241,7 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, Any]:
             raise DatabaseAccessConfigurationError(
                 "another database access prerequisite task holds the lock"
             )
-        for runtime_role in (reader, writer):
+        for runtime_role in (reader, writer, pipeline):
             state = await runtime_role_state(admin, runtime_role)
             if state is not None:
                 _assert_runtime_role_safe(state, username=runtime_role)
@@ -1107,11 +1267,13 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, Any]:
         )
         await configure_reader_role(admin, task_environment)
         await configure_writer_role(admin, task_environment)
-        snapshot = await grant_snapshot(admin, (reader, writer))
+        await configure_pipeline_role(admin, task_environment)
+        snapshot = await grant_snapshot(admin, (reader, writer, pipeline))
         grants_equal = grant_equality_evidence(
             snapshot,
             reader=reader,
             writer=writer,
+            pipeline=pipeline,
             database_name=_required(task_environment, "DATABASE_NAME"),
         )
         if not grants_equal["all_grants_equal_allowlist"]:
@@ -1127,18 +1289,30 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, Any]:
                 username=writer,
                 database_name=_required(task_environment, "DATABASE_NAME"),
             ),
+            "pipeline": await role_security_evidence(
+                admin,
+                username=pipeline,
+                database_name=_required(task_environment, "DATABASE_NAME"),
+            ),
         }
         reader_verification = await verify_reader_role(task_environment)
         writer_verification = await verify_writer_role(task_environment)
-        if not all(reader_verification.values()) or not all(writer_verification.values()):
+        pipeline_verification = await verify_pipeline_role(task_environment)
+        if (
+            not all(reader_verification.values())
+            or not all(writer_verification.values())
+            or not all(pipeline_verification.values())
+        ):
             raise RuntimeError("database access prerequisite verification failed")
         return {
             "reader": reader,
             "writer": writer,
+            "pipeline": pipeline,
             "bootstrap": bootstrap,
             "default_integrity": defaults_evidence,
             "reader_verification": reader_verification,
             "writer_verification": writer_verification,
+            "pipeline_verification": pipeline_verification,
             "role_evidence": role_evidence,
             "grant_equality": grants_equal,
             "grants": snapshot,

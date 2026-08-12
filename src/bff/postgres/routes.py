@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -260,6 +261,8 @@ async def enrich_registry(
         {"reg_numbers": numbers, "skip_contact_crawler": payload.skip_contact_crawler},
         actor_id=_actor(request),
         idempotency_key=_idempotency_key(request),
+        active_dedupe_key=f"registry-enrichment:{numbers[0]}",
+        max_attempts=1,
     )
     return {
         "status": job["status"],
@@ -410,11 +413,21 @@ async def enrich_funders(
     request: Request,
     jobs: PostgresJobRepository = Depends(_write_jobs),
 ):
+    targets = sorted(
+        (str(target.source_funder_key).strip(), int(target.profile_id))
+        for target in payload.targets
+    )
+    identity = targets or [
+        ("registry", value) for value in sorted(set(payload.reg_numbers))
+    ]
+    dedupe_digest = hashlib.sha256(repr(identity).encode("utf-8")).hexdigest()
     job = await jobs.enqueue(
         "source_funder_enrichment",
         payload.model_dump(),
         actor_id=_actor(request),
         idempotency_key=_idempotency_key(request),
+        active_dedupe_key=f"source-funder-enrichment:{dedupe_digest}",
+        max_attempts=1,
     )
     return {
         "status": job["status"],
