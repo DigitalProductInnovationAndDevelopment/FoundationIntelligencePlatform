@@ -93,6 +93,18 @@ class TestDatabaseAccessContract(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("GRANT ALL", sql)
         self.assertNotIn("GRANT INSERT", sql)
 
+    def test_release_gate_relations_are_reader_allowlisted(self):
+        self.assertTrue(
+            {
+                "alembic_version",
+                "data_quality_issues",
+                "dataset_versions",
+                "job_runs",
+                "materialization_versions",
+                "migration_runs",
+            }.issubset(READER_TABLES)
+        )
+
     async def test_writer_has_only_audited_table_and_column_dml(self):
         connection = _RecordingConnection()
         await configure_writer_role(connection, ENVIRONMENT)  # type: ignore[arg-type]
