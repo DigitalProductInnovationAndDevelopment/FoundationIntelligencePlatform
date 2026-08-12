@@ -16,6 +16,7 @@ from typing import Any, Deque, Dict, FrozenSet, Iterable, Mapping, Optional, Tup
 
 import httpx
 from fastapi import HTTPException, Request, status
+from sqlalchemy.exc import SQLAlchemyError
 from jose import JWTError, jwt
 
 from bff.config import SECURITY_SETTINGS, SecuritySettings
@@ -530,6 +531,15 @@ async def reserve_idempotency(request: Request, principal: Principal, action: st
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        from bff.database import WriterDatabaseUnavailable
+
+        if not isinstance(exc, (WriterDatabaseUnavailable, SQLAlchemyError)):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The mutation database path is temporarily unavailable.",
         ) from exc
     request.state.idempotency_record_key = record_key
 

@@ -8,6 +8,7 @@ from typing import Tuple
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bff.database import WriterDatabaseUnavailable
 from bff.security import IdempotencyConflict
 
 
@@ -118,3 +119,19 @@ class PostgresIdempotencyStore:
                 ),
                 {"actor_id": actor_id, "action": action, "idempotency_key": key},
             )
+
+
+class UnavailablePostgresIdempotencyStore:
+    """Fail closed when mutations are attempted without the writer pool."""
+
+    @staticmethod
+    async def reserve(*_args, **_kwargs):
+        raise WriterDatabaseUnavailable("The runtime writer is unavailable")
+
+    @staticmethod
+    async def complete(_record_key: RecordKey) -> None:
+        raise WriterDatabaseUnavailable("The runtime writer is unavailable")
+
+    @staticmethod
+    async def release(_record_key: RecordKey) -> None:
+        raise WriterDatabaseUnavailable("The runtime writer is unavailable")

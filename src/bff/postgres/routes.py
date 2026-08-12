@@ -8,6 +8,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from bff.postgres.analytics_repository import AnalyticsRepository
+from bff.postgres.dependencies import reader_sessions, writer_sessions
 from bff.postgres.funder_repository import SourceFunderRepository
 from bff.postgres.job_repository import PostgresJobRepository
 from bff.postgres.organization_repository import OrganizationRepository
@@ -43,7 +44,11 @@ router = APIRouter(
 
 
 def _sessions(request: Request):
-    return request.app.state.database.sessions()
+    return reader_sessions(request)
+
+
+def _write_sessions(request: Request):
+    return writer_sessions(request)
 
 
 def _organizations(request: Request) -> OrganizationRepository:
@@ -64,6 +69,14 @@ def _funders(request: Request) -> SourceFunderRepository:
 
 def _jobs(request: Request) -> PostgresJobRepository:
     return PostgresJobRepository(_sessions(request))
+
+
+def _write_funders(request: Request) -> SourceFunderRepository:
+    return SourceFunderRepository(_write_sessions(request))
+
+
+def _write_jobs(request: Request) -> PostgresJobRepository:
+    return PostgresJobRepository(_write_sessions(request))
 
 
 def _split(value: Optional[str]) -> list[str]:
@@ -237,7 +250,7 @@ async def registry_detail(
 async def enrich_registry(
     payload: SourceFunderEnrichmentRequest,
     request: Request,
-    jobs: PostgresJobRepository = Depends(_jobs),
+    jobs: PostgresJobRepository = Depends(_write_jobs),
 ):
     numbers = sorted({int(value) for value in payload.reg_numbers})
     if len(numbers) != 1:
@@ -395,7 +408,7 @@ async def overview_drilldown(
 async def enrich_funders(
     payload: SourceFunderEnrichmentRequest,
     request: Request,
-    jobs: PostgresJobRepository = Depends(_jobs),
+    jobs: PostgresJobRepository = Depends(_write_jobs),
 ):
     job = await jobs.enqueue(
         "source_funder_enrichment",
@@ -420,7 +433,7 @@ async def enrich_funders(
 async def reset_funder(
     source_funder_key: str,
     request: Request,
-    repository: SourceFunderRepository = Depends(_funders),
+    repository: SourceFunderRepository = Depends(_write_funders),
 ):
     result = await repository.reset(source_funder_key, actor_id=_actor(request))
     if not result:
@@ -436,7 +449,7 @@ async def relink_funder(
     source_funder_key: str,
     payload: SourceFunderRelinkRequest,
     request: Request,
-    repository: SourceFunderRepository = Depends(_funders),
+    repository: SourceFunderRepository = Depends(_write_funders),
 ):
     try:
         result = await repository.relink(
@@ -456,7 +469,7 @@ async def relink_funder(
 async def queue_profile_cache(
     source_funder_key: str,
     request: Request,
-    repository: SourceFunderRepository = Depends(_funders),
+    repository: SourceFunderRepository = Depends(_write_funders),
 ):
     result = await repository.queue_profile_cache(
         source_funder_key,

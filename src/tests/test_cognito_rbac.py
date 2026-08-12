@@ -11,7 +11,9 @@ from jose import jwt
 from jose.utils import base64url_encode
 
 from bff.config import SECURITY_SETTINGS, validate_security_settings
+from bff.database import WriterDatabaseUnavailable
 from bff.postgres import scraper_routes
+from bff.postgres.dependencies import reader_sessions, writer_sessions
 from bff.security import Role, SlidingWindowRateLimiter, require_roles
 
 
@@ -67,6 +69,25 @@ class TestCognitoRbac(unittest.TestCase):
         application.state.security_settings = cls.settings
         application.state.rate_limiter = SlidingWindowRateLimiter(10_000, 60)
 
+        class FakeDatabase:
+            def __init__(self):
+                self.reader_calls = 0
+                self.writer_calls = 0
+                self.writer_available = True
+
+            def sessions(self):
+                self.reader_calls += 1
+                return "reader"
+
+            def write_sessions(self):
+                self.writer_calls += 1
+                if not self.writer_available:
+                    raise WriterDatabaseUnavailable("writer unavailable in test")
+                return "writer"
+
+        cls.database = FakeDatabase()
+        application.state.database = cls.database
+
         @application.get("/normal/read", dependencies=[Depends(require_roles(Role.CUSTOMER))])
         async def read():
             return {"ok": True}
@@ -85,6 +106,17 @@ class TestCognitoRbac(unittest.TestCase):
         @application.get("/api/admin/guard", dependencies=[Depends(require_roles(Role.ADMIN))])
         async def admin():
             return {"ok": True}
+
+        @application.get("/database/read", dependencies=[Depends(require_roles(Role.CUSTOMER))])
+        async def database_read(sessions=Depends(reader_sessions)):
+            return {"pool": sessions}
+
+        @application.post(
+            "/database/write",
+            dependencies=[Depends(require_roles(Role.OPERATOR))],
+        )
+        async def database_write(sessions=Depends(writer_sessions)):
+            return {"pool": sessions}
 
         class FakeJobs:
             async def latest_status(self):
@@ -202,6 +234,41 @@ class TestCognitoRbac(unittest.TestCase):
                     self.request("/normal/read", self.token(groups)).status_code,
                     403,
                 )
+
+    def test_customer_never_resolves_writer_and_operator_does(self):
+        self.database.reader_calls = 0
+        self.database.writer_calls = 0
+        customer = self.token(("customer",))
+        operator = self.token(("operator",))
+        read = self.request("/database/read", customer)
+        self.assertEqual(read.status_code, 200)
+        self.assertEqual(read.json(), {"pool": "reader"})
+        denied = self.request("/database/write", customer, "POST")
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(self.database.writer_calls, 0)
+        allowed = self.request("/database/write", operator, "POST")
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json(), {"pool": "writer"})
+        self.assertEqual(self.database.writer_calls, 1)
+
+    def test_writer_outage_preserves_customer_reads_and_fails_mutation_cleanly(self):
+        self.database.reader_calls = 0
+        self.database.writer_calls = 0
+        self.database.writer_available = False
+        try:
+            customer = self.token(("customer",))
+            operator = self.token(("operator",))
+            read = self.request("/database/read", customer)
+            self.assertEqual(read.status_code, 200)
+            self.assertEqual(read.json(), {"pool": "reader"})
+            mutation = self.request("/database/write", operator, "POST")
+            self.assertEqual(mutation.status_code, 503)
+            self.assertEqual(
+                mutation.json()["detail"],
+                "The mutation database path is temporarily unavailable.",
+            )
+        finally:
+            self.database.writer_available = True
 
 
 if __name__ == "__main__":

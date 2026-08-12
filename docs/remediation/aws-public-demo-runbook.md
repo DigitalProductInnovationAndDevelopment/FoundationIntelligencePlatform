@@ -149,6 +149,15 @@ in locked State B.
 
 ## Deployment A procedure (future authorized phase only)
 
+Deployment A has a hard database prerequisite. First create and review the
+separate `db-access-prerequisite.yaml` stack. Do not execute it without the
+exact `EXECUTE DB ACCESS PREREQUISITE` gate. After execution is separately
+approved, its one-off task must configure and verify the writer on the existing
+RDS database before `ApplicationDatabaseWriterSecretArn` is supplied to this
+main stack. Creating the prerequisite stack does not run the task or update the
+application service. See `database-access-architecture.md` for the exact grants
+and rollback boundary.
+
 Deployment A uses `OriginLockdownEnabled=false`. It may create CloudFront,
 Cognito, the three groups, origin policies, managed-login branding and the
 origin-header listener rule; update the ECS task role/definition/service and

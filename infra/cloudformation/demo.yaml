@@ -57,6 +57,19 @@ Parameters:
     Type: String
     Default: foundation_app
     AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: SELECT-only runtime reader provisioned by the release path.
+  ApplicationDatabaseWriterUser:
+    Type: String
+    Default: foundation_app_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: Restricted DML writer; must differ from ApplicationDatabaseUser.
+  ApplicationDatabaseWriterSecretArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: >-
+      Output of the separately executed DB-access prerequisite stack. Keep empty
+      until the writer role and grants have been provisioned and verified.
   SourceObjectKey:
     Type: String
     Default: imports/charities.db
@@ -106,6 +119,11 @@ Parameters:
     Description: Globally available, project-specific Cognito managed-login prefix.
 
 Rules:
+  RequireDistinctRuntimeDatabasePrincipals:
+    Assertions:
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabaseWriterUser]
+        AssertDescription: Reader and writer PostgreSQL principals must differ.
   RequireCloudFrontPrefixListForLockdown:
     RuleCondition: !Equals [!Ref OriginLockdownEnabled, 'true']
     Assertions:
@@ -115,6 +133,7 @@ Rules:
 Conditions:
   OriginLockdown: !Equals [!Ref OriginLockdownEnabled, 'true']
   PublicOriginAccess: !Equals [!Ref OriginLockdownEnabled, 'false']
+  RuntimeWriterConfigured: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
 
 Resources:
   DatabaseSubnetA:
@@ -373,7 +392,7 @@ Resources:
   AppDatabaseSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Description: Restricted application database role for the public demo
+      Description: SELECT-only application database reader for the public demo
       GenerateSecretString:
         SecretStringTemplate: !Sub '{"username":"${ApplicationDatabaseUser}"}'
         GenerateStringKey: password
@@ -460,7 +479,33 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: ReadDemoDatabaseSecrets
+        - PolicyName: ReadRuntimeDatabaseSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AppDatabaseSecret
+                  - !If
+                    - RuntimeWriterConfigured
+                    - !Ref ApplicationDatabaseWriterSecretArn
+                    - !Ref AWS::NoValue
+
+  MigrationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadMigrationDatabaseSecrets
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -573,6 +618,11 @@ Resources:
               Value: foundation_intelligence
             - Name: DATABASE_USER
               Value: !Ref ApplicationDatabaseUser
+            - !If
+              - RuntimeWriterConfigured
+              - Name: DATABASE_WRITE_USER
+                Value: !Ref ApplicationDatabaseWriterUser
+              - !Ref AWS::NoValue
             - Name: DATABASE_SSL_MODE
               Value: require
             - Name: DATABASE_POOL_SIZE
@@ -582,6 +632,11 @@ Resources:
           Secrets:
             - Name: DATABASE_PASSWORD
               ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+            - !If
+              - RuntimeWriterConfigured
+              - Name: DATABASE_WRITE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabaseWriterSecretArn}:password::'
+              - !Ref AWS::NoValue
           HealthCheck:
             Command:
               - CMD
@@ -645,7 +700,7 @@ Resources:
       Memory: '4096'
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
-      ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
+      ExecutionRoleArn: !GetAtt MigrationExecutionRole.Arn
       TaskRoleArn: !GetAtt MigrationTaskRole.Arn
       RuntimePlatform:
         CpuArchitecture: ARM64
@@ -985,5 +1040,12 @@ Outputs:
     Value: !Ref DatabaseInstanceClass
   ApplicationDesiredCount:
     Value: !Ref ApplicationDesiredCount
+  ApplicationDatabaseReaderUser:
+    Value: !Ref ApplicationDatabaseUser
+  ApplicationDatabaseWriterUser:
+    Value: !Ref ApplicationDatabaseWriterUser
+  ApplicationDatabaseWriterSecretArn:
+    Condition: RuntimeWriterConfigured
+    Value: !Ref ApplicationDatabaseWriterSecretArn
   DatabaseSubnetIds:
     Value: !Join [',', [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]]

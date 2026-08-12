@@ -16,6 +16,14 @@
     "ParameterValue": "0"
   },
   {
+    "ParameterKey": "ApplicationDatabaseWriterUser",
+    "ParameterValue": "foundation_app_writer"
+  },
+  {
+    "ParameterKey": "ApplicationDatabaseWriterSecretArn",
+    "ParameterValue": ""
+  },
+  {
     "ParameterKey": "OriginLockdownEnabled",
     "ParameterValue": "false"
   },

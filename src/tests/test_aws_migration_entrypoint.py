@@ -20,6 +20,10 @@ class _RecordingConnection:
         self.statements.append(statement)
         return self.role_exists
 
+    async def fetch(self, statement: str, *_args):
+        self.statements.append(statement)
+        return []
+
     async def execute(self, statement: str):
         self.statements.append(statement)
 
@@ -117,10 +121,13 @@ class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
         )
         sql = "\n".join(connection.statements)
         self.assertIn("NOSUPERUSER NOCREATEDB NOCREATEROLE", sql)
-        self.assertIn("GRANT SELECT ON ALL TABLES", sql)
+        self.assertIn("GRANT SELECT ON TABLE", sql)
+        self.assertIn('"source_configurations"', sql)
         self.assertIn("REVOKE ALL ON ALL SEQUENCES", sql)
         self.assertIn("REVOKE EXECUTE ON ALL FUNCTIONS", sql)
         self.assertIn("default_transaction_read_only = on", sql)
+        self.assertNotIn("GRANT SELECT ON ALL TABLES", sql)
+        self.assertNotIn("GRANT ALL", sql)
         self.assertNotIn("GRANT SELECT, INSERT", sql)
 
     async def test_existing_role_is_demoted_before_reuse(self):

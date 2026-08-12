@@ -6,6 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "infra" / "cloudformation" / "demo.yaml"
+DB_PREREQUISITE = ROOT / "infra" / "cloudformation" / "db-access-prerequisite.yaml"
 PARAMETERS = ROOT / "infra" / "cloudformation" / "parameters.demo.example.json"
 NGINX = ROOT / "docker" / "frontend-nginx.ecs.conf"
 MANAGED_CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
@@ -27,6 +28,7 @@ class TestCloudFormationCustomerAccessContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.template = TEMPLATE.read_text(encoding="utf-8")
+        cls.db_prerequisite = DB_PREREQUISITE.read_text(encoding="utf-8")
         cls.parameters = json.loads(PARAMETERS.read_text(encoding="utf-8"))
         cls.nginx = NGINX.read_text(encoding="utf-8")
 
@@ -165,6 +167,45 @@ class TestCloudFormationCustomerAccessContract(unittest.TestCase):
         self.assertIn("Name: COGNITO_CLIENT_ID", task)
         self.assertIn("proxy_pass http://127.0.0.1:8000;", self.nginx)
         self.assertNotIn("ssl_certificate", self.nginx)
+
+    def test_runtime_reader_writer_and_migration_secrets_are_separated(self):
+        application = _block(self.template, "ApplicationTaskDefinition")
+        application_execution = _block(self.template, "EcsExecutionRole")
+        migration = _block(self.template, "MigrationTaskDefinition")
+        migration_execution = _block(self.template, "MigrationExecutionRole")
+        self.assertIn("Name: DATABASE_USER", application)
+        self.assertIn("Name: DATABASE_WRITE_USER", application)
+        self.assertIn("Name: DATABASE_WRITE_PASSWORD", application)
+        self.assertNotIn("DATABASE_ADMIN", application)
+        self.assertNotIn("MasterUserSecret", application_execution)
+        self.assertIn("ExecutionRoleArn: !GetAtt MigrationExecutionRole.Arn", migration)
+        self.assertIn("MasterUserSecret", migration_execution)
+
+    def test_db_prerequisite_stack_has_no_application_cutover_or_edge_resources(self):
+        source = self.db_prerequisite
+        self.assertIn("Type: AWS::SecretsManager::Secret", source)
+        self.assertIn("Type: AWS::ECS::TaskDefinition", source)
+        self.assertIn("Command: [migration.database_access]", source)
+        self.assertIn("CpuArchitecture: ARM64", source)
+        self.assertIn("User: '10001:10001'", source)
+        for forbidden in (
+            "AWS::ECS::Service",
+            "AWS::RDS::DBInstance",
+            "AWS::CloudFront::Distribution",
+            "AWS::Cognito::",
+            "AWS::ElasticLoadBalancingV2::",
+            "AWS::EC2::VPC",
+        ):
+            self.assertNotIn(forbidden, source)
+
+    def test_db_prerequisite_task_has_release_secrets_but_no_secret_outputs(self):
+        task = _block(self.db_prerequisite, "DbAccessTaskDefinition")
+        outputs = self.db_prerequisite.split("\nOutputs:\n", 1)[1]
+        self.assertIn("DATABASE_ADMIN_PASSWORD", task)
+        self.assertIn("DATABASE_READER_PASSWORD", task)
+        self.assertIn("DATABASE_WRITER_PASSWORD", task)
+        self.assertIn("WriterDatabaseSecretArn", outputs)
+        self.assertNotIn("password", outputs.lower())
 
     def test_outputs_do_not_expose_origin_token(self):
         outputs = self.template.split("\nOutputs:\n", 1)[1]

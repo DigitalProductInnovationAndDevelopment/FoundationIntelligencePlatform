@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from bff.postgres.job_repository import PostgresJobRepository
 from bff.postgres.pipeline_repository import PipelineRepository
+from bff.postgres.dependencies import reader_sessions
 from bff.security import Role, require_roles
 
 
@@ -36,11 +37,11 @@ router = APIRouter(
 
 
 def _jobs(request: Request) -> PostgresJobRepository:
-    return PostgresJobRepository(request.app.state.database.sessions())
+    return PostgresJobRepository(reader_sessions(request))
 
 
 def _pipelines(request: Request) -> PipelineRepository:
-    return PipelineRepository(request.app.state.database.sessions())
+    return PipelineRepository(reader_sessions(request))
 
 
 def _freshness(last_success_at: Optional[str], sla_hours: int, enabled: bool) -> str:

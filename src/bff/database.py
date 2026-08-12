@@ -21,6 +21,10 @@ class DatabaseConfigurationError(RuntimeError):
     """Raised when PostgreSQL configuration is incomplete or unsafe."""
 
 
+class WriterDatabaseUnavailable(RuntimeError):
+    """Raised when an explicit mutation has no configured writer principal."""
+
+
 def _positive_int(value: Optional[str], default: int) -> int:
     parsed = int(value) if value is not None else default
     if parsed <= 0:
@@ -99,6 +103,59 @@ class DatabaseSettings:
             connect_timeout_seconds=_positive_int(env.get("DATABASE_CONNECT_TIMEOUT_SECONDS"), 5),
             statement_timeout_ms=_positive_int(env.get("DATABASE_STATEMENT_TIMEOUT_MS"), 30_000),
         )
+
+    @classmethod
+    def writer_from_env(
+        cls, environ: Optional[Mapping[str, str]] = None
+    ) -> Optional["DatabaseSettings"]:
+        """Build an independent writer configuration without credential fallback.
+
+        Network and pool settings may inherit the reader connection's non-secret
+        values. Writer identity and password must always be provided through the
+        dedicated ``DATABASE_WRITE_*`` namespace.
+        """
+        env = os.environ if environ is None else environ
+        writer_credentials = {
+            "DATABASE_WRITE_URL",
+            "DATABASE_WRITE_USER",
+            "DATABASE_WRITE_PASSWORD",
+            "DATABASE_WRITE_PASSWORD_FILE",
+        }
+        if not any(env.get(name) for name in writer_credentials):
+            return None
+        normalized = {
+            "DATABASE_URL": env.get("DATABASE_WRITE_URL"),
+            "DATABASE_HOST": env.get("DATABASE_WRITE_HOST") or env.get("DATABASE_HOST"),
+            "DATABASE_PORT": env.get("DATABASE_WRITE_PORT") or env.get("DATABASE_PORT"),
+            "DATABASE_NAME": env.get("DATABASE_WRITE_NAME") or env.get("DATABASE_NAME"),
+            "DATABASE_USER": env.get("DATABASE_WRITE_USER"),
+            "DATABASE_PASSWORD": env.get("DATABASE_WRITE_PASSWORD"),
+            "DATABASE_PASSWORD_FILE": env.get("DATABASE_WRITE_PASSWORD_FILE"),
+            "DATABASE_SSL_MODE": env.get("DATABASE_WRITE_SSL_MODE")
+            or env.get("DATABASE_SSL_MODE"),
+            "DATABASE_POOL_SIZE": env.get("DATABASE_WRITE_POOL_SIZE") or "3",
+            "DATABASE_MAX_OVERFLOW": env.get("DATABASE_WRITE_MAX_OVERFLOW") or "2",
+            "DATABASE_POOL_TIMEOUT_SECONDS": env.get(
+                "DATABASE_WRITE_POOL_TIMEOUT_SECONDS"
+            )
+            or env.get("DATABASE_POOL_TIMEOUT_SECONDS"),
+            "DATABASE_CONNECT_TIMEOUT_SECONDS": env.get(
+                "DATABASE_WRITE_CONNECT_TIMEOUT_SECONDS"
+            )
+            or env.get("DATABASE_CONNECT_TIMEOUT_SECONDS"),
+            "DATABASE_STATEMENT_TIMEOUT_MS": env.get(
+                "DATABASE_WRITE_STATEMENT_TIMEOUT_MS"
+            )
+            or env.get("DATABASE_STATEMENT_TIMEOUT_MS"),
+        }
+        settings = cls.from_env(
+            {key: value for key, value in normalized.items() if value is not None}
+        )
+        if not settings.configured:
+            raise DatabaseConfigurationError(
+                "Writer PostgreSQL credentials are incomplete; no reader credential fallback is allowed"
+            )
+        return settings
 
     @property
     def configured(self) -> bool:
@@ -342,3 +399,68 @@ class DatabaseManager:
         if self._health_engine is not None:
             await self._health_engine.dispose()
             self._health_engine = None
+
+
+class DatabaseAccess:
+    """Separate reader and optional writer pools for the long-running runtime."""
+
+    def __init__(
+        self,
+        reader_settings: DatabaseSettings,
+        writer_settings: Optional[DatabaseSettings] = None,
+    ) -> None:
+        self.reader = DatabaseManager(reader_settings)
+        self.writer = DatabaseManager(writer_settings) if writer_settings else None
+
+    @classmethod
+    def from_env(
+        cls, environ: Optional[Mapping[str, str]] = None
+    ) -> "DatabaseAccess":
+        return cls(
+            DatabaseSettings.from_env(environ),
+            DatabaseSettings.writer_from_env(environ),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return self.reader.configured
+
+    @property
+    def writer_configured(self) -> bool:
+        return bool(self.writer and self.writer.configured)
+
+    def sessions(self) -> async_sessionmaker[AsyncSession]:
+        """Return the reader factory used by startup, health and all GET paths."""
+        return self.reader.sessions()
+
+    def write_sessions(self) -> async_sessionmaker[AsyncSession]:
+        """Return the writer factory only for an explicitly authorized mutation."""
+        if not self.writer_configured or self.writer is None:
+            raise WriterDatabaseUnavailable("The runtime writer is not configured")
+        return self.writer.sessions()
+
+    async def check(self) -> bool:
+        return await self.reader.check()
+
+    async def readiness(
+        self,
+        *,
+        expected_schema_version: str,
+        require_critical_configuration: bool = True,
+    ) -> dict[str, object]:
+        return await self.reader.readiness(
+            expected_schema_version=expected_schema_version,
+            require_critical_configuration=require_critical_configuration,
+        )
+
+    async def writer_ready(self) -> bool:
+        """Return non-sensitive writer availability without affecting app readiness."""
+        return bool(self.writer and await self.writer.check())
+
+    def pool_status(self) -> dict[str, float]:
+        return self.reader.pool_status()
+
+    async def close(self) -> None:
+        await self.reader.close()
+        if self.writer is not None:
+            await self.writer.close()

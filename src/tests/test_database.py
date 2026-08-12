@@ -6,7 +6,12 @@ from dataclasses import replace
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import make_url
 
-from bff.database import DatabaseConfigurationError, DatabaseSettings
+from bff.database import (
+    DatabaseAccess,
+    DatabaseConfigurationError,
+    DatabaseSettings,
+    WriterDatabaseUnavailable,
+)
 from bff.main import app
 
 
@@ -59,6 +64,46 @@ class _UnavailableDatabase:
 
 
 class TestDatabaseFoundation(unittest.TestCase):
+    def test_writer_credentials_never_fall_back_to_reader_identity(self):
+        environment = {
+            "DATABASE_HOST": "postgres",
+            "DATABASE_NAME": "foundation_intelligence",
+            "DATABASE_USER": "foundation_app",
+            "DATABASE_PASSWORD": "reader-secret",
+        }
+        access = DatabaseAccess.from_env(environment)
+        self.assertFalse(access.writer_configured)
+        with self.assertRaises(WriterDatabaseUnavailable):
+            access.write_sessions()
+
+    def test_writer_inherits_only_non_secret_connection_settings(self):
+        settings = DatabaseSettings.writer_from_env(
+            {
+                "DATABASE_HOST": "postgres",
+                "DATABASE_NAME": "foundation_intelligence",
+                "DATABASE_USER": "foundation_app",
+                "DATABASE_PASSWORD": "reader-secret",
+                "DATABASE_WRITE_USER": "foundation_app_writer",
+                "DATABASE_WRITE_PASSWORD": "writer-secret",
+            }
+        )
+        self.assertIsNotNone(settings)
+        assert settings is not None
+        self.assertEqual(settings.host, "postgres")
+        self.assertEqual(settings.user, "foundation_app_writer")
+        self.assertEqual(settings.password, "writer-secret")
+        self.assertNotEqual(settings.password, "reader-secret")
+
+    def test_partial_writer_configuration_fails_closed(self):
+        with self.assertRaises(DatabaseConfigurationError):
+            DatabaseSettings.writer_from_env(
+                {
+                    "DATABASE_HOST": "postgres",
+                    "DATABASE_NAME": "foundation_intelligence",
+                    "DATABASE_WRITE_USER": "foundation_app_writer",
+                }
+            )
+
     def test_secret_file_builds_encoded_async_postgresql_url(self):
         descriptor, password_path = tempfile.mkstemp()
         try:
