@@ -342,7 +342,7 @@ Resources:
       VerificationMessageTemplate:
         DefaultEmailOption: CONFIRM_WITH_CODE
       UserPoolTier: ESSENTIALS
-      DeletionProtection: ACTIVE
+      DeletionProtection: !If [OriginLockdown, ACTIVE, INACTIVE]
       UserPoolTags:
         Environment: demo
 
@@ -819,45 +819,6 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref FrontendTargetGroup
 
-  DisabledDefaultCachePolicy:
-    Type: AWS::CloudFront::CachePolicy
-    Properties:
-      CachePolicyConfig:
-        Name: !Sub '${AWS::StackName}-default-no-cache'
-        Comment: Disable caching for the first authenticated pilot
-        DefaultTTL: 0
-        MaxTTL: 0
-        MinTTL: 0
-        ParametersInCacheKeyAndForwardedToOrigin:
-          EnableAcceptEncodingBrotli: true
-          EnableAcceptEncodingGzip: true
-          CookiesConfig:
-            CookieBehavior: none
-          HeadersConfig:
-            HeaderBehavior: none
-          QueryStringsConfig:
-            QueryStringBehavior: none
-
-  DisabledApiCachePolicy:
-    Type: AWS::CloudFront::CachePolicy
-    Properties:
-      CachePolicyConfig:
-        Name: !Sub '${AWS::StackName}-api-auth-no-cache'
-        Comment: Disable API caching and forward Authorization through the cache policy
-        DefaultTTL: 0
-        MaxTTL: 0
-        MinTTL: 0
-        ParametersInCacheKeyAndForwardedToOrigin:
-          EnableAcceptEncodingBrotli: true
-          EnableAcceptEncodingGzip: true
-          CookiesConfig:
-            CookieBehavior: none
-          HeadersConfig:
-            HeaderBehavior: whitelist
-            Headers: [Authorization]
-          QueryStringsConfig:
-            QueryStringBehavior: none
-
   DefaultOriginRequestPolicy:
     Type: AWS::CloudFront::OriginRequestPolicy
     Properties:
@@ -868,28 +829,6 @@ Resources:
           CookieBehavior: none
         HeadersConfig:
           HeaderBehavior: none
-        QueryStringsConfig:
-          QueryStringBehavior: all
-
-  ApiOriginRequestPolicy:
-    Type: AWS::CloudFront::OriginRequestPolicy
-    Properties:
-      OriginRequestPolicyConfig:
-        Name: !Sub '${AWS::StackName}-api-origin'
-        Comment: Minimal API headers and all query strings; Authorization comes from cache policy
-        CookiesConfig:
-          CookieBehavior: none
-        HeadersConfig:
-          HeaderBehavior: whitelist
-          Headers:
-            - Content-Type
-            - Origin
-            - Access-Control-Request-Headers
-            - Access-Control-Request-Method
-            - Idempotency-Key
-            - X-Action-Reason
-            - X-Request-ID
-            - X-Trace-ID
         QueryStringsConfig:
           QueryStringBehavior: all
 
@@ -922,7 +861,8 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD, OPTIONS]
-          CachePolicyId: !Ref DisabledDefaultCachePolicy
+          # AWS managed policy Managed-CachingDisabled.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
           OriginRequestPolicyId: !Ref DefaultOriginRequestPolicy
           Compress: true
         CacheBehaviors:
@@ -931,8 +871,11 @@ Resources:
             ViewerProtocolPolicy: redirect-to-https
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachedMethods: [GET, HEAD, OPTIONS]
-            CachePolicyId: !Ref DisabledApiCachePolicy
-            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
+            # AWS managed policies Managed-CachingDisabled and
+            # Managed-AllViewerExceptHostHeader. The latter forwards
+            # Authorization while replacing the viewer Host for the ALB origin.
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
             Compress: true
         ViewerCertificate:
           CloudFrontDefaultCertificate: true

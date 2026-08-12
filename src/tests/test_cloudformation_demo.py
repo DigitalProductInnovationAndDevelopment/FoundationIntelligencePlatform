@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "infra" / "cloudformation" / "demo.yaml"
 PARAMETERS = ROOT / "infra" / "cloudformation" / "parameters.demo.example.json"
 NGINX = ROOT / "docker" / "frontend-nginx.ecs.conf"
+MANAGED_CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+MANAGED_ALL_VIEWER_EXCEPT_HOST = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
 
 
 def _block(source: str, name: str) -> str:
@@ -78,20 +80,26 @@ class TestCloudFormationCustomerAccessContract(unittest.TestCase):
         self.assertIn("HeaderValue: !Ref OriginVerificationToken", distribution)
 
     def test_caching_authorization_query_and_host_contract(self):
-        default_cache = _block(self.template, "DisabledDefaultCachePolicy")
-        api_cache = _block(self.template, "DisabledApiCachePolicy")
+        distribution = _block(self.template, "CloudFrontDistribution")
         default_origin = _block(self.template, "DefaultOriginRequestPolicy")
-        api_origin = _block(self.template, "ApiOriginRequestPolicy")
-        for policy in (default_cache, api_cache):
-            self.assertIn("DefaultTTL: 0", policy)
-            self.assertIn("MaxTTL: 0", policy)
-            self.assertIn("MinTTL: 0", policy)
-            self.assertIn("CookieBehavior: none", policy)
-        self.assertIn("Headers: [Authorization]", api_cache)
+        self.assertEqual(distribution.count(f"CachePolicyId: {MANAGED_CACHING_DISABLED}"), 2)
+        self.assertIn(
+            f"OriginRequestPolicyId: {MANAGED_ALL_VIEWER_EXCEPT_HOST}",
+            distribution,
+        )
         self.assertIn("QueryStringBehavior: all", default_origin)
-        self.assertIn("QueryStringBehavior: all", api_origin)
-        self.assertNotRegex(default_origin + api_origin, r"(?im)^\s*- Host\s*$")
-        self.assertNotIn("CookieBehavior: all", default_origin + api_origin)
+        self.assertIn("CookieBehavior: none", default_origin)
+        self.assertIn("HeaderBehavior: none", default_origin)
+        self.assertNotRegex(default_origin, r"(?im)^\s*- Host\s*$")
+
+    def test_no_invalid_custom_disabled_cache_policy_regression(self):
+        self.assertNotIn("DisabledDefaultCachePolicy:", self.template)
+        self.assertNotIn("DisabledApiCachePolicy:", self.template)
+        self.assertNotIn("Type: AWS::CloudFront::CachePolicy", self.template)
+        self.assertNotRegex(
+            self.template,
+            r"(?s)DefaultTTL:\s*0.*ParametersInCacheKeyAndForwardedToOrigin",
+        )
 
     def test_origin_verification_token_is_noecho_and_only_placeholder_is_committed(self):
         token = _block(self.template, "OriginVerificationToken")
@@ -121,6 +129,21 @@ class TestCloudFormationCustomerAccessContract(unittest.TestCase):
         self.assertIn("${CloudFrontDistribution.DomainName}/'", client)
         self.assertIn("ManagedLoginVersion: 2", domain)
         self.assertIn("UseCognitoProvidedValues: true", branding)
+
+    def test_cognito_deletion_protection_follows_deployment_state(self):
+        pool = _block(self.template, "CognitoUserPool")
+        self.assertIn(
+            "DeletionProtection: !If [OriginLockdown, ACTIVE, INACTIVE]",
+            pool,
+        )
+        self.assertEqual(
+            "false",
+            next(
+                item["ParameterValue"]
+                for item in self.parameters
+                if item["ParameterKey"] == "OriginLockdownEnabled"
+            ),
+        )
 
     def test_three_groups_and_least_privilege_task_role(self):
         for logical_id, group in (

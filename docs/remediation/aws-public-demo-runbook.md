@@ -93,12 +93,17 @@ Deployment A before origin lockdown.
 - Default CloudFront certificate, no aliases, HTTPS redirect, HTTP/2 and HTTP/3.
 - Default behavior allows `GET`, `HEAD`, `OPTIONS`; caching is disabled and all
   callback query strings are forwarded.
-- `/api/*` allows all required methods and has zero TTL caching.
-- API query strings and the minimal browser/API headers are forwarded. Cookies
-  and the viewer `Host` header are not forwarded.
-- `Authorization` is included in the API cache policy. This is CloudFront's
-  supported mechanism for forwarding it while the viewer `Host` remains absent
-  from the origin request. API caching remains disabled.
+- `/api/*` allows all required methods. Both behaviors use AWS managed
+  `Managed-CachingDisabled` (`4135ea2d-6df8-44a3-9df3-4b5a84be39ad`), avoiding
+  invalid custom zero-TTL cache-policy combinations.
+- The default behavior uses a minimal custom origin-request policy: all query
+  strings, no viewer cookies and no viewer headers.
+- `/api/*` uses AWS managed `Managed-AllViewerExceptHostHeader`
+  (`b689b0a8-53d0-40ab-baf2-68738e2966ac`). It forwards `Authorization` and
+  other viewer request context while replacing the viewer `Host` with the ALB
+  origin host. API caching remains disabled. This managed policy forwards
+  cookies as a documented tradeoff even though application auth uses bearer
+  tokens rather than cookies.
 - The ALB origin is obtained from `LoadBalancer.DNSName`, uses HTTP port 80 and
   receives `X-FIP-Origin-Verify` as a CloudFront custom origin header.
 
@@ -112,6 +117,7 @@ The same template supports both states through `OriginLockdownEnabled`.
 | ALB default action | forward to frontend target group | fixed HTTP 403 |
 | Header rule | matching token forwards | matching token forwards |
 | Prefix-list parameter | may be empty | required by template Rule |
+| Cognito deletion protection | `INACTIVE` for rollback-safe first creation | `ACTIVE` after verified lockdown |
 
 The public and prefix-list ingress rules are conditional alternatives; there is
 no intended steady state in which both are active. Deployment B must not proceed
@@ -144,9 +150,11 @@ in locked State B.
 ## Deployment A procedure (future authorized phase only)
 
 Deployment A uses `OriginLockdownEnabled=false`. It may create CloudFront,
-Cognito, the three groups, cache/origin policies, managed-login branding and the
+Cognito, the three groups, origin policies, managed-login branding and the
 origin-header listener rule; update the ECS task role/definition/service and
 outputs; and retain public ALB port 80 plus the listener's default forward.
+Cognito deletion protection is `INACTIVE` in this rollback-sensitive creation
+state and becomes `ACTIVE` only with approved Deployment B.
 
 Before a change set, recheck identity, account, region, stack stability, branch,
 HEAD, worktree, exact image digests, and Cognito-domain-prefix availability.
