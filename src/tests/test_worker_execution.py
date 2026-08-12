@@ -170,6 +170,7 @@ class TestWorkerStorageAndContracts(unittest.TestCase):
         source = (ROOT / "src/pipelines/job_admin.py").read_text(encoding="utf-8")
         self.assertIn("WHERE job_run_id=ANY($1::uuid[])", source)
         self.assertIn("status='cancelled'", source)
+        self.assertIn("started_at=COALESCE(started_at, requested_at)", source)
         self.assertIn("PreWorkerDeploymentRetirement", source)
         self.assertIn("INSERT INTO job_events", source)
         self.assertNotIn("DELETE FROM job_runs", source)

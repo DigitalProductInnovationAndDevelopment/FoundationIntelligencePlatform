@@ -81,7 +81,9 @@ async def retire_jobs(job_ids: list[uuid.UUID]) -> dict[str, object]:
             rows = await connection.fetch(
                 """
                 UPDATE job_runs
-                SET status='cancelled', completed_at=CURRENT_TIMESTAMP,
+                SET status='cancelled',
+                    started_at=COALESCE(started_at, requested_at),
+                    completed_at=CURRENT_TIMESTAMP,
                     heartbeat_at=NULL, lease_expires_at=NULL,
                     error_class='PreWorkerDeploymentRetirement',
                     error_message=$2, failure_reason=$2
