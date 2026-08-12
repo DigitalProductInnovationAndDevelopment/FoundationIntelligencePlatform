@@ -387,19 +387,12 @@ export default function DonorDirectoryPage({
   const [enrichmentDialog, setEnrichmentDialog] = useState<EnrichmentDialogState | null>(null);
   const [enrichmentRun, setEnrichmentRun] = useState<EnrichmentRun | null>(null);
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
-  const [sourceFunderRevision, setSourceFunderRevision] = useState(0);
   const requestVersion = useRef(0);
   const detailVersion = useRef(0);
   const listScrollPosition = useRef(0);
   const drawerRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const selectedRowRef = useRef<HTMLButtonElement>(null);
-  const selectedSourceFunder = detail && detail.funder.source_funder_key === selectedKey
-    ? detail.funder
-    : result?.items.find(item => item.source_funder_key === selectedKey);
-  const activeSourceFunderKey = selectedKey;
-  const activeSourceFunderName = selectedSourceFunder?.display_name;
-
   const filterCount = grantScopeFilterCount(scope)
     + Number(Boolean(directory.search))
     + Number(directory.status !== "all")
@@ -545,7 +538,7 @@ export default function DonorDirectoryPage({
         if (version === requestVersion.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, directory.page, directory.search, directory.sort, directory.status, online, scope, sourceFunderRevision]);
+  }, [apiBase, directory.page, directory.search, directory.sort, directory.status, online, scope]);
 
   const fetchDetail = useCallback((key: string, full: boolean) => {
     if (!online || !scope.beneficiaryCountry) return;
@@ -579,37 +572,6 @@ export default function DonorDirectoryPage({
       });
     return () => controller.abort();
   }, [apiBase, online, scope]);
-
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("active-source-funder-change", {
-      detail: activeSourceFunderKey ? {
-        sourceFunderKey: activeSourceFunderKey,
-        displayName: activeSourceFunderName || "Source funder",
-      } : null,
-    }));
-  }, [activeSourceFunderKey, activeSourceFunderName]);
-
-  useEffect(() => () => {
-    window.dispatchEvent(new CustomEvent("active-source-funder-change", { detail: null }));
-  }, []);
-
-  useEffect(() => {
-    const refreshResetSourceFunder = (event: Event) => {
-      const sourceFunderKey = String(
-        (event as CustomEvent<{ sourceFunderKey?: string }>).detail?.sourceFunderKey || "",
-      );
-      if (!sourceFunderKey) return;
-      detailVersion.current += 1;
-      setDetailLoading(false);
-      if (selectedKey === sourceFunderKey) {
-        setDetail(null);
-        setActivityLoaded(false);
-      }
-      setSourceFunderRevision(current => current + 1);
-    };
-    window.addEventListener("source-funder-reset-to-observed", refreshResetSourceFunder);
-    return () => window.removeEventListener("source-funder-reset-to-observed", refreshResetSourceFunder);
-  }, [selectedKey]);
 
   const applyConfirmedProfileLinks = useCallback((profiles: EnrichmentRun["profiles"]) => {
     // A confirmed GB-CHC identifier is the one safe immediate link we can
@@ -675,7 +637,7 @@ export default function DonorDirectoryPage({
   useEffect(() => {
     if (!selectedKey) return;
     return fetchDetail(selectedKey, isFavoriteDetail);
-  }, [fetchDetail, isFavoriteDetail, selectedKey, sourceFunderRevision]);
+  }, [fetchDetail, isFavoriteDetail, selectedKey]);
 
   useEffect(() => {
     if (!selectedKey) return;

@@ -56,3 +56,25 @@ test("role-gated UI keeps operational and user administration controls restricte
   assert.doesNotMatch(allFrontend, /credentials:\s*"include"/);
   assert.doesNotMatch(users, /method:\s*"DELETE"/);
 });
+
+test("Cognito guests use the footer login and the demo reset control is absent", () => {
+  const app = source("src/App.tsx");
+  const donor = source("src/components/DonorDirectoryPage.tsx");
+  const styles = source("src/index.css");
+
+  assert.match(app, /"Netlight Guest"/);
+  assert.match(app, /"Not signed in"/);
+  assert.match(app, /onClick=\{\(\) => void auth\.login\(\)\}/);
+  assert.match(app, />Sign in<\/span>/);
+  assert.match(app, />Sign out<\/span>/);
+  assert.match(app, /auth\.identity\?\.email \|\| auth\.identity\?\.username/);
+  assert.match(app, /auth\.authenticated \? auth\.role : "Not signed in"/);
+  assert.doesNotMatch(app, /if \(!auth\.authenticated\)/);
+  assert.doesNotMatch(app, /resetActiveSourceFunderToObserved/);
+  assert.doesNotMatch(app, /reset-to-observed/);
+  assert.doesNotMatch(app, /user-avatar-reset/);
+  assert.doesNotMatch(donor, /source-funder-reset-to-observed|active-source-funder-change/);
+  assert.doesNotMatch(styles, /user-avatar-reset/);
+  assert.match(app, /onClick=\{clearActiveProfileSafely\}/);
+  assert.match(app, /event\.key === "Escape"/);
+});

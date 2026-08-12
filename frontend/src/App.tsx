@@ -26,6 +26,7 @@ import {
   Star,
   X,
   Users,
+  LogIn,
   LogOut,
 } from "lucide-react";
 import AppHeader from "./components/AppHeader";
@@ -134,11 +135,6 @@ type FavoritesState = {
 type FavoriteDonorWorkspace =
   | { kind: "donor"; item: FavoriteDonorPayload }
   | { kind: "request"; item: FavoriteDonorRequestPayload };
-
-type ActiveSourceFunder = {
-  sourceFunderKey: string;
-  displayName: string;
-};
 
 type NewsSourceItem = {
   title: string;
@@ -519,7 +515,7 @@ const INITIAL_PROFILE_LOADING: ProfileLoadingState = {
   source_record: profileSectionState("idle"),
 };
 
-type GlobalApiErrorKey = "health" | "statistics" | "directory" | "source_reset";
+type GlobalApiErrorKey = "health" | "statistics" | "directory";
 type GlobalApiErrors = Partial<Record<GlobalApiErrorKey, string>>;
 
 function abortableDelay(
@@ -763,19 +759,6 @@ export default function App() {
   if (auth.loading) {
     return <main className="auth-shell"><div className="glass-card auth-card"><LoaderCircle className="spin" aria-hidden="true" /><h1>Foundation Intelligence Platform</h1><p>Preparing secure access…</p></div></main>;
   }
-  if (!auth.authenticated) {
-    return (
-      <main className="auth-shell">
-        <div className="glass-card auth-card">
-          <img src={amplifyLogo} alt="Amplify" />
-          <h1>Foundation Intelligence Platform</h1>
-          <p>Sign in with your managed customer account to continue.</p>
-          {auth.error && <div className="data-notice data-notice-error" role="alert">{auth.error}</div>}
-          <button type="button" className="btn btn-primary" onClick={() => void auth.login()}>Sign in</button>
-        </div>
-      </main>
-    );
-  }
   return <AuthenticatedApplication />;
 }
 
@@ -855,8 +838,6 @@ function AuthenticatedApplication() {
   const sourceHydrationTimerRef = useRef<number | null>(null);
   const selectedSourceFunderProfileKeyRef = useRef<string | null>(null);
   const sourceFunderProfilePayloadsRef = useRef(new Map<string, Record<string, any>>());
-  const [activeSourceFunder, setActiveSourceFunder] = useState<ActiveSourceFunder | null>(null);
-  const [sourceFunderResetPending, setSourceFunderResetPending] = useState(false);
 
   // News summarizer states
   const [newsLoading, setNewsLoading] = useState(false);
@@ -1334,22 +1315,6 @@ function AuthenticatedApplication() {
     };
     window.addEventListener("registry-header-state", receiveRegistryHeaderState);
     return () => window.removeEventListener("registry-header-state", receiveRegistryHeaderState);
-  }, []);
-
-  useEffect(() => {
-    const receiveActiveSourceFunder = (event: Event) => {
-      const detail = (event as CustomEvent<ActiveSourceFunder | null>).detail;
-      if (!detail?.sourceFunderKey) {
-        setActiveSourceFunder(null);
-        return;
-      }
-      setActiveSourceFunder({
-        sourceFunderKey: detail.sourceFunderKey,
-        displayName: detail.displayName || "Source funder",
-      });
-    };
-    window.addEventListener("active-source-funder-change", receiveActiveSourceFunder);
-    return () => window.removeEventListener("active-source-funder-change", receiveActiveSourceFunder);
   }, []);
 
   const checkBffHealth = async (signal?: AbortSignal) => {
@@ -2409,7 +2374,6 @@ function AuthenticatedApplication() {
     setNewsLoading(false);
     setNewsProgressStep(null);
     setNewsRunMode(null);
-    setApiError("source_reset", null);
     const previousFocus = profilePreviousFocusRef.current;
     profilePreviousFocusRef.current = null;
     window.requestAnimationFrame(() => previousFocus?.focus());
@@ -2427,53 +2391,6 @@ function AuthenticatedApplication() {
     window.requestAnimationFrame(() => profileModalRef.current?.focus());
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [selectedCharity]);
-
-  const resetActiveSourceFunderToObserved = async () => {
-    if (!isAdmin) {
-      clearActiveProfileSafely();
-      return;
-    }
-    const target = activeSourceFunder;
-    if (!target || !isBffOnline) {
-      // The NL control is also available while viewing an ordinary profile.
-      // In that case there is no source link to mutate, but its latest local
-      // news research still belongs to the profile being safely cleared.
-      cancelNewsResearch(selectedNewsOrganizationKeyRef.current, true);
-      clearActiveProfileSafely();
-      return;
-    }
-
-    setSourceFunderResetPending(true);
-    try {
-      const response = await apiFetch(
-        `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(target.sourceFunderKey)}/reset-to-observed`,
-        {
-          method: "POST",
-          credentials: "omit",
-          headers: mutationHeaders("reset source funder to observed-only"),
-        },
-      );
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.detail || `Could not reset ${target.displayName} to observed-only (${response.status}).`);
-      }
-      window.dispatchEvent(new CustomEvent("source-funder-reset-to-observed", {
-        detail: { sourceFunderKey: target.sourceFunderKey },
-      }));
-      sourceFunderProfilePayloadsRef.current.delete(target.sourceFunderKey);
-      // News briefings are derived from this profile link and are stored only
-      // in this browser.  Reset removes the matching latest briefing as well
-      // as cancelling a search that could otherwise finish after the reset.
-      cancelNewsResearch(selectedNewsOrganizationKeyRef.current, true);
-      setApiError("source_reset", null);
-      setActiveSourceFunder(null);
-      clearActiveProfileSafely();
-    } catch (error) {
-      setApiError("source_reset", (error as Error).message || `Could not reset ${target.displayName} to observed-only.`);
-    } finally {
-      setSourceFunderResetPending(false);
-    }
-  };
 
   const fetchPipelineStatus = async (signal?: AbortSignal) => {
     if (!isBffOnline) return;
@@ -2724,20 +2641,18 @@ function AuthenticatedApplication() {
 
         <div className="sidebar-footer">
           <div className="user-profile">
-            <button
-              type="button"
-              className="user-avatar user-avatar-reset"
-              onClick={() => isAdmin ? void resetActiveSourceFunderToObserved() : clearActiveProfileSafely()}
-              disabled={sourceFunderResetPending}
-              title={activeSourceFunder ? `Reset ${activeSourceFunder.displayName} to observed-only` : "Safely clear the active organization profile"}
-              aria-label={activeSourceFunder ? `Remove the linked profile for ${activeSourceFunder.displayName} while retaining its observed grants` : "Safely clear the active organization profile and cancel its background loading"}
-            >{sourceFunderResetPending ? <LoaderCircle className="user-avatar-reset-spinner" size={17} aria-hidden="true" /> : "NL"}</button>
+            <div className="user-avatar" aria-hidden="true">NL</div>
             <div className="user-info">
-              <span className="user-name">{auth.identity?.email || auth.identity?.username || "Authenticated user"}</span>
-              <span className="user-role">{auth.role}</span>
+              <span className="user-name">{auth.authenticated
+                ? auth.identity?.email || auth.identity?.username || "Authenticated user"
+                : "Netlight Guest"}</span>
+              <span className="user-role">{auth.authenticated ? auth.role : "Not signed in"}</span>
             </div>
-            {auth.mode === "cognito_rbac" && <button type="button" className="sidebar-logout" onClick={auth.logout} aria-label="Sign out"><LogOut size={16} /></button>}
+            {auth.mode === "cognito_rbac" && (auth.authenticated
+              ? <button type="button" className="sidebar-auth-action" onClick={auth.logout}><LogOut size={16} aria-hidden="true" /><span>Sign out</span></button>
+              : <button type="button" className="sidebar-auth-action" onClick={() => void auth.login()}><LogIn size={16} aria-hidden="true" /><span>Sign in</span></button>)}
           </div>
+          {auth.error && <div className="sidebar-auth-error" role="alert">{auth.error}</div>}
           {activeTab === "admin" && <button className="sidebar-health-check" onClick={() => checkBffHealth()}>
             <Activity size={15} />
             <span>Check backend connection</span>
