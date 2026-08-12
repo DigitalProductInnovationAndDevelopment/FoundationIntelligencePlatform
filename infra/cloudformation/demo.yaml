@@ -603,6 +603,13 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - Sid: DiscoverCurrentSnapshotFallback
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ImportBucket.Arn
+                Condition:
+                  StringEquals:
+                    s3:prefix: pipeline-snapshots/current.db
               - Sid: ReadApprovedBaselineAndCurrentSnapshot
                 Effect: Allow
                 Action: s3:GetObject
