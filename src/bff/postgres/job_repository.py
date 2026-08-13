@@ -410,6 +410,19 @@ class PostgresJobRepository(PostgresRepository):
                     "failure_reason": str(failure_reason)[:2000],
                 },
             )
+            if not will_retry:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE source_funder_profile_cache
+                        SET status='failed', payload=NULL,
+                            error='Profile hydration could not be completed.',
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE job_token=:job_id AND status='pending'
+                        """
+                    ),
+                    {"job_id": row["job_run_id"]},
+                )
             await self._event(
                 session,
                 row["job_run_id"],
@@ -445,6 +458,19 @@ class PostgresJobRepository(PostgresRepository):
                     session, job_id, "failed", "lease-reaper", {"reason": "lease_expired"}
                 )
             if failed_rows:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE source_funder_profile_cache
+                        SET status='failed', payload=NULL,
+                            error='Profile hydration could not be completed.',
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE job_token=ANY(CAST(:job_ids AS uuid[]))
+                          AND status='pending'
+                        """
+                    ),
+                    {"job_ids": list(failed_rows)},
+                )
                 await session.execute(
                     text(
                         """

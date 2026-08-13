@@ -178,6 +178,7 @@ class WorkerHandlers:
     @property
     def mapping(self):
         return {
+            "source_funder_profile_hydration": self.source_funder_profile_hydration,
             "source_funder_enrichment": self.source_funder_enrichment,
             "registry_enrichment": self.registry_enrichment,
             "full_run": self.full_run,
@@ -289,6 +290,25 @@ class WorkerHandlers:
             "record_count": len(profiles),
             "accepted_count": len(profiles),
             "profiles": profiles,
+        }
+
+    async def source_funder_profile_hydration(
+        self, job: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        source_funder_key = str(
+            (job.get("input") or {}).get("source_funder_key") or ""
+        ).strip()
+        if not source_funder_key:
+            raise ValueError("Profile hydration requires a source funder key")
+        hydrated = await SourceFunderRepository(self.sessions).hydrate_profile_cache(
+            source_funder_key,
+            job_id=str(job["job_id"]),
+        )
+        return {
+            "record_count": 1,
+            "accepted_count": 1,
+            "source_funder_key": hydrated["source_funder_key"],
+            "profile_id": hydrated["profile_id"],
         }
 
     async def registry_enrichment(self, job: Mapping[str, Any]) -> Mapping[str, Any]:
