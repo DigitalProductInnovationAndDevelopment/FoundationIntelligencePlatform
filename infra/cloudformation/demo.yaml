@@ -685,6 +685,8 @@ Resources:
               Value: 'false'
             - Name: CORS_ORIGINS
               Value: ''
+            - Name: ANTHROPIC_BASE_URL
+              Value: https://llm.netlight.ai/
             - Name: DATA_RUNTIME_MODE
               Value: postgresql
             - Name: DATABASE_HOST
