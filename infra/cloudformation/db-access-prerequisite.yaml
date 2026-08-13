@@ -1,0 +1,210 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Isolated database-access prerequisite for the Foundation Intelligence demo.
+  Creates a generated writer secret and a one-off ARM64 release task definition;
+  it does not run the task, update the application service, or modify RDS.
+
+Parameters:
+  BaseStackName:
+    Type: String
+    Default: foundation-intelligence-demo-e06ab1ea-v2
+    AllowedPattern: '^[A-Za-z][A-Za-z0-9-]{0,127}$'
+  BackendImageUri:
+    Type: String
+    Description: Immutable ARM64 backend image containing migration.database_access.
+    AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  DatabaseEndpoint:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9.-]+\.rds\.amazonaws\.com$'
+  DatabaseName:
+    Type: String
+    Default: foundation_intelligence
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+  DatabaseReaderUser:
+    Type: String
+    Default: foundation_app
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+  DatabaseWriterUser:
+    Type: String
+    Default: foundation_app_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+  DatabasePipelineUser:
+    Type: String
+    Default: foundation_pipeline_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+  DatabaseMasterSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@!-]+$'
+  DatabaseReaderSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@!-]+$'
+  LogRetentionDays:
+    Type: Number
+    Default: 7
+    AllowedValues: [7, 14, 30]
+
+Rules:
+  RequireDistinctRuntimeDatabasePrincipals:
+    Assertions:
+      - Assert: !Not
+          - !Equals [!Ref DatabaseReaderUser, !Ref DatabaseWriterUser]
+        AssertDescription: Reader and writer PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref DatabaseReaderUser, !Ref DatabasePipelineUser]
+        AssertDescription: Reader and pipeline PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref DatabaseWriterUser, !Ref DatabasePipelineUser]
+        AssertDescription: Writer and pipeline PostgreSQL principals must differ.
+
+Resources:
+  WriterDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Restricted DML writer for the Foundation Intelligence runtime
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${DatabaseWriterUser}"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: Purpose
+          Value: runtime-database-writer
+
+  PipelineDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Restricted versioned dataset publisher for the pipeline worker
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${DatabasePipelineUser}"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: Purpose
+          Value: pipeline-dataset-publisher
+
+  DbAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${BaseStackName}/db-access-prerequisite'
+      RetentionInDays: !Ref LogRetentionDays
+
+  DbAccessExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadOnlyDatabasePrerequisiteSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DatabaseMasterSecretArn
+                  - !Ref DatabaseReaderSecretArn
+                  - !Ref WriterDatabaseSecret
+                  - !Ref PipelineDatabaseSecret
+
+  DbAccessTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  DbAccessTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${BaseStackName}-db-access-prerequisite'
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt DbAccessExecutionRole.Arn
+      TaskRoleArn: !GetAtt DbAccessTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: provision-database-access
+          Image: !Ref BackendImageUri
+          Essential: true
+          User: '10001:10001'
+          EntryPoint: [python, -m]
+          Command: [migration.database_access]
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: DATABASE_HOST
+              Value: !Ref DatabaseEndpoint
+            - Name: DATABASE_PORT
+              Value: '5432'
+            - Name: DATABASE_NAME
+              Value: !Ref DatabaseName
+            - Name: DATABASE_READER_USER
+              Value: !Ref DatabaseReaderUser
+            - Name: DATABASE_WRITER_USER
+              Value: !Ref DatabaseWriterUser
+            - Name: DATABASE_PIPELINE_USER
+              Value: !Ref DatabasePipelineUser
+            - Name: DATABASE_SSL_MODE
+              Value: require
+          Secrets:
+            - Name: DATABASE_ADMIN_USER
+              ValueFrom: !Sub '${DatabaseMasterSecretArn}:username::'
+            - Name: DATABASE_ADMIN_PASSWORD
+              ValueFrom: !Sub '${DatabaseMasterSecretArn}:password::'
+            - Name: DATABASE_READER_PASSWORD
+              ValueFrom: !Sub '${DatabaseReaderSecretArn}:password::'
+            - Name: DATABASE_WRITER_PASSWORD
+              ValueFrom: !Sub '${WriterDatabaseSecret}:password::'
+            - Name: DATABASE_PIPELINE_PASSWORD
+              ValueFrom: !Sub '${PipelineDatabaseSecret}:password::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref DbAccessLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: prerequisite
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: Purpose
+          Value: database-access-prerequisite
+
+Outputs:
+  WriterDatabaseSecretArn:
+    Description: Pass to ApplicationDatabaseWriterSecretArn only after task verification.
+    Value: !Ref WriterDatabaseSecret
+  WriterDatabaseUser:
+    Value: !Ref DatabaseWriterUser
+  PipelineDatabaseSecretArn:
+    Description: Pass to the application stack only for the worker container.
+    Value: !Ref PipelineDatabaseSecret
+  PipelineDatabaseUser:
+    Value: !Ref DatabasePipelineUser
+  DbAccessTaskDefinitionArn:
+    Value: !Ref DbAccessTaskDefinition
+  DbAccessLogGroupName:
+    Value: !Ref DbAccessLogGroup

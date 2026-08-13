@@ -14,6 +14,11 @@
 | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER` | Alternative | PostgreSQL endpoint components |
 | `DATABASE_PASSWORD_FILE` | Preferred | Mounted runtime-only secret file |
 | `DATABASE_PASSWORD` | Alternative | Runtime-injected secret; never log/commit |
+| `DATABASE_WRITE_URL` | Writer alternative | Dedicated writer URL; never falls back to reader credentials |
+| `DATABASE_WRITE_HOST`, `DATABASE_WRITE_PORT`, `DATABASE_WRITE_NAME` | Writer optional | May override reader network/database values |
+| `DATABASE_WRITE_USER`, `DATABASE_WRITE_PASSWORD_FILE`, `DATABASE_WRITE_PASSWORD` | Writer mutation path | Dedicated restricted DML identity; credentials are mandatory as a complete set |
+| `DATABASE_WRITE_SSL_MODE` | No | Defaults to reader SSL mode; `require` in AWS |
+| `DATABASE_WRITE_POOL_SIZE`, `DATABASE_WRITE_MAX_OVERFLOW` | No | Independently bounded writer pool |
 | `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW` | No | Positive bounded pool values |
 | `DATABASE_POOL_TIMEOUT_SECONDS` | No | Positive checkout timeout |
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | No | Positive connection/readiness timeout |

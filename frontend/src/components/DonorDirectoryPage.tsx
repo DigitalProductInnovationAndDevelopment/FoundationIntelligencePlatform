@@ -30,7 +30,8 @@ import {
   type DonorDirectoryState,
   type GrantScope,
 } from "../lib/grantScope";
-import { mutationHeaders } from "../lib/http";
+import { apiFetch, mutationHeaders } from "../lib/http";
+import { pollDurableJob } from "../lib/jobs";
 
 type ProfileLink =
   | { status: "none" }
@@ -187,11 +188,9 @@ type EnrichmentDialogState = {
 };
 
 type EnrichmentRun = {
-  status: "running" | "success" | "failed";
+  status: "queued" | "running" | "success" | "failed";
   current: number;
   total: number;
-  progress?: number;
-  startedAt?: number;
   message: string;
   donorKeys: string[];
   profiles: Array<{
@@ -212,6 +211,7 @@ export type HeaderContextState = {
 interface Props {
   apiBase: string;
   online: boolean;
+  canOperate: boolean;
   selectedSources: string[];
   onHeaderStateChange: (state: HeaderContextState) => void;
   onBackToLandscape: (scope: GrantScope) => void;
@@ -305,10 +305,8 @@ function charityCommissionNumber(item: DonorResult): number | null {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
-const LOCAL_PROFILE_LINK_DURATION_MS = 7_000;
-
 function enrichmentIsActive(run: EnrichmentRun | null): boolean {
-  return run?.status === "running";
+  return run?.status === "queued" || run?.status === "running";
 }
 
 function profileStatusLabel(profile: ProfileLink): string {
@@ -347,6 +345,7 @@ function evidenceOrganizationName(evidence: EvidenceLink): string {
 export default function DonorDirectoryPage({
   apiBase,
   online,
+  canOperate,
   selectedSources,
   onHeaderStateChange,
   onBackToLandscape,
@@ -385,19 +384,12 @@ export default function DonorDirectoryPage({
   const [enrichmentDialog, setEnrichmentDialog] = useState<EnrichmentDialogState | null>(null);
   const [enrichmentRun, setEnrichmentRun] = useState<EnrichmentRun | null>(null);
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
-  const [sourceFunderRevision, setSourceFunderRevision] = useState(0);
   const requestVersion = useRef(0);
   const detailVersion = useRef(0);
   const listScrollPosition = useRef(0);
   const drawerRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const selectedRowRef = useRef<HTMLButtonElement>(null);
-  const selectedSourceFunder = detail && detail.funder.source_funder_key === selectedKey
-    ? detail.funder
-    : result?.items.find(item => item.source_funder_key === selectedKey);
-  const activeSourceFunderKey = selectedKey;
-  const activeSourceFunderName = selectedSourceFunder?.display_name;
-
   const filterCount = grantScopeFilterCount(scope)
     + Number(Boolean(directory.search))
     + Number(directory.status !== "all")
@@ -522,8 +514,8 @@ export default function DonorDirectoryPage({
     params.set("page_size", "25");
     setLoading(true);
     setError(null);
-    fetch(`${apiBase}/api/charities/grants/funders?${params.toString()}`, {
-      credentials: "include",
+    apiFetch(`${apiBase}/api/charities/grants/funders?${params.toString()}`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {
@@ -543,7 +535,7 @@ export default function DonorDirectoryPage({
         if (version === requestVersion.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiBase, directory.page, directory.search, directory.sort, directory.status, online, scope, sourceFunderRevision]);
+  }, [apiBase, directory.page, directory.search, directory.sort, directory.status, online, scope]);
 
   const fetchDetail = useCallback((key: string, full: boolean) => {
     if (!online || !scope.beneficiaryCountry) return;
@@ -553,8 +545,8 @@ export default function DonorDirectoryPage({
     params.set("detail_level", full ? "full" : "summary");
     setDetailLoading(true);
     setDetailError(null);
-    fetch(`${apiBase}/api/charities/grants/funders/${encodeURIComponent(key)}?${params.toString()}`, {
-      credentials: "include",
+    apiFetch(`${apiBase}/api/charities/grants/funders/${encodeURIComponent(key)}?${params.toString()}`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {
@@ -579,101 +571,9 @@ export default function DonorDirectoryPage({
   }, [apiBase, online, scope]);
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent("active-source-funder-change", {
-      detail: activeSourceFunderKey ? {
-        sourceFunderKey: activeSourceFunderKey,
-        displayName: activeSourceFunderName || "Source funder",
-      } : null,
-    }));
-  }, [activeSourceFunderKey, activeSourceFunderName]);
-
-  useEffect(() => () => {
-    window.dispatchEvent(new CustomEvent("active-source-funder-change", { detail: null }));
-  }, []);
-
-  useEffect(() => {
-    const refreshResetSourceFunder = (event: Event) => {
-      const sourceFunderKey = String(
-        (event as CustomEvent<{ sourceFunderKey?: string }>).detail?.sourceFunderKey || "",
-      );
-      if (!sourceFunderKey) return;
-      detailVersion.current += 1;
-      setDetailLoading(false);
-      if (selectedKey === sourceFunderKey) {
-        setDetail(null);
-        setActivityLoaded(false);
-      }
-      setSourceFunderRevision(current => current + 1);
-    };
-    window.addEventListener("source-funder-reset-to-observed", refreshResetSourceFunder);
-    return () => window.removeEventListener("source-funder-reset-to-observed", refreshResetSourceFunder);
-  }, [selectedKey]);
-
-  const applyConfirmedProfileLinks = useCallback((profiles: EnrichmentRun["profiles"]) => {
-    // A confirmed GB-CHC identifier is the one safe immediate link we can
-    // render without making the user wait for a complete dashboard-index
-    // rebuild. Name-selected registry candidates remain deliberately
-    // unlinked until an explicit backend relationship exists.
-    const confirmed = new Map(
-      profiles
-        .filter(profile => profile.resolution === "confirmed_identifier")
-        .map(profile => [profile.donorKey, profile]),
-    );
-    if (!confirmed.size) return;
-
-    setDetail(current => {
-      if (!current) return current;
-      const profile = confirmed.get(current.funder.source_funder_key);
-      if (!profile) return current;
-      return {
-        ...current,
-        funder: {
-          ...current.funder,
-          profile_link: {
-            status: "single",
-            profile_id: profile.profileId,
-            profile_name: profile.profileName,
-          },
-        },
-      };
-    });
-
-    setResult(current => {
-      if (!current) return current;
-      let newlyLinked = 0;
-      const items = current.items.map(item => {
-        const profile = confirmed.get(item.source_funder_key);
-        if (!profile) return item;
-        if (item.profile_link.status !== "single") newlyLinked += 1;
-        return {
-          ...item,
-          profile_link: {
-            status: "single" as const,
-            profile_id: profile.profileId,
-            profile_name: profile.profileName,
-          },
-        };
-      });
-      if (!newlyLinked) return { ...current, items };
-      return {
-        ...current,
-        items,
-        summary: {
-          ...current.summary,
-          status_counts: {
-            ...current.summary.status_counts,
-            linked: current.summary.status_counts.linked + newlyLinked,
-            observed_only: Math.max(0, current.summary.status_counts.observed_only - newlyLinked),
-          },
-        },
-      };
-    });
-  }, []);
-
-  useEffect(() => {
     if (!selectedKey) return;
     return fetchDetail(selectedKey, isFavoriteDetail);
-  }, [fetchDetail, isFavoriteDetail, selectedKey, sourceFunderRevision]);
+  }, [fetchDetail, isFavoriteDetail, selectedKey]);
 
   useEffect(() => {
     if (!selectedKey) return;
@@ -737,7 +637,7 @@ export default function DonorDirectoryPage({
   };
 
   const beginEnrichmentSelection = async (donor: DonorResult) => {
-    if (!online || enrichmentIsActive(enrichmentRun)) return;
+    if (!canOperate || !online || enrichmentIsActive(enrichmentRun)) return;
     const existing = enrichmentQueue.find(item => item.donorKey === donor.source_funder_key);
     if (existing) {
       removeFromEnrichmentQueue(donor.source_funder_key);
@@ -752,8 +652,8 @@ export default function DonorDirectoryPage({
     setEnrichmentDialog({ donor, candidates: [], loading: true, error: null });
     try {
       const params = new URLSearchParams({ query: donor.display_name, limit: "5", sort: "name" });
-      const response = await fetch(`${apiBase}/api/charities/directory/organizations?${params.toString()}`, {
-        credentials: "include",
+      const response = await apiFetch(`${apiBase}/api/charities/directory/organizations?${params.toString()}`, {
+        credentials: "omit",
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || "Could not search the cached Charity Commission register.");
@@ -769,7 +669,7 @@ export default function DonorDirectoryPage({
   };
 
   const startEnrichmentRun = async () => {
-    if (!online || !enrichmentQueue.length || enrichmentIsActive(enrichmentRun)) return;
+    if (!canOperate || !online || !enrichmentQueue.length || enrichmentIsActive(enrichmentRun)) return;
     setEnrichmentError(null);
     const queue = [...enrichmentQueue];
     const total = queue.length;
@@ -780,71 +680,57 @@ export default function DonorDirectoryPage({
       profileName: item.officialName,
       resolution: item.resolution,
     }));
-    const startedAt = Date.now();
     setEnrichmentRun({
-      status: "running",
+      status: "queued",
       current: 0,
       total,
-      progress: 6,
-      startedAt,
       donorKeys,
       profiles,
-      message: "Confirming the official record",
+      message: "Queued for worker processing",
     });
     try {
-      const [response] = await Promise.all([
-        fetch(`${apiBase}/api/charities/grants/funders/enrich`, {
-          method: "POST",
-          credentials: "include",
-          headers: mutationHeaders("enrich source funders", true),
-          body: JSON.stringify({ reg_numbers: queue.map(item => item.charityNumber) }),
+      const response = await apiFetch(`${apiBase}/api/charities/grants/funders/enrich`, {
+        method: "POST",
+        credentials: "omit",
+        headers: mutationHeaders("enrich source funders", true),
+        body: JSON.stringify({
+          reg_numbers: queue.map(item => item.charityNumber),
+          targets: queue.map(item => ({
+            source_funder_key: item.donorKey,
+            profile_id: item.charityNumber,
+          })),
         }),
-        new Promise(resolve => window.setTimeout(resolve, LOCAL_PROFILE_LINK_DURATION_MS)),
-      ]);
+      });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || "Could not start organization enrichment.");
-      // Confirmed registry records are linked locally in one short transaction.
-      // Do not enter the global pipeline poll here: a source refresh must never
-      // delay the user from opening the newly linked profile.
-      if (body.status === "success") {
-        setEnrichmentRun({
-          status: "success",
-          current: total,
-          total,
-          progress: 100,
-          donorKeys,
-          profiles,
-          message: `${total} organization${total === 1 ? "" : "s"} added to Organization Research`,
-        });
-        setEnrichmentQueue([]);
-        applyConfirmedProfileLinks(profiles);
+      const completed = await pollDurableJob(apiBase, body.job_id, job => {
+        if (job.status !== "queued" && job.status !== "running") return;
+        setEnrichmentRun(current => current ? {
+          ...current,
+          status: job.status === "queued" ? "queued" : "running",
+          message: job.status === "queued" ? "Queued for worker processing" : "Linking the confirmed profile",
+        } : current);
+      });
+      if (completed.status !== "succeeded") {
+        throw new Error(completed.failure_reason || completed.error_message || "Organization enrichment failed.");
       }
+      setEnrichmentRun({
+        status: "success",
+        current: total,
+        total,
+        donorKeys,
+        profiles,
+        message: `${total} organization${total === 1 ? "" : "s"} added to Organization Research`,
+      });
+      setEnrichmentQueue([]);
+      setDirectory(current => ({ ...current }));
+      if (selectedKey) fetchDetail(selectedKey, activityLoaded);
     } catch (reason) {
       const message = (reason as Error).message || "Could not start organization enrichment.";
       setEnrichmentRun({ status: "failed", current: 0, total, donorKeys, profiles, message: "Enrichment could not start", error: message });
       setEnrichmentError(message);
     }
   };
-
-  useEffect(() => {
-    if (enrichmentRun?.status !== "running") return;
-    const startedAt = enrichmentRun.startedAt || Date.now();
-    const updateProgress = () => {
-      const elapsed = Math.max(0, Date.now() - startedAt);
-      const progress = Math.min(94, Math.round(6 + (elapsed / LOCAL_PROFILE_LINK_DURATION_MS) * 88));
-      const message = progress < 35
-        ? "Confirming the official record"
-        : progress < 72
-          ? "Creating the Organization Research profile"
-          : "Linking already observed grants";
-      setEnrichmentRun(current => current?.status === "running" && current.startedAt === startedAt
-        ? { ...current, progress, message }
-        : current);
-    };
-    updateProgress();
-    const timer = window.setInterval(updateProgress, 180);
-    return () => window.clearInterval(timer);
-  }, [enrichmentRun?.startedAt, enrichmentRun?.status]);
 
   const applyFilters = () => {
     if (draft.dateFrom && draft.dateTo && draft.dateFrom > draft.dateTo) {
@@ -1008,7 +894,7 @@ export default function DonorDirectoryPage({
               <Star size={16} fill={requestIsFavorite ? "currentColor" : "none"} /> {requestIsFavorite ? "Saved request" : "Save request"}
             </button>
           )}
-          {!isFavoritePresentation && enrichmentQueue.length > 0 && (
+          {canOperate && !isFavoritePresentation && enrichmentQueue.length > 0 && (
             <button
               type="button"
               className="btn btn-primary donor-enrichment-start"
@@ -1227,10 +1113,12 @@ export default function DonorDirectoryPage({
                                 <span className="is-current">Grant link</span>
                                 <span>Open profile</span>
                               </div>
-                              <div className="donor-profile-link-progress" role="progressbar" aria-label="Profile creation progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={enrichmentRun?.progress || 0}>
-                                <i style={{ width: `${enrichmentRun?.progress || 0}%` }} />
+                              <div className="donor-profile-link-progress is-indeterminate" aria-hidden="true">
+                                <i />
                               </div>
-                              <small className="donor-profile-link-progress-label">{enrichmentRun?.progress || 0}%</small>
+                              <small className="donor-profile-link-progress-label">
+                                {enrichmentRun?.status === "queued" ? "Queued" : "Processing"}
+                              </small>
                             </div>
                           </div>
                         ) : detail.funder.profile_link.status === "single" ? (
@@ -1252,7 +1140,7 @@ export default function DonorDirectoryPage({
                         ) : (
                           <>
                             <p>This funder appears in observed grant data. No linked organization profile is currently available.</p>
-                            {!isFavoritePresentation && <div className="donor-enrichment-panel">
+                            {canOperate && !isFavoritePresentation && <div className="donor-enrichment-panel">
                               <div>
                                 <strong>Add to Organization Research</strong>
                                 <small>{queuedEnrichment
@@ -1271,7 +1159,7 @@ export default function DonorDirectoryPage({
                                 {queuedEnrichment ? "Remove" : "Add organization"}
                               </button>
                             </div>}
-                            {!isFavoritePresentation && queuedEnrichment && <button
+                            {canOperate && !isFavoritePresentation && queuedEnrichment && <button
                               type="button"
                               className="btn btn-primary donor-enrichment-start-inline"
                               disabled={!online || enrichmentIsActive(enrichmentRun)}
@@ -1359,7 +1247,7 @@ export default function DonorDirectoryPage({
         </div>
       )}
 
-      {enrichmentDialog && (
+      {canOperate && enrichmentDialog && (
         <div className="registry-detail-backdrop donor-enrichment-backdrop" onMouseDown={event => {
           if (event.currentTarget === event.target) setEnrichmentDialog(null);
         }}>

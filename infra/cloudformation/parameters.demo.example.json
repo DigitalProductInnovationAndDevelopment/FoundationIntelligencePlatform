@@ -4,6 +4,10 @@
     "ParameterValue": "208337080387.dkr.ecr.eu-west-1.amazonaws.com/foundation-intelligence-platform/backend:demo-ARM64-GIT_SHA"
   },
   {
+    "ParameterKey": "MigrationImageUri",
+    "ParameterValue": ""
+  },
+  {
     "ParameterKey": "FrontendImageUri",
     "ParameterValue": "208337080387.dkr.ecr.eu-west-1.amazonaws.com/foundation-intelligence-platform/frontend:demo-ARM64-GIT_SHA"
   },
@@ -14,6 +18,50 @@
   {
     "ParameterKey": "ApplicationDesiredCount",
     "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "ApplicationDatabaseWriterUser",
+    "ParameterValue": "foundation_app_writer"
+  },
+  {
+    "ParameterKey": "ApplicationDatabaseWriterSecretArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ApplicationDatabasePipelineUser",
+    "ParameterValue": "foundation_pipeline_writer"
+  },
+  {
+    "ParameterKey": "ApplicationDatabasePipelineSecretArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "AnthropicSecretArn",
+    "ParameterValue": "arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/anthropic-api-key-ABC123"
+  },
+  {
+    "ParameterKey": "CharityCommissionSecretArn",
+    "ParameterValue": "arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/charity-commission-api-key-ABC123"
+  },
+  {
+    "ParameterKey": "WorkerEnabled",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "OriginLockdownEnabled",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "CloudFrontOriginPrefixListId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "OriginVerificationToken",
+    "ParameterValue": "REPLACE_WITH_43_PLUS_BASE64URL_RANDOM_VALUE"
+  },
+  {
+    "ParameterKey": "CognitoDomainPrefix",
+    "ParameterValue": "replace-with-available-fip-demo-prefix"
   },
   {
     "ParameterKey": "DatabaseInstanceClass",

@@ -22,6 +22,10 @@ from typing import Mapping
 import asyncpg
 
 from bff.database import DatabaseManager, DatabaseSettings
+from migration.database_access import (
+    bootstrap_runtime_configuration,
+    configure_reader_role,
+)
 from migration.release_gate import release_state
 from migration.sqlite_to_postgres import migrate, source_preflight
 
@@ -92,69 +96,16 @@ async def _configure_application_role(
     connection: asyncpg.Connection,
     environment: Mapping[str, str],
 ) -> None:
-    application_user = _identifier(
-        _required(environment, "DATABASE_APP_USER"), "DATABASE_APP_USER"
+    reader_environment = dict(environment)
+    reader_environment.update(
+        {
+            "DATABASE_READER_USER": _required(environment, "DATABASE_APP_USER"),
+            "DATABASE_READER_PASSWORD": _required(
+                environment, "DATABASE_APP_PASSWORD"
+            ),
+        }
     )
-    admin_user = _identifier(
-        _required(environment, "DATABASE_ADMIN_USER"), "DATABASE_ADMIN_USER"
-    )
-    database_name = _identifier(
-        _required(environment, "DATABASE_NAME"), "DATABASE_NAME"
-    )
-    application_password = _required(environment, "DATABASE_APP_PASSWORD")
-    role = _quoted_identifier(application_user)
-    password = _quoted_literal(application_password)
-    exists = await connection.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=$1)",
-        application_user,
-    )
-    if exists:
-        await connection.execute(
-            f"ALTER ROLE {role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
-            f"NOINHERIT NOREPLICATION PASSWORD {password}"
-        )
-    else:
-        await connection.execute(
-            f"CREATE ROLE {role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
-            f"NOINHERIT NOREPLICATION PASSWORD {password}"
-        )
-    await connection.execute(f"REVOKE ALL ON DATABASE {_quoted_identifier(database_name)} FROM PUBLIC")
-    await connection.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
-    await connection.execute(
-        f"GRANT CONNECT ON DATABASE {_quoted_identifier(database_name)} TO {role}"
-    )
-    await connection.execute(f"GRANT USAGE ON SCHEMA public TO {role}")
-    await connection.execute(
-        f"REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {role}"
-    )
-    await connection.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA public TO {role}")
-    await connection.execute(
-        f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {role}"
-    )
-    await connection.execute("REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC")
-    await connection.execute(f"REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM {role}")
-    owner = _quoted_identifier(admin_user)
-    await connection.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA public "
-        f"REVOKE ALL ON TABLES FROM {role}"
-    )
-    await connection.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA public "
-        f"GRANT SELECT ON TABLES TO {role}"
-    )
-    await connection.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA public "
-        f"REVOKE ALL ON SEQUENCES FROM {role}"
-    )
-    await connection.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA public "
-        "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
-    )
-    await connection.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA public "
-        f"REVOKE ALL ON FUNCTIONS FROM {role}"
-    )
-    await connection.execute(f"ALTER ROLE {role} SET default_transaction_read_only = on")
+    await configure_reader_role(connection, reader_environment)
 
 
 async def _verify_application_role(
@@ -265,6 +216,7 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, object]
                 output_directory,
                 remote_postgres=True,
             )
+            configuration_bootstrap = await bootstrap_runtime_configuration(admin)
             await _configure_application_role(admin, task_environment)
             application_role = await _verify_application_role(task_environment)
             os.environ.update(
@@ -295,6 +247,7 @@ async def run(environment: Mapping[str, str] | None = None) -> dict[str, object]
             "dataset_version": report["dataset_version"],
             "activation_status": report["activation_status"],
             "application_role": application_role,
+            "configuration_bootstrap": configuration_bootstrap,
             "release_gate_ready": True,
         }
         output_directory.mkdir(parents=True, exist_ok=True, mode=0o700)

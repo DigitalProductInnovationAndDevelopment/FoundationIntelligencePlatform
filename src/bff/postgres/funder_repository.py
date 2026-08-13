@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import text
 
 from bff.postgres.base import PostgresRepository, iso_value, number_value, utc_now
+from bff.postgres.organization_repository import OrganizationRepository
 
 
 class SourceFunderRepository(PostgresRepository):
@@ -1134,4 +1135,66 @@ class SourceFunderRepository(PostgresRepository):
             "updated_at": iso_value(row["updated_at"]),
             "job_id": str(row["job_token"]) if row["job_token"] else None,
             "link_revision": int(row["link_revision"]),
+        }
+
+    async def hydrate_profile_cache(
+        self, source_funder_key: str, *, job_id: str
+    ) -> dict[str, Any]:
+        """Fill the current pending cache from the existing profile detail view."""
+        key = str(source_funder_key or "").strip()
+        if not key or len(key) > 500:
+            raise ValueError("source_funder_key must be a non-empty canonical key.")
+        token = uuid.UUID(str(job_id))
+        async with self.sessions() as session:
+            pending = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT dataset_version, profile_id, link_revision
+                        FROM source_funder_profile_cache
+                        WHERE source_funder_key=:key AND job_token=:job_id
+                          AND status='pending'
+                        """
+                    ),
+                    {"key": key, "job_id": token},
+                )
+            ).mappings().first()
+        if pending is None:
+            raise ValueError("The pending profile hydration is no longer current")
+
+        payload = await OrganizationRepository(self.sessions).detail(
+            int(pending["profile_id"])
+        )
+        if payload is None:
+            raise LookupError("No active organization profile is available for hydration")
+
+        async with self.sessions() as session, session.begin():
+            updated = await session.scalar(
+                text(
+                    """
+                    UPDATE source_funder_profile_cache
+                    SET status='ready', payload=CAST(:payload AS jsonb), error=NULL,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE dataset_version=:dataset_version
+                      AND source_funder_key=:key AND profile_id=:profile_id
+                      AND link_revision=:link_revision AND job_token=:job_id
+                      AND status='pending'
+                    RETURNING source_funder_key
+                    """
+                ),
+                {
+                    "dataset_version": pending["dataset_version"],
+                    "key": key,
+                    "profile_id": pending["profile_id"],
+                    "link_revision": pending["link_revision"],
+                    "job_id": token,
+                    "payload": json.dumps(payload, sort_keys=True, default=str),
+                },
+            )
+        if updated is None:
+            raise ValueError("The pending profile hydration changed before completion")
+        return {
+            "source_funder_key": key,
+            "profile_id": int(pending["profile_id"]),
+            "status": "ready",
         }

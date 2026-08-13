@@ -674,6 +674,13 @@ class DataSubjectRequestCreate(BaseModel):
     due_at: Optional[datetime] = None
 
 
+class SourceFunderEnrichmentTarget(BaseModel):
+    """One user-confirmed source-funder to active-dataset profile link."""
+
+    source_funder_key: str = Field(..., min_length=1, max_length=500)
+    profile_id: int = Field(..., gt=0)
+
+
 class SourceFunderEnrichmentRequest(BaseModel):
     """A deliberately bounded request to enrich observed funders.
 
@@ -684,6 +691,7 @@ class SourceFunderEnrichmentRequest(BaseModel):
 
     reg_numbers: List[int] = Field(..., min_length=1, max_length=5)
     skip_contact_crawler: bool = False
+    targets: List[SourceFunderEnrichmentTarget] = Field(default=[], max_length=5)
 
 
 class SourceFunderRelinkRequest(BaseModel):

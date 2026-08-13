@@ -7,6 +7,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from bff.postgres.governance_repository import GovernanceRepository
+from bff.postgres.dependencies import reader_sessions, writer_sessions
 from bff.schemas import (
     DataHoldRelease,
     DataHoldRequest,
@@ -33,7 +34,11 @@ RETENTION_PLANNER = RetentionPlanner(GOVERNANCE_CONFIGURATION)
 
 
 def _repository(request: Request) -> GovernanceRepository:
-    return GovernanceRepository(request.app.state.database.sessions())
+    return GovernanceRepository(reader_sessions(request))
+
+
+def _write_repository(request: Request) -> GovernanceRepository:
+    return GovernanceRepository(writer_sessions(request))
 
 
 def _actor(request: Request) -> str:
@@ -67,7 +72,7 @@ async def retention_policies(
 async def retention_dry_run(
     payload: RetentionDryRunRequest,
     request: Request,
-    repository: GovernanceRepository = Depends(_repository),
+    repository: GovernanceRepository = Depends(_write_repository),
 ):
     candidate = RetentionCandidate(
         target_type=payload.target_type,
@@ -124,7 +129,7 @@ async def active_holds(
 async def create_hold(
     payload: DataHoldRequest,
     request: Request,
-    repository: GovernanceRepository = Depends(_repository),
+    repository: GovernanceRepository = Depends(_write_repository),
 ):
     try:
         return await repository.create_hold(
@@ -155,7 +160,7 @@ async def release_hold(
     hold_id: str,
     payload: DataHoldRelease,
     request: Request,
-    repository: GovernanceRepository = Depends(_repository),
+    repository: GovernanceRepository = Depends(_write_repository),
 ):
     try:
         return await repository.release_hold(
@@ -192,7 +197,7 @@ async def export_expiration_report(
 )
 async def create_data_subject_request(
     payload: DataSubjectRequestCreate,
-    repository: GovernanceRepository = Depends(_repository),
+    repository: GovernanceRepository = Depends(_write_repository),
 ):
     request_id = await repository.create_data_subject_request(
         request_type=payload.request_type,

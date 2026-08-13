@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  Cost-conscious, non-production Foundation Intelligence public read-only demo.
-  HTTP is temporary and not production-ready. DesiredCount defaults to zero and
-  no data, image or stack operation is performed by this template file itself.
+  Cost-conscious, non-production Foundation Intelligence customer pilot.
+  Browser TLS terminates at CloudFront while the CloudFront-to-ALB and ALB-to-ECS
+  hops remain HTTP-only accepted temporary residual risks. DesiredCount defaults
+  to zero and no data, image or stack operation is performed by this template.
 
 Parameters:
   VpcId:
@@ -31,6 +32,11 @@ Parameters:
     Type: String
     Description: Immutable ARM64 backend ECR URI, preferably pinned by digest.
     AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  MigrationImageUri:
+    Type: String
+    Default: ''
+    Description: Optional backend image used to apply schema before enabling its runtime.
+    AllowedPattern: '^$|^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
   FrontendImageUri:
     Type: String
     Description: Immutable ARM64 frontend-runtime-ecs ECR URI, preferably pinned by digest.
@@ -56,6 +62,42 @@ Parameters:
     Type: String
     Default: foundation_app
     AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: SELECT-only runtime reader provisioned by the release path.
+  ApplicationDatabaseWriterUser:
+    Type: String
+    Default: foundation_app_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: Restricted DML writer; must differ from ApplicationDatabaseUser.
+  ApplicationDatabaseWriterSecretArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: >-
+      Output of the separately executed DB-access prerequisite stack. Keep empty
+      until the writer role and grants have been provisioned and verified.
+  ApplicationDatabasePipelineUser:
+    Type: String
+    Default: foundation_pipeline_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: Dedicated versioned-dataset publisher used only by the worker.
+  ApplicationDatabasePipelineSecretArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: Output of the verified DB-access prerequisite stack.
+  AnthropicSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/anthropic-api-key-[A-Za-z0-9]{6}$'
+    Description: Existing JSON secret containing the server-side Anthropic api_key.
+  CharityCommissionSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/charity-commission-api-key-[A-Za-z0-9]{6}$'
+    Description: Existing JSON secret containing the worker-only Charity Commission api_key.
+  WorkerEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Enable only after schema and dedicated database grants are ready.
   SourceObjectKey:
     Type: String
     Default: imports/charities.db
@@ -76,6 +118,66 @@ Parameters:
     Type: String
     Description: Full Git commit SHA used to build the approved backend image.
     AllowedPattern: '^[a-f0-9]{40}$'
+  OriginLockdownEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: false for Deployment A; true only for the approved CloudFront-only origin lockdown.
+  CloudFrontOriginPrefixListId:
+    Type: String
+    Default: ''
+    Description: >-
+      Region-specific com.amazonaws.global.cloudfront.origin-facing prefix list.
+      It is intentionally supplied at deployment time and never hardcoded.
+    AllowedPattern: '^$|^pl-[a-f0-9]+$'
+  OriginVerificationToken:
+    Type: String
+    NoEcho: true
+    MinLength: 43
+    MaxLength: 128
+    AllowedPattern: '^[A-Za-z0-9_-]{43,128}$'
+    Description: >-
+      At least 32 bytes of cryptographic entropy encoded as base64url. NoEcho is
+      not protection from privileged principals who can inspect AWS configuration.
+  CognitoDomainPrefix:
+    Type: String
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+    Description: Globally available, project-specific Cognito managed-login prefix.
+
+Rules:
+  RequireDistinctRuntimeDatabasePrincipals:
+    Assertions:
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabaseWriterUser]
+        AssertDescription: Reader and writer PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabasePipelineUser]
+        AssertDescription: Reader and pipeline PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseWriterUser, !Ref ApplicationDatabasePipelineUser]
+        AssertDescription: Writer and pipeline PostgreSQL principals must differ.
+  RequireWorkerPrerequisites:
+    RuleCondition: !Equals [!Ref WorkerEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
+        AssertDescription: Runtime writer secret is required when the worker is enabled.
+      - Assert: !Not [!Equals [!Ref ApplicationDatabasePipelineSecretArn, '']]
+        AssertDescription: Pipeline publisher secret is required when the worker is enabled.
+  RequireCloudFrontPrefixListForLockdown:
+    RuleCondition: !Equals [!Ref OriginLockdownEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref CloudFrontOriginPrefixListId, '']]
+        AssertDescription: CloudFrontOriginPrefixListId is required when origin lockdown is enabled.
+
+Conditions:
+  OriginLockdown: !Equals [!Ref OriginLockdownEnabled, 'true']
+  PublicOriginAccess: !Equals [!Ref OriginLockdownEnabled, 'false']
+  RuntimeWriterConfigured: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
+  RuntimePipelineConfigured: !Not [!Equals [!Ref ApplicationDatabasePipelineSecretArn, '']]
+  PipelineWorkerEnabled: !Equals [!Ref WorkerEnabled, 'true']
+  SeparateMigrationImage: !Not [!Equals [!Ref MigrationImageUri, '']]
 
 Resources:
   DatabaseSubnetA:
@@ -129,15 +231,31 @@ Resources:
     Properties:
       GroupDescription: Temporary public HTTP ingress for the non-production demo
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - Description: Temporary HTTP demo only
-          IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-alb'
+
+  PublicAlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: PublicOriginAccess
+    Properties:
+      Description: Deployment A public HTTP origin access
+      GroupId: !GetAtt AlbSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  CloudFrontAlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: OriginLockdown
+    Properties:
+      Description: Deployment B HTTP access from CloudFront origin-facing servers only
+      GroupId: !GetAtt AlbSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourcePrefixListId: !Ref CloudFrontOriginPrefixListId
 
   EcsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -251,11 +369,75 @@ Resources:
       LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/backend'
       RetentionInDays: 7
 
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/worker'
+      RetentionInDays: 7
+
   MigrationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/migration'
       RetentionInDays: 7
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: 'ON'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: Foundation Intelligence Platform invitation
+          EmailMessage: 'Your username is {username} and temporary password is {####}.'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+      UserPoolTier: ESSENTIALS
+      DeletionProtection: !If [OriginLockdown, ACTIVE, INACTIVE]
+      UserPoolTags:
+        Environment: demo
+
+  CustomerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: customer
+      Description: Normal analytics and sanitized scraper status
+      Precedence: 30
+
+  OperatorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: operator
+      Description: Customer access plus operational scraper and pipeline controls
+      Precedence: 20
+
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: admin
+      Description: Full administration including users, roles and critical settings
+      Precedence: 10
 
   AppDatabaseSecret:
     Type: AWS::SecretsManager::Secret
@@ -347,7 +529,39 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: ReadDemoDatabaseSecrets
+        - PolicyName: ReadApplicationSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AppDatabaseSecret
+                  - !Ref AnthropicSecretArn
+                  - !Ref CharityCommissionSecretArn
+                  - !If
+                    - RuntimeWriterConfigured
+                    - !Ref ApplicationDatabaseWriterSecretArn
+                    - !Ref AWS::NoValue
+                  - !If
+                    - RuntimePipelineConfigured
+                    - !Ref ApplicationDatabasePipelineSecretArn
+                    - !Ref AWS::NoValue
+
+  MigrationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadMigrationDatabaseSecrets
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -367,6 +581,45 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoUserAdministration
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListUsersInGroup
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminResetUserPassword
+                Resource: !GetAtt CognitoUserPool.Arn
+        - PolicyName: PipelineSnapshotArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DiscoverCurrentSnapshotFallback
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ImportBucket.Arn
+                Condition:
+                  StringEquals:
+                    s3:prefix: pipeline-snapshots/current.db
+              - Sid: ReadApprovedBaselineAndCurrentSnapshot
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub '${ImportBucket.Arn}/${SourceObjectKey}'
+                  - !Sub '${ImportBucket.Arn}/pipeline-snapshots/current.db'
+              - Sid: PublishVersionedCurrentSnapshot
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ImportBucket.Arn}/pipeline-snapshots/current.db'
 
   MigrationTaskRole:
     Type: AWS::IAM::Role
@@ -398,8 +651,8 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: !Sub '${AWS::StackName}-application'
-      Cpu: '512'
-      Memory: '2048'
+      Cpu: !If [PipelineWorkerEnabled, '1024', '512']
+      Memory: !If [PipelineWorkerEnabled, '4096', '2048']
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
       ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
@@ -417,13 +670,23 @@ Resources:
             - Name: APP_ENV
               Value: demo
             - Name: AUTH_MODE
-              Value: public_readonly
+              Value: cognito_rbac
             - Name: DEV_AUTH_ENABLED
               Value: 'false'
+            - Name: COGNITO_REGION
+              Value: !Ref AWS::Region
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
+            - Name: COGNITO_DOMAIN
+              Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
             - Name: CORE_PROXY_ENABLED
               Value: 'false'
             - Name: CORS_ORIGINS
               Value: ''
+            - Name: ANTHROPIC_BASE_URL
+              Value: https://llm.netlight.ai/
             - Name: DATA_RUNTIME_MODE
               Value: postgresql
             - Name: DATABASE_HOST
@@ -434,6 +697,11 @@ Resources:
               Value: foundation_intelligence
             - Name: DATABASE_USER
               Value: !Ref ApplicationDatabaseUser
+            - !If
+              - RuntimeWriterConfigured
+              - Name: DATABASE_WRITE_USER
+                Value: !Ref ApplicationDatabaseWriterUser
+              - !Ref AWS::NoValue
             - Name: DATABASE_SSL_MODE
               Value: require
             - Name: DATABASE_POOL_SIZE
@@ -443,6 +711,13 @@ Resources:
           Secrets:
             - Name: DATABASE_PASSWORD
               ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+            - Name: ANTHROPIC_API_KEY
+              ValueFrom: !Sub '${AnthropicSecretArn}:api_key::'
+            - !If
+              - RuntimeWriterConfigured
+              - Name: DATABASE_WRITE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabaseWriterSecretArn}:password::'
+              - !Ref AWS::NoValue
           HealthCheck:
             Command:
               - CMD
@@ -492,6 +767,68 @@ Resources:
               awslogs-group: !Ref FrontendLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: frontend
+        - !If
+          - PipelineWorkerEnabled
+          - Name: worker
+            Image: !Ref BackendImageUri
+            Essential: true
+            User: '10001:10001'
+            EntryPoint: [python, -m]
+            Command: [pipelines.worker]
+            StopTimeout: 120
+            Environment:
+              - Name: APP_ENV
+                Value: demo
+              - Name: AUTH_MODE
+                Value: cognito_rbac
+              - Name: DATA_RUNTIME_MODE
+                Value: postgresql
+              - Name: DATABASE_HOST
+                Value: !GetAtt Database.Endpoint.Address
+              - Name: DATABASE_PORT
+                Value: '5432'
+              - Name: DATABASE_NAME
+                Value: foundation_intelligence
+              - Name: DATABASE_USER
+                Value: !Ref ApplicationDatabaseUser
+              - Name: DATABASE_WRITE_USER
+                Value: !Ref ApplicationDatabaseWriterUser
+              - Name: DATABASE_PIPELINE_USER
+                Value: !Ref ApplicationDatabasePipelineUser
+              - Name: DATABASE_SSL_MODE
+                Value: require
+              - Name: WORKER_QUEUE_NAME
+                Value: pipeline
+              - Name: WORKER_LEASE_SECONDS
+                Value: '90'
+              - Name: WORKER_IDLE_SECONDS
+                Value: '2'
+              - Name: PIPELINE_SNAPSHOT_S3_URI
+                Value: !Sub 's3://${ImportBucket}/pipeline-snapshots/current.db'
+              - Name: PIPELINE_FALLBACK_S3_URI
+                Value: !Sub 's3://${ImportBucket}/${SourceObjectKey}'
+              - Name: PIPELINE_FALLBACK_SHA256
+                Value: !Ref SourceSha256
+              - Name: PIPELINE_SOURCE_SCHEMA_VERSION
+                Value: !Ref SourceSchemaVersion
+              - Name: CODE_REVISION
+                Value: !Ref CodeRevision
+            Secrets:
+              - Name: DATABASE_PASSWORD
+                ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+              - Name: DATABASE_WRITE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabaseWriterSecretArn}:password::'
+              - Name: DATABASE_PIPELINE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabasePipelineSecretArn}:password::'
+              - Name: CHARITY_COMMISSION_API_KEY
+                ValueFrom: !Sub '${CharityCommissionSecretArn}:api_key::'
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref WorkerLogGroup
+                awslogs-region: !Ref AWS::Region
+                awslogs-stream-prefix: worker
+          - !Ref AWS::NoValue
       Tags:
         - Key: Environment
           Value: demo
@@ -506,7 +843,7 @@ Resources:
       Memory: '4096'
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
-      ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
+      ExecutionRoleArn: !GetAtt MigrationExecutionRole.Arn
       TaskRoleArn: !GetAtt MigrationTaskRole.Arn
       RuntimePlatform:
         CpuArchitecture: ARM64
@@ -537,7 +874,7 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: download
         - Name: migrate
-          Image: !Ref BackendImageUri
+          Image: !If [SeparateMigrationImage, !Ref MigrationImageUri, !Ref BackendImageUri]
           Essential: false
           User: '10001:10001'
           EntryPoint: [python, -m]
@@ -630,7 +967,7 @@ Resources:
         - Key: Environment
           Value: demo
         - Key: TransportNotice
-          Value: temporary-http-not-production-ready
+          Value: accepted-temporary-http-cloudfront-to-alb
 
   FrontendTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -656,12 +993,138 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
+        - !If
+          - OriginLockdown
+          - Type: fixed-response
+            FixedResponseConfig:
+              ContentType: text/plain
+              MessageBody: Forbidden
+              StatusCode: '403'
+          - Type: forward
+            TargetGroupArn: !Ref FrontendTargetGroup
+
+  OriginVerificationListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpListener
+      Priority: 1
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-FIP-Origin-Verify
+            Values: [!Ref OriginVerificationToken]
+      Actions:
         - Type: forward
           TargetGroupArn: !Ref FrontendTargetGroup
 
+  DefaultOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub '${AWS::StackName}-default-origin'
+        Comment: Forward OAuth callback query strings without viewer Host or cookies
+        CookiesConfig:
+          CookieBehavior: none
+        HeadersConfig:
+          HeaderBehavior: none
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: OriginVerificationListenerRule
+    Properties:
+      DistributionConfig:
+        Comment: !Sub '${AWS::StackName} authenticated customer pilot'
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+        Origins:
+          - Id: AlbOrigin
+            DomainName: !GetAtt LoadBalancer.DNSName
+            ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            OriginCustomHeaders:
+              - HeaderName: X-FIP-Origin-Verify
+                HeaderValue: !Ref OriginVerificationToken
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: AlbOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          # AWS managed policy Managed-CachingDisabled.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: !Ref DefaultOriginRequestPolicy
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: AlbOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            # AWS managed policies Managed-CachingDisabled and
+            # Managed-AllViewerExceptHostHeader. The latter forwards
+            # Authorization while replacing the viewer Host for the ALB origin.
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            Compress: true
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Sub '${AWS::StackName}-browser'
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs:
+        - !Sub 'https://${CloudFrontDistribution.DomainName}/auth/callback'
+      LogoutURLs:
+        - !Sub 'https://${CloudFrontDistribution.DomainName}/'
+      DefaultRedirectURI: !Sub 'https://${CloudFrontDistribution.DomainName}/auth/callback'
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      ReadAttributes: [email, email_verified]
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 2
+
+  CognitoManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: CognitoUserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientId: !Ref CognitoUserPoolClient
+      UseCognitoProvidedValues: true
+
   ApplicationService:
     Type: AWS::ECS::Service
-    DependsOn: HttpListener
+    DependsOn: OriginVerificationListenerRule
     Properties:
       ServiceName: application
       Cluster: !Ref EcsCluster
@@ -690,8 +1153,22 @@ Resources:
 
 Outputs:
   TemporaryDemoUrl:
-    Description: HTTP-only temporary demo URL; do not treat as production-ready.
-    Value: !Sub 'http://${LoadBalancer.DNSName}'
+    Description: Legacy output name retained for automation; now points to CloudFront HTTPS.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  LoadBalancerDnsName:
+    Description: Raw HTTP origin name for diagnostics; not the customer URL.
+    Value: !GetAtt LoadBalancer.DNSName
+  CloudFrontUrl:
+    Description: Public customer URL using the CloudFront default certificate.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  CloudFrontDistributionId:
+    Value: !Ref CloudFrontDistribution
+  CognitoUserPoolId:
+    Value: !Ref CognitoUserPool
+  CognitoUserPoolClientId:
+    Value: !Ref CognitoUserPoolClient
+  CognitoManagedLoginDomain:
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
   ClusterArn:
     Value: !GetAtt EcsCluster.Arn
   ApplicationServiceArn:
@@ -706,5 +1183,19 @@ Outputs:
     Value: !Ref DatabaseInstanceClass
   ApplicationDesiredCount:
     Value: !Ref ApplicationDesiredCount
+  ApplicationDatabaseReaderUser:
+    Value: !Ref ApplicationDatabaseUser
+  ApplicationDatabaseWriterUser:
+    Value: !Ref ApplicationDatabaseWriterUser
+  ApplicationDatabaseWriterSecretArn:
+    Condition: RuntimeWriterConfigured
+    Value: !Ref ApplicationDatabaseWriterSecretArn
+  ApplicationDatabasePipelineUser:
+    Value: !Ref ApplicationDatabasePipelineUser
+  ApplicationDatabasePipelineSecretArn:
+    Condition: RuntimePipelineConfigured
+    Value: !Ref ApplicationDatabasePipelineSecretArn
+  WorkerEnabled:
+    Value: !Ref WorkerEnabled
   DatabaseSubnetIds:
     Value: !Join [',', [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]]

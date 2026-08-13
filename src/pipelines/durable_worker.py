@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol
 
 from bff.postgres.job_repository import PostgresJobRepository
-from bff.utils.logging import logger
+from bff.utils.logging import logger, redact_text
 
 
 JobHandler = Callable[[Mapping[str, Any]], Awaitable[Mapping[str, Any]]]
@@ -81,6 +81,30 @@ class DurableWorker:
                 },
             )
             return WorkerResult(status="failed", job_id=job_id)
+        heartbeat_stop = asyncio.Event()
+
+        async def maintain_lease() -> None:
+            interval = max(2.0, self.lease_seconds / 3)
+            while True:
+                try:
+                    await asyncio.wait_for(heartbeat_stop.wait(), timeout=interval)
+                    return
+                except asyncio.TimeoutError:
+                    if not hasattr(self.repository, "heartbeat"):
+                        return
+                    alive = await self.repository.heartbeat(
+                        job_id,
+                        worker_id=self.worker_id,
+                        lease_seconds=self.lease_seconds,
+                    )
+                    if not alive:
+                        logger.error(
+                            "job_lease_lost",
+                            extra={"job_id": job_id, "operation": str(job["job_type"])},
+                        )
+                        return
+
+        heartbeat_task = asyncio.create_task(maintain_lease())
         try:
             async with asyncio.timeout(int(job["timeout_seconds"])):
                 result = await handler(job)
@@ -90,7 +114,7 @@ class DurableWorker:
                 worker_id=self.worker_id,
                 error_class="JobTimeout",
                 failure_reason="Worker execution exceeded the durable job timeout",
-                retryable=True,
+                retryable=False,
             )
             logger.error(
                 "job_timed_out",
@@ -108,8 +132,11 @@ class DurableWorker:
                 job_id,
                 worker_id=self.worker_id,
                 error_class=exc.__class__.__name__,
-                failure_reason="Worker handler failed; last-good data remains active",
-                retryable=True,
+                failure_reason=(
+                    "Worker handler failed; last-good data remains active: "
+                    + redact_text(str(exc))[:1500]
+                ),
+                retryable=False,
             )
             logger.error(
                 "job_failed",
@@ -122,6 +149,9 @@ class DurableWorker:
                 },
             )
             return WorkerResult(status=status, job_id=job_id)
+        finally:
+            heartbeat_stop.set()
+            await heartbeat_task
         succeeded = await self.repository.succeed(
             job_id,
             worker_id=self.worker_id,

@@ -12,10 +12,11 @@ import json
 import os
 import re
 import sqlite3
-import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+
+from data.normalization import normalize_organization_name
 
 
 REGISTRY_TABLE = "charity_registry_organizations"
@@ -27,36 +28,6 @@ DEFAULT_SOURCE_PATH = Path(__file__).resolve().parent / "raw" / "charity_commiss
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def normalize_organization_name(value: Any) -> str:
-    """Return a conservative, search-safe organization-name representation.
-
-    Legal suffixes are removed only when they are trailing standalone tokens.  The
-    resulting value is suitable for search and conservative exact-name matching;
-    it is never used by itself as authority for a grant or score relationship.
-    """
-    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
-    text = text.replace("&", " and ")
-    text = re.sub(r"[\u2010-\u2015/_.,;:()\[\]{}'\"`]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    suffixes = (
-        "charitable incorporated organisation",
-        "charitable incorporated organization",
-        "community interest company",
-        "limited liability partnership",
-        "company limited by guarantee",
-        "limited",
-        "ltd",
-        "plc",
-        "cio",
-        "cic",
-    )
-    for suffix in suffixes:
-        if text.endswith(f" {suffix}"):
-            text = text[: -len(suffix)].strip()
-            break
-    return text
 
 
 def _fts_available(conn: sqlite3.Connection) -> bool:

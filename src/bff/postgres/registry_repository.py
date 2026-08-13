@@ -18,6 +18,8 @@ from bff.postgres.base import (
     iso_value,
     number_value,
 )
+from data.normalization import normalize_organization_name
+from preprocessing.enrichment import enrich_organization
 
 
 _SEARCH_SQL = text(
@@ -176,6 +178,304 @@ class RegistryPageCursor:
 
 class RegistryRepository(PostgresRepository):
     """Bounded directory filters and lazy record detail for the active dataset."""
+
+    async def link_exact_profile(
+        self, charity_number: int, *, actor_id: str
+    ) -> dict[str, Any] | None:
+        """Create/link one exact cached registry profile and attach observed grants."""
+        async with self.sessions() as session, session.begin():
+            dataset_version = await self.active_dataset(session)
+            row = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT registry.registry_id, registry.charity_number,
+                               registry.registered_name, registry.registration_status,
+                               registry.income, registry.expenditure,
+                               registry.address_line_one, registry.address_line_two,
+                               registry.address_line_three, registry.address_line_four,
+                               registry.address_line_five, registry.postcode,
+                               registry.city, registry.administrative_region,
+                               registry.country_code, registry.registered_latitude,
+                               registry.registered_longitude, registry.activity_text,
+                               registry.source_name, registry.source_record_updated_at
+                        FROM charity_registry_organizations AS registry
+                        WHERE registry.dataset_version=:dataset_version
+                          AND registry.is_current_source_record
+                          AND (
+                              registry.charity_number=:charity_number
+                              OR registry.linked_charity_number=:charity_number
+                          )
+                        ORDER BY CASE WHEN registry.charity_number=:charity_number
+                                      THEN 0 ELSE 1 END,
+                                 registry.registry_id
+                        LIMIT 1
+                        """
+                    ),
+                    {
+                        "dataset_version": dataset_version,
+                        "charity_number": str(int(charity_number)),
+                    },
+                )
+            ).mappings().first()
+            if row is None:
+                return None
+            try:
+                profile_id = int(str(row["charity_number"]).strip())
+            except (TypeError, ValueError) as exc:
+                raise ValueError("The cached registry record has no usable charity number") from exc
+
+            address = ", ".join(
+                str(row[field])
+                for field in (
+                    "address_line_one", "address_line_two", "address_line_three",
+                    "address_line_four", "address_line_five", "postcode",
+                )
+                if row[field]
+            )
+            source_url = (
+                "https://register-of-charities.charitycommission.gov.uk/"
+                f"en/charity-search/-/charity-details/{profile_id}"
+            )
+            raw_source_data = {
+                "registered_charity_number": profile_id,
+                "link": source_url,
+                "all_details": {
+                    "charity_name": row["registered_name"],
+                    "reg_status": row["registration_status"],
+                    "latest_income": row["income"],
+                    "latest_expenditure": row["expenditure"],
+                    "activities": row["activity_text"],
+                    "address_country": row["country_code"],
+                },
+                "description": row["activity_text"],
+                "registry_id": row["registry_id"],
+            }
+            profile_seed: dict[str, Any] = {
+                "charity_id": profile_id,
+                "name": row["registered_name"],
+                "type": "Charity",
+                "address": address,
+                "city": row["city"],
+                "state": row["administrative_region"],
+                "country": row["country_code"],
+                "annual_income": row["income"],
+                "annual_expenditure": row["expenditure"],
+                "raw_cc_data": raw_source_data,
+            }
+            enrichment = enrich_organization(profile_seed)
+            source_records = [{
+                "source": row["source_name"],
+                "record_id": row["registry_id"],
+                "url": source_url,
+                "record_updated_at": iso_value(row["source_record_updated_at"]),
+            }]
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO charities (
+                        dataset_version, charity_id, name, type, address, city,
+                        state, country, latitude, longitude, annual_income,
+                        annual_expenditure, raw_source_data,
+                        programme_areas_source, programme_areas_inferred,
+                        programme_area_scores, programme_area_method,
+                        programme_area_evidence, programme_area_review_required,
+                        geographic_focus_source, geographic_focus_inferred,
+                        headquarters_country, headquarters_region,
+                        geography_method, geography_confidence, geography_evidence,
+                        geography_review_required, enrichment_rule_version,
+                        enrichment_review_reasons, insufficient_source_text,
+                        normalized_name, organization_type, primary_source,
+                        source_names, source_record_id, source_url, source_records,
+                        ingestion_timestamp, transaction_coverage
+                    ) VALUES (
+                        :dataset_version, :profile_id, :name, 'Charity', :address,
+                        :city, :state, :country, :latitude, :longitude, :income,
+                        :expenditure, CAST(:raw_source_data AS jsonb),
+                        CAST(:programme_areas_source AS jsonb),
+                        CAST(:programme_areas_inferred AS jsonb),
+                        CAST(:programme_area_scores AS jsonb), :programme_area_method,
+                        CAST(:programme_area_evidence AS jsonb), :programme_review,
+                        CAST(:geographic_focus_source AS jsonb),
+                        CAST(:geographic_focus_inferred AS jsonb),
+                        :headquarters_country, :headquarters_region, :geography_method,
+                        :geography_confidence, CAST(:geography_evidence AS jsonb),
+                        :geography_review, :enrichment_rule_version,
+                        CAST(:enrichment_review_reasons AS jsonb), :insufficient_text,
+                        :normalized_name, 'charity', :source_name,
+                        CAST(:source_names AS jsonb), :registry_id, :source_url,
+                        CAST(:source_records AS jsonb), CURRENT_TIMESTAMP,
+                        'source_without_transactions'
+                    )
+                    ON CONFLICT (dataset_version, charity_id) DO NOTHING
+                    """
+                ),
+                {
+                    "dataset_version": dataset_version,
+                    "profile_id": profile_id,
+                    "name": str(row["registered_name"]),
+                    "address": address,
+                    "city": row["city"],
+                    "state": row["administrative_region"],
+                    "country": row["country_code"],
+                    "latitude": row["registered_latitude"],
+                    "longitude": row["registered_longitude"],
+                    "income": row["income"],
+                    "expenditure": row["expenditure"],
+                    "raw_source_data": json.dumps(raw_source_data, default=str),
+                    "programme_areas_source": json.dumps(enrichment["programme_areas_source"]),
+                    "programme_areas_inferred": json.dumps(enrichment["programme_areas_inferred"]),
+                    "programme_area_scores": json.dumps(enrichment["programme_area_scores"]),
+                    "programme_area_method": enrichment["programme_area_method"],
+                    "programme_area_evidence": json.dumps(enrichment["programme_area_evidence"]),
+                    "programme_review": bool(enrichment["programme_area_review_required"]),
+                    "geographic_focus_source": json.dumps(enrichment["geographic_focus_source"]),
+                    "geographic_focus_inferred": json.dumps(enrichment["geographic_focus_inferred"]),
+                    "headquarters_country": enrichment["headquarters_country"],
+                    "headquarters_region": enrichment["headquarters_region"],
+                    "geography_method": enrichment["geography_method"],
+                    "geography_confidence": enrichment["geography_confidence"],
+                    "geography_evidence": json.dumps(enrichment["geography_evidence"]),
+                    "geography_review": bool(enrichment["geography_review_required"]),
+                    "enrichment_rule_version": enrichment["enrichment_rule_version"],
+                    "enrichment_review_reasons": json.dumps(enrichment["enrichment_review_reasons"]),
+                    "insufficient_text": bool(enrichment["insufficient_source_text"]),
+                    "normalized_name": normalize_organization_name(row["registered_name"]),
+                    "source_name": row["source_name"],
+                    "source_names": json.dumps([row["source_name"]]),
+                    "registry_id": row["registry_id"],
+                    "source_url": source_url,
+                    "source_records": json.dumps(source_records),
+                },
+            )
+            source_identifier = f"GB-CHC-{profile_id}"
+            linked_grants = (
+                await session.execute(
+                    text(
+                        """
+                        UPDATE grants SET funding_charity_id=:profile_id
+                        WHERE dataset_version=:dataset_version
+                          AND funding_charity_id IS NULL
+                          AND funding_org_source_id=:source_identifier
+                        RETURNING grant_id
+                        """
+                    ),
+                    {
+                        "dataset_version": dataset_version,
+                        "profile_id": profile_id,
+                        "source_identifier": source_identifier,
+                    },
+                )
+            ).scalars().all()
+            linked_facts = (
+                await session.execute(
+                    text(
+                        """
+                        UPDATE grant_source_funder_facts AS facts
+                        SET linked_profile_id=:profile_id
+                        WHERE facts.dataset_version=:dataset_version
+                          AND facts.linked_profile_id IS NULL
+                          AND (
+                              facts.source_organization_id=:source_identifier
+                              OR EXISTS (
+                                  SELECT 1 FROM grants
+                                  WHERE grants.dataset_version=facts.dataset_version
+                                    AND grants.grant_id=facts.grant_id
+                                    AND grants.funding_charity_id=:profile_id
+                              )
+                          )
+                        RETURNING facts.grant_id
+                        """
+                    ),
+                    {
+                        "dataset_version": dataset_version,
+                        "profile_id": profile_id,
+                        "source_identifier": source_identifier,
+                    },
+                )
+            ).scalars().all()
+            observed_grants = int(
+                await session.scalar(
+                    text(
+                        """
+                        SELECT COUNT(*) FROM grants
+                        WHERE dataset_version=:dataset_version
+                          AND funding_charity_id=:profile_id
+                        """
+                    ),
+                    {"dataset_version": dataset_version, "profile_id": profile_id},
+                )
+                or 0
+            )
+            await session.execute(
+                text(
+                    """
+                    UPDATE charities
+                    SET transaction_coverage=:coverage
+                    WHERE dataset_version=:dataset_version AND charity_id=:profile_id
+                    """
+                ),
+                {
+                    "coverage": (
+                        "observed_grants_linked" if observed_grants
+                        else "source_without_transactions"
+                    ),
+                    "dataset_version": dataset_version,
+                    "profile_id": profile_id,
+                },
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO organization_registry_links (
+                        dataset_version, registry_id, enriched_organization_id,
+                        match_status, match_method, match_confidence, match_reason,
+                        reviewed_at, created_at, updated_at
+                    ) VALUES (
+                        :dataset_version, :registry_id, :profile_id,
+                        'accepted', 'exact_identifier', 1,
+                        :reason, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    ON CONFLICT (dataset_version, registry_id, enriched_organization_id)
+                    DO UPDATE SET match_status='accepted',
+                        match_method='exact_identifier', match_confidence=1,
+                        match_reason=:reason, reviewed_at=CURRENT_TIMESTAMP,
+                        updated_at=CURRENT_TIMESTAMP
+                    """
+                ),
+                {
+                    "dataset_version": dataset_version,
+                    "registry_id": row["registry_id"],
+                    "profile_id": profile_id,
+                    "reason": f"worker-confirmed exact identifier by {actor_id}"[:500],
+                },
+            )
+            persisted = await session.scalar(
+                text(
+                    """
+                    SELECT COUNT(*) FROM organization_registry_links
+                    WHERE dataset_version=:dataset_version
+                      AND registry_id=:registry_id
+                      AND enriched_organization_id=:profile_id
+                      AND match_status='accepted'
+                    """
+                ),
+                {
+                    "dataset_version": dataset_version,
+                    "registry_id": row["registry_id"],
+                    "profile_id": profile_id,
+                },
+            )
+            if int(persisted or 0) != 1:
+                raise RuntimeError("Registry profile link was not persisted")
+        return {
+            "registry_id": str(row["registry_id"]),
+            "profile_id": profile_id,
+            "profile_name": str(row["registered_name"]),
+            "linked_grants": observed_grants,
+            "newly_linked_grants": len(linked_grants),
+            "linked_source_facts": len(linked_facts),
+        }
 
     @staticmethod
     def _filter_signature(filters: dict[str, Any]) -> str:

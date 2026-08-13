@@ -33,6 +33,7 @@ class PostgresJobRepository(PostgresRepository):
         queue_name: str = "pipeline",
         max_attempts: int = 3,
         timeout_seconds: int = 3600,
+        active_dedupe_key: str | None = None,
     ) -> dict[str, Any]:
         job_type = str(job_type).strip()
         if not job_type or len(job_type) > 120:
@@ -46,6 +47,13 @@ class PostgresJobRepository(PostgresRepository):
             raise ValueError("max_attempts must be between 1 and 20")
         if not 1 <= int(timeout_seconds) <= 86_400:
             raise ValueError("timeout_seconds must be between 1 and 86400")
+        normalized_dedupe_key = (
+            str(active_dedupe_key).strip() if active_dedupe_key is not None else None
+        )
+        if normalized_dedupe_key is not None and not normalized_dedupe_key:
+            normalized_dedupe_key = None
+        if normalized_dedupe_key and len(normalized_dedupe_key) > 200:
+            raise ValueError("active_dedupe_key must not exceed 200 characters")
         async with self.sessions() as session, session.begin():
             dataset_version = await self.active_dataset(session)
             existing = (
@@ -68,33 +76,74 @@ class PostgresJobRepository(PostgresRepository):
                     "idempotent_noop": True,
                 }
             job_id = uuid.uuid4()
-            requested_at = await session.scalar(
-                text(
+            inserted = (
+                await session.execute(
+                    text(
                     """
                     INSERT INTO job_runs (
                         job_run_id, job_type, status, dataset_version,
                         idempotency_key, requested_by, input, queue_name,
-                        max_attempts, timeout_seconds, last_good_dataset_version
+                        max_attempts, timeout_seconds, last_good_dataset_version,
+                        active_dedupe_key
                     ) VALUES (
                         :job_id, :job_type, 'queued', :dataset_version,
                         :idempotency_key, :actor_id, CAST(:payload AS jsonb),
-                        :queue_name, :max_attempts, :timeout_seconds, :dataset_version
+                        :queue_name, :max_attempts, :timeout_seconds, :dataset_version,
+                        :active_dedupe_key
                     )
+                    ON CONFLICT DO NOTHING
                     RETURNING requested_at
                     """
-                ),
-                {
-                    "job_id": job_id,
-                    "job_type": job_type,
-                    "dataset_version": dataset_version,
-                    "idempotency_key": idempotency_key,
-                    "actor_id": actor_id,
-                    "payload": json.dumps(payload, sort_keys=True, default=str),
-                    "queue_name": queue_name,
-                    "max_attempts": int(max_attempts),
-                    "timeout_seconds": int(timeout_seconds),
-                },
-            )
+                    ),
+                    {
+                        "job_id": job_id,
+                        "job_type": job_type,
+                        "dataset_version": dataset_version,
+                        "idempotency_key": idempotency_key,
+                        "actor_id": actor_id,
+                        "payload": json.dumps(payload, sort_keys=True, default=str),
+                        "queue_name": queue_name,
+                        "max_attempts": int(max_attempts),
+                        "timeout_seconds": int(timeout_seconds),
+                        "active_dedupe_key": normalized_dedupe_key,
+                    },
+                )
+            ).mappings().first()
+            if inserted is None:
+                active = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT job_run_id, status, requested_at
+                            FROM job_runs
+                            WHERE (job_type=:job_type AND idempotency_key=:idempotency_key)
+                               OR (
+                                   :active_dedupe_key IS NOT NULL
+                                   AND active_dedupe_key=:active_dedupe_key
+                                   AND status IN ('queued', 'running')
+                               )
+                            ORDER BY
+                                CASE WHEN status IN ('queued', 'running') THEN 0 ELSE 1 END,
+                                requested_at DESC
+                            LIMIT 1
+                            """
+                        ),
+                        {
+                            "job_type": job_type,
+                            "idempotency_key": idempotency_key,
+                            "active_dedupe_key": normalized_dedupe_key,
+                        },
+                    )
+                ).mappings().first()
+                if active is None:
+                    raise RuntimeError("Job enqueue conflict could not be reconciled")
+                return {
+                    "job_id": str(active["job_run_id"]),
+                    "status": str(active["status"]),
+                    "requested_at": iso_value(active["requested_at"]),
+                    "idempotent_noop": True,
+                }
+            requested_at = inserted["requested_at"]
             envelope = QueueEnvelope(
                 schema_version="job-envelope-v1",
                 job_id=job_id,
@@ -186,7 +235,8 @@ class PostgresJobRepository(PostgresRepository):
                         RETURNING run.job_run_id, run.job_type, run.input,
                                   run.dataset_version, run.requested_at,
                                   run.started_at, run.attempt, run.max_attempts,
-                                  run.timeout_seconds, run.last_good_dataset_version
+                                  run.timeout_seconds, run.last_good_dataset_version,
+                                  run.requested_by
                         """
                     ),
                     {"queue_name": queue_name, "lease_seconds": int(lease_seconds)},
@@ -216,6 +266,21 @@ class PostgresJobRepository(PostgresRepository):
             )
             if not row:
                 return None
+            await session.execute(
+                text(
+                    """
+                    UPDATE job_dispatch_outbox
+                    SET status='published', publish_attempts=publish_attempts + 1,
+                        queue_message_id=:queue_message_id,
+                        published_at=CURRENT_TIMESTAMP, last_error_class=NULL
+                    WHERE job_run_id=:job_id AND status IN ('pending', 'failed')
+                    """
+                ),
+                {
+                    "job_id": row["job_run_id"],
+                    "queue_message_id": f"postgres-worker:{worker_id}"[:200],
+                },
+            )
             await self._event(
                 session,
                 row["job_run_id"],
@@ -275,7 +340,11 @@ class PostgresJobRepository(PostgresRepository):
                     SET status='succeeded', completed_at=CURRENT_TIMESTAMP,
                         heartbeat_at=CURRENT_TIMESTAMP, lease_expires_at=NULL,
                         result=CAST(:result AS jsonb), error_class=NULL,
-                        error_message=NULL, failure_reason=NULL
+                        error_message=NULL, failure_reason=NULL,
+                        dataset_version=COALESCE(:result_dataset_version, dataset_version),
+                        last_good_dataset_version=COALESCE(
+                            :result_dataset_version, last_good_dataset_version
+                        )
                     WHERE job_run_id=:job_id AND status='running'
                     RETURNING job_run_id
                     """
@@ -283,6 +352,7 @@ class PostgresJobRepository(PostgresRepository):
                 {
                     "job_id": uuid.UUID(str(job_id)),
                     "result": json.dumps(result, sort_keys=True, default=str),
+                    "result_dataset_version": result.get("dataset_version"),
                 },
             )
             if updated:
@@ -340,6 +410,19 @@ class PostgresJobRepository(PostgresRepository):
                     "failure_reason": str(failure_reason)[:2000],
                 },
             )
+            if not will_retry:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE source_funder_profile_cache
+                        SET status='failed', payload=NULL,
+                            error='Profile hydration could not be completed.',
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE job_token=:job_id AND status='pending'
+                        """
+                    ),
+                    {"job_id": row["job_run_id"]},
+                )
             await self._event(
                 session,
                 row["job_run_id"],
@@ -350,55 +433,79 @@ class PostgresJobRepository(PostgresRepository):
             await self._idle_worker(session, worker_id)
         return status_value
 
-    async def requeue_expired(self, *, queue_name: str = "pipeline") -> dict[str, int]:
+    async def fail_expired(self, *, queue_name: str = "pipeline") -> dict[str, int]:
         async with self.sessions() as session, session.begin():
-            retry_rows = (
+            failed_rows = (
                 await session.execute(
                     text(
                         """
                         UPDATE job_runs
-                        SET status='queued', attempt=attempt + 1,
+                        SET status='failed', completed_at=CURRENT_TIMESTAMP,
                             heartbeat_at=NULL, lease_expires_at=NULL,
                             error_class='WorkerLeaseExpired',
-                            error_message='Worker heartbeat lease expired',
+                            error_message='Worker heartbeat lease expired; automatic retry is disabled',
                             failure_reason='worker_lease_expired'
                         WHERE queue_name=:queue_name AND status='running'
                           AND lease_expires_at < CURRENT_TIMESTAMP
-                          AND attempt < max_attempts
                         RETURNING job_run_id
                         """
                     ),
                     {"queue_name": queue_name},
                 )
             ).scalars().all()
-            dead_rows = (
+            for job_id in failed_rows:
+                await self._event(
+                    session, job_id, "failed", "lease-reaper", {"reason": "lease_expired"}
+                )
+            if failed_rows:
                 await session.execute(
                     text(
                         """
-                        UPDATE job_runs
-                        SET status='dead_lettered', completed_at=CURRENT_TIMESTAMP,
-                            heartbeat_at=NULL, lease_expires_at=NULL,
-                            error_class='WorkerLeaseExpired',
-                            error_message='Worker heartbeat lease expired after final attempt',
-                            failure_reason='worker_lease_expired'
-                        WHERE queue_name=:queue_name AND status='running'
-                          AND lease_expires_at < CURRENT_TIMESTAMP
-                          AND attempt >= max_attempts
-                        RETURNING job_run_id
+                        UPDATE source_funder_profile_cache
+                        SET status='failed', payload=NULL,
+                            error='Profile hydration could not be completed.',
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE job_token=ANY(CAST(:job_ids AS uuid[]))
+                          AND status='pending'
                         """
                     ),
-                    {"queue_name": queue_name},
+                    {"job_ids": list(failed_rows)},
                 )
-            ).scalars().all()
-            for job_id in retry_rows:
-                await self._event(
-                    session, job_id, "retry_queued", "lease-reaper", {"reason": "lease_expired"}
+                await session.execute(
+                    text(
+                        """
+                        UPDATE worker_heartbeats
+                        SET status='stopped', job_run_id=NULL,
+                            heartbeat_at=CURRENT_TIMESTAMP
+                        WHERE job_run_id=ANY(CAST(:job_ids AS uuid[]))
+                        """
+                    ),
+                    {"job_ids": list(failed_rows)},
                 )
-            for job_id in dead_rows:
-                await self._event(
-                    session, job_id, "dead_lettered", "lease-reaper", {"reason": "lease_expired"}
+        return {"failed": len(failed_rows)}
+
+    async def requeue_expired(self, *, queue_name: str = "pipeline") -> dict[str, int]:
+        """Backward-compatible name; expired work now fails without retry."""
+        result = await self.fail_expired(queue_name=queue_name)
+        return {"requeued": 0, "dead_lettered": 0, **result}
+
+    async def get(self, job_id: str) -> dict[str, Any] | None:
+        async with self.sessions() as session:
+            row = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT job_run_id, job_type, status, dataset_version,
+                               requested_at, started_at, completed_at, heartbeat_at,
+                               attempt, max_attempts, result, error_class,
+                               error_message, failure_reason
+                        FROM job_runs WHERE job_run_id=:job_id
+                        """
+                    ),
+                    {"job_id": uuid.UUID(str(job_id))},
                 )
-        return {"requeued": len(retry_rows), "dead_lettered": len(dead_rows)}
+            ).mappings().first()
+        return self._job_row(row) if row else None
 
     async def due_dispatches(self, *, limit: int = 100) -> list[dict[str, Any]]:
         bounded_limit = min(max(int(limit), 1), 100)
@@ -570,8 +677,8 @@ class PostgresJobRepository(PostgresRepository):
                 "job_id": None,
             }
         mapped_status = {
-            "created": "running",
-            "queued": "running",
+            "created": "queued",
+            "queued": "queued",
             "running": "running",
             "succeeded": "success",
             "failed": "failed",

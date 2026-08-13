@@ -25,6 +25,9 @@ import {
   PanelLeftOpen,
   Star,
   X,
+  Users,
+  LogIn,
+  LogOut,
 } from "lucide-react";
 import AppHeader from "./components/AppHeader";
 import type {
@@ -41,7 +44,9 @@ import {
   grantScopeFromUrl,
   type GrantScope,
 } from "./lib/grantScope";
-import { mutationHeaders } from "./lib/http";
+import { apiFetch, mutationHeaders } from "./lib/http";
+import { avatarInitials } from "./lib/avatar";
+import { useAuth } from "./auth/authState";
 import amplifyLogo from "./assets/amplify-logo.svg";
 import type {
   GrantMapFilters,
@@ -56,6 +61,7 @@ const ProgrammeAllocationChart = lazy(() => import("./components/DataCharts").th
 const FinancialHistoryChart = lazy(() => import("./components/DataCharts").then(module => ({ default: module.FinancialHistoryChart })));
 const RegistryDirectory = lazy(() => import("./components/RegistryDirectory"));
 const DonorDirectoryPage = lazy(() => import("./components/DonorDirectoryPage"));
+const UserManagementPage = lazy(() => import("./components/UserManagementPage"));
 
 // Configuration for API requests
 const API_BASE = import.meta.env.VITE_API_BASE_URL
@@ -130,11 +136,6 @@ type FavoritesState = {
 type FavoriteDonorWorkspace =
   | { kind: "donor"; item: FavoriteDonorPayload }
   | { kind: "request"; item: FavoriteDonorRequestPayload };
-
-type ActiveSourceFunder = {
-  sourceFunderKey: string;
-  displayName: string;
-};
 
 type NewsSourceItem = {
   title: string;
@@ -515,7 +516,7 @@ const INITIAL_PROFILE_LOADING: ProfileLoadingState = {
   source_record: profileSectionState("idle"),
 };
 
-type GlobalApiErrorKey = "health" | "statistics" | "directory" | "source_reset";
+type GlobalApiErrorKey = "health" | "statistics" | "directory";
 type GlobalApiErrors = Partial<Record<GlobalApiErrorKey, string>>;
 
 function abortableDelay(
@@ -558,6 +559,14 @@ interface PipelineStatus {
   finished_at: string | null;
   last_run_source: string | null;
   error: string | null;
+}
+
+interface PublicSourceStatus {
+  name: string;
+  enabled: boolean;
+  freshness: string;
+  last_success_at: string | null;
+  record_count: number | null;
 }
 
 // Fallback Mock Data for demo when BFF is offline
@@ -747,9 +756,21 @@ const EMPTY_GRANT_MAP_FILTERS: GrantMapFilters = {
 };
 
 export default function App() {
+  const auth = useAuth();
+  if (auth.loading) {
+    return <main className="auth-shell"><div className="glass-card auth-card"><LoaderCircle className="spin" aria-hidden="true" /><h1>Foundation Intelligence Platform</h1><p>Preparing secure access…</p></div></main>;
+  }
+  return <AuthenticatedApplication />;
+}
+
+
+function AuthenticatedApplication() {
+  const auth = useAuth();
+  const canOperate = auth.role === "operator" || auth.role === "admin";
+  const isAdmin = auth.role === "admin";
   const hasFunderRoute = () => Boolean(new URLSearchParams(window.location.search).get("funder_country"));
   const initialView = () => new URLSearchParams(window.location.search).get("view");
-  const [activeTab, setActiveTab] = useState<"overview" | "directory" | "favorites" | "admin">(() => initialView() === "pipeline" ? "admin" : initialView() === "favorites" ? "favorites" : (hasFunderRoute() || ["donors", "research", "registry"].includes(initialView() || "")) ? "directory" : "overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "directory" | "favorites" | "admin" | "users">(() => initialView() === "users" && isAdmin ? "users" : initialView() === "pipeline" ? "admin" : initialView() === "favorites" ? "favorites" : (hasFunderRoute() || ["donors", "research", "registry"].includes(initialView() || "")) ? "directory" : "overview");
   const [directoryMode, setDirectoryMode] = useState<"donors" | "profiles" | "registry">(() => initialView() === "research" ? "profiles" : initialView() === "registry" ? "registry" : "donors");
   const [overviewFilterCount, setOverviewFilterCount] = useState(0);
   const [overviewFiltersOpen, setOverviewFiltersOpen] = useState(false);
@@ -818,8 +839,6 @@ export default function App() {
   const sourceHydrationTimerRef = useRef<number | null>(null);
   const selectedSourceFunderProfileKeyRef = useRef<string | null>(null);
   const sourceFunderProfilePayloadsRef = useRef(new Map<string, Record<string, any>>());
-  const [activeSourceFunder, setActiveSourceFunder] = useState<ActiveSourceFunder | null>(null);
-  const [sourceFunderResetPending, setSourceFunderResetPending] = useState(false);
 
   // News summarizer states
   const [newsLoading, setNewsLoading] = useState(false);
@@ -894,6 +913,8 @@ export default function App() {
       const view = initialView();
       if (view === "pipeline") {
         setActiveTab("admin");
+      } else if (view === "users" && isAdmin) {
+        setActiveTab("users");
       } else if (view === "favorites") {
         setActiveTab("favorites");
       } else if (view === "research") {
@@ -911,7 +932,7 @@ export default function App() {
     };
     window.addEventListener("popstate", syncRouteMode);
     return () => window.removeEventListener("popstate", syncRouteMode);
-  }, []);
+  }, [isAdmin]);
 
   // The stats endpoint returns a fresh array on every response. Keep the
   // source list referentially stable while its values are unchanged so it
@@ -1024,6 +1045,7 @@ export default function App() {
     error: null
   });
   const [logs, setLogs] = useState("System terminal ready.\n");
+  const [scraperSources, setScraperSources] = useState<PublicSourceStatus[]>([]);
   const [isTriggering, setIsTriggering] = useState(false);
   const [pipelineLimit, setPipelineLimit] = useState<number>(20);
   const [pipelineFresh, setPipelineFresh] = useState<boolean>(false);
@@ -1031,6 +1053,7 @@ export default function App() {
   const [pipelineSearch, setPipelineSearch] = useState<string>("");
   const [pipelineIds, setPipelineIds] = useState<string>("");
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const authenticatedIdentity = auth.identity?.email || auth.identity?.username || "";
 
   const runHealthCheck = useEffectEvent((signal: AbortSignal) => {
     void checkBffHealth(signal);
@@ -1051,7 +1074,7 @@ export default function App() {
     void fetchCharityGrants(id, requestId, signal);
     void fetchSankeyData(id, requestId, signal);
     void fetchScoreData(id, requestId, signal);
-    if (sourceFunderKey) {
+    if (sourceFunderKey && canOperate) {
       void hydrateSourceFunderProfile(sourceFunderKey, id, requestId, signal);
     }
   });
@@ -1107,8 +1130,8 @@ export default function App() {
   useEffect(() => {
     if (!isBffOnline) return;
     const controller = new AbortController();
-    fetch(`${API_BASE}/api/charities/grants/beneficiary-geographies`, {
-      credentials: "include",
+    apiFetch(`${API_BASE}/api/charities/grants/beneficiary-geographies`, {
+      credentials: "omit",
       signal: controller.signal,
     })
       .then(async response => {
@@ -1150,8 +1173,8 @@ export default function App() {
         }
         const parameters = new URLSearchParams({ search: query, limit: "6" });
         parameters.set("sources", selectedDataSources.join(","));
-        const response = await fetch(`${API_BASE}/api/charities?${parameters.toString()}`, {
-          credentials: "include",
+        const response = await apiFetch(`${API_BASE}/api/charities?${parameters.toString()}`, {
+          credentials: "omit",
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(`Organization suggestion request failed (${response.status}).`);
@@ -1213,7 +1236,7 @@ export default function App() {
     setScoreData(null);
     setProfileLoading({
       ...INITIAL_PROFILE_LOADING,
-      source_record: selectedSourceFunderProfileKey && isBffOnline
+      source_record: selectedSourceFunderProfileKey && isBffOnline && canOperate
         ? profileSectionState("loading")
         : profileSectionState("idle"),
     });
@@ -1232,7 +1255,7 @@ export default function App() {
         sourceHydrationTimerRef.current = null;
       }
     };
-  }, [selectedCharityId, selectedSourceFunderProfileKey, isBffOnline]);
+  }, [selectedCharityId, selectedSourceFunderProfileKey, isBffOnline, canOperate]);
 
   useEffect(() => {
     if (activeTab !== "admin") return;
@@ -1296,26 +1319,10 @@ export default function App() {
     return () => window.removeEventListener("registry-header-state", receiveRegistryHeaderState);
   }, []);
 
-  useEffect(() => {
-    const receiveActiveSourceFunder = (event: Event) => {
-      const detail = (event as CustomEvent<ActiveSourceFunder | null>).detail;
-      if (!detail?.sourceFunderKey) {
-        setActiveSourceFunder(null);
-        return;
-      }
-      setActiveSourceFunder({
-        sourceFunderKey: detail.sourceFunderKey,
-        displayName: detail.displayName || "Source funder",
-      });
-    };
-    window.addEventListener("active-source-funder-change", receiveActiveSourceFunder);
-    return () => window.removeEventListener("active-source-funder-change", receiveActiveSourceFunder);
-  }, []);
-
   const checkBffHealth = async (signal?: AbortSignal) => {
     setInitialLoading(true);
     try {
-      const resp = await fetch(`${API_BASE}/health`, { signal });
+      const resp = await apiFetch(`${API_BASE}/health`, { signal });
       if (signal?.aborted) return;
       if (resp.ok) {
         setAuthError(null);
@@ -1340,8 +1347,8 @@ export default function App() {
     const isOnline = forceOnline !== undefined ? forceOnline : isBffOnline;
     if (!isOnline) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/charities/stats`, {
-        credentials: "include",
+      const resp = await apiFetch(`${API_BASE}/api/charities/stats`, {
+        credentials: "omit",
         signal,
       });
       if (signal?.aborted) return;
@@ -1446,7 +1453,7 @@ export default function App() {
         url += `&max_avg_grant_size=${maxAvgGrant}`;
       }
 
-      const resp = await fetch(url, { credentials: "include", signal: controller.signal });
+      const resp = await apiFetch(url, { credentials: "omit", signal: controller.signal });
       if (requestSequence !== directoryRequestSequenceRef.current) return;
       if (resp.ok) {
         const data: Charity[] = await resp.json();
@@ -1506,8 +1513,8 @@ export default function App() {
         }
         return;
       }
-      const resp = await fetch(`${API_BASE}/api/charities/${id}`, {
-        credentials: "include",
+      const resp = await apiFetch(`${API_BASE}/api/charities/${id}`, {
+        credentials: "omit",
         signal,
       });
       if (!isCurrentProfileRequest(requestId)) return;
@@ -1560,11 +1567,11 @@ export default function App() {
     );
     setProfileSection(requestId, "source_record", "loading");
     try {
-      const queued = await fetch(
+      const queued = await apiFetch(
         `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(sourceFunderKey)}/profile-cache`,
         {
           method: "POST",
-          credentials: "include",
+          credentials: "omit",
           headers: mutationHeaders("hydrate source-funder profile"),
           signal,
         },
@@ -1576,9 +1583,9 @@ export default function App() {
       }
 
       for (let attempt = 0; attempt <= 20; attempt += 1) {
-        const response = await fetch(
+        const response = await apiFetch(
           `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(sourceFunderKey)}/profile-cache`,
-          { credentials: "include", signal },
+          { credentials: "omit", signal },
         );
         if (!requestIsCurrent()) return;
 
@@ -1695,6 +1702,7 @@ export default function App() {
   };
 
   const fetchFoundationNews = async (organization: Charity) => {
+    if (!canOperate) return;
     const name = organization.charity_name;
     const organizationKey = newsOrganizationKey(organization);
     newsAbortControllerRef.current?.abort();
@@ -1762,8 +1770,8 @@ export default function App() {
         query.set("lookback", "all");
       }
       const suffix = query.size ? `?${query.toString()}` : "";
-      const resp = await fetch(`${API_BASE}/api/news/${encodeURIComponent(name)}/summary/stream${suffix}`, {
-        credentials: "include",
+      const resp = await apiFetch(`${API_BASE}/api/news/${encodeURIComponent(name)}/summary/stream${suffix}`, {
+        credentials: "omit",
         headers: { Accept: "text/event-stream" },
         signal: controller.signal,
       });
@@ -1863,9 +1871,9 @@ export default function App() {
     }
     const query = params.toString();
     try {
-      const resp = await fetch(
+      const resp = await apiFetch(
         `${API_BASE}/api/charities/grants/map${query ? `?${query}` : ""}`,
-        { credentials: "include", signal: controller.signal },
+        { credentials: "omit", signal: controller.signal },
       );
       if (controller.signal.aborted || mapRequestRef.current !== controller) return;
       if (resp.ok) {
@@ -1887,7 +1895,7 @@ export default function App() {
   };
 
   const navigateApplication = (
-    view: "overview" | "donors" | "research" | "registry" | "favorites" | "pipeline",
+    view: "overview" | "donors" | "research" | "registry" | "favorites" | "pipeline" | "users",
     mode: "push" | "replace" = "push",
   ) => {
     const query = new URLSearchParams(window.location.search);
@@ -1899,6 +1907,8 @@ export default function App() {
       query.set("view", view);
       if (view === "pipeline") {
         setActiveTab("admin");
+      } else if (view === "users" && isAdmin) {
+        setActiveTab("users");
       } else if (view === "favorites") {
         setActiveTab("favorites");
       } else {
@@ -2188,12 +2198,12 @@ export default function App() {
       : "";
     try {
       const [trendsResponse, themesResponse] = await Promise.all([
-        fetch(`${API_BASE}/api/charities/grants/trends?months=24${currencyQuery}`, {
-          credentials: "include",
+        apiFetch(`${API_BASE}/api/charities/grants/trends?months=24${currencyQuery}`, {
+          credentials: "omit",
           signal: controller.signal,
         }),
-        fetch(`${API_BASE}/api/charities/grants/themes?${currencyQuery.slice(1)}`, {
-          credentials: "include",
+        apiFetch(`${API_BASE}/api/charities/grants/themes?${currencyQuery.slice(1)}`, {
+          credentials: "omit",
           signal: controller.signal,
         })
       ]);
@@ -2232,8 +2242,8 @@ export default function App() {
         }
         return;
       }
-      const resp = await fetch(`${API_BASE}/api/charities/${id}/grants`, {
-        credentials: "include",
+      const resp = await apiFetch(`${API_BASE}/api/charities/${id}/grants`, {
+        credentials: "omit",
         signal,
       });
       if (!isCurrentProfileRequest(requestId)) return;
@@ -2273,8 +2283,8 @@ export default function App() {
         }
         return;
       }
-      const resp = await fetch(`${API_BASE}/api/charities/${id}/sankey`, {
-        credentials: "include",
+      const resp = await apiFetch(`${API_BASE}/api/charities/${id}/sankey`, {
+        credentials: "omit",
         signal,
       });
       if (!isCurrentProfileRequest(requestId)) return;
@@ -2319,9 +2329,9 @@ export default function App() {
         if (isCurrentProfileRequest(requestId)) setScoreData(null);
         return;
       }
-      const resp = await fetch(`${API_BASE}/api/charities/${id}/score`, {
+      const resp = await apiFetch(`${API_BASE}/api/charities/${id}/score`, {
         method: "GET",
-        credentials: "include",
+        credentials: "omit",
         signal,
       });
       if (!isCurrentProfileRequest(requestId)) return;
@@ -2366,7 +2376,6 @@ export default function App() {
     setNewsLoading(false);
     setNewsProgressStep(null);
     setNewsRunMode(null);
-    setApiError("source_reset", null);
     const previousFocus = profilePreviousFocusRef.current;
     profilePreviousFocusRef.current = null;
     window.requestAnimationFrame(() => previousFocus?.focus());
@@ -2385,70 +2394,41 @@ export default function App() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [selectedCharity]);
 
-  const resetActiveSourceFunderToObserved = async () => {
-    const target = activeSourceFunder;
-    if (!target || !isBffOnline) {
-      // The NL control is also available while viewing an ordinary profile.
-      // In that case there is no source link to mutate, but its latest local
-      // news research still belongs to the profile being safely cleared.
-      cancelNewsResearch(selectedNewsOrganizationKeyRef.current, true);
-      clearActiveProfileSafely();
-      return;
-    }
-
-    setSourceFunderResetPending(true);
-    try {
-      const response = await fetch(
-        `${API_BASE}/api/charities/grants/funders/${encodeURIComponent(target.sourceFunderKey)}/reset-to-observed`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: mutationHeaders("reset source funder to observed-only"),
-        },
-      );
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.detail || `Could not reset ${target.displayName} to observed-only (${response.status}).`);
-      }
-      window.dispatchEvent(new CustomEvent("source-funder-reset-to-observed", {
-        detail: { sourceFunderKey: target.sourceFunderKey },
-      }));
-      sourceFunderProfilePayloadsRef.current.delete(target.sourceFunderKey);
-      // News briefings are derived from this profile link and are stored only
-      // in this browser.  Reset removes the matching latest briefing as well
-      // as cancelling a search that could otherwise finish after the reset.
-      cancelNewsResearch(selectedNewsOrganizationKeyRef.current, true);
-      setApiError("source_reset", null);
-      setActiveSourceFunder(null);
-      clearActiveProfileSafely();
-    } catch (error) {
-      setApiError("source_reset", (error as Error).message || `Could not reset ${target.displayName} to observed-only.`);
-    } finally {
-      setSourceFunderResetPending(false);
-    }
-  };
-
   const fetchPipelineStatus = async (signal?: AbortSignal) => {
     if (!isBffOnline) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/admin/pipeline/status`, {
-        credentials: "include",
+      const statusPath = canOperate ? "/api/admin/pipeline/status" : "/api/scraper/status";
+      const resp = await apiFetch(`${API_BASE}${statusPath}`, {
+        credentials: "omit",
         signal,
       });
       if (signal?.aborted) return;
       if (resp.ok) {
         const data = await resp.json();
-        setPipelineStatus(data);
+        if (canOperate) {
+          setPipelineStatus(data);
+        } else {
+          setPipelineStatus({
+            status: data.status,
+            started_at: data.last_run,
+            finished_at: data.last_run,
+            last_run_source: null,
+            error: null,
+          });
+          setScraperSources(Array.isArray(data.sources) ? data.sources : []);
+        }
       }
 
-      const logResp = await fetch(`${API_BASE}/api/admin/pipeline/logs`, {
-        credentials: "include",
-        signal,
-      });
-      if (signal?.aborted) return;
-      if (logResp.ok) {
-        const logData = await logResp.json();
-        setLogs(logData.logs || "System idle.\n");
+      if (isAdmin) {
+        const logResp = await apiFetch(`${API_BASE}/api/admin/pipeline/logs`, {
+          credentials: "omit",
+          signal,
+        });
+        if (signal?.aborted) return;
+        if (logResp.ok) {
+          const logData = await logResp.json();
+          setLogs(logData.logs || "System idle.\n");
+        }
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
@@ -2457,6 +2437,7 @@ export default function App() {
   };
 
   const triggerPipeline = async (source: string) => {
+    if (!canOperate) return;
     setIsTriggering(true);
 
     // Enforce max limit of 100 on full runs
@@ -2484,7 +2465,7 @@ export default function App() {
       return;
     }
     try {
-      const resp = await fetch(`${API_BASE}/api/admin/pipeline/trigger`, {
+      const resp = await apiFetch(`${API_BASE}/api/admin/pipeline/trigger`, {
         method: "POST",
         headers: mutationHeaders(`trigger ${source} pipeline`, true),
         body: JSON.stringify({
@@ -2495,7 +2476,7 @@ export default function App() {
           reg_numbers: regNumbers && regNumbers.length > 0 ? regNumbers : undefined,
           skip_contact_crawler: !enableImpressum
         }),
-        credentials: "include"
+        credentials: "omit"
       });
       if (resp.ok) {
         const data = await resp.json();
@@ -2646,26 +2627,36 @@ export default function App() {
               title="Pipeline Monitor"
             >
               <Terminal size={18} />
-              <span>Pipeline Monitor</span>
+              <span>{canOperate ? "Pipeline Monitor" : "Scraper Status"}</span>
             </button>
+            {isAdmin && <button
+              className={`nav-item ${activeTab === "users" ? "active" : ""}`}
+              aria-current={activeTab === "users" ? "page" : undefined}
+              onClick={() => navigateApplication("users")}
+              title="User Management"
+            >
+              <Users size={18} />
+              <span>User Management</span>
+            </button>}
           </nav>
         </div>
 
         <div className="sidebar-footer">
           <div className="user-profile">
-            <button
-              type="button"
-              className="user-avatar user-avatar-reset"
-              onClick={() => void resetActiveSourceFunderToObserved()}
-              disabled={sourceFunderResetPending}
-              title={activeSourceFunder ? `Reset ${activeSourceFunder.displayName} to observed-only` : "Safely clear the active organization profile"}
-              aria-label={activeSourceFunder ? `Remove the linked profile for ${activeSourceFunder.displayName} while retaining its observed grants` : "Safely clear the active organization profile and cancel its background loading"}
-            >{sourceFunderResetPending ? <LoaderCircle className="user-avatar-reset-spinner" size={17} aria-hidden="true" /> : "NL"}</button>
+            <div className="user-avatar" aria-hidden="true">
+              {avatarInitials(authenticatedIdentity, auth.authenticated)}
+            </div>
             <div className="user-info">
-              <span className="user-name">Netlight Guest</span>
-              <span className="user-role">Administrator</span>
+              <span className="user-name">{auth.authenticated
+                ? auth.identity?.email || auth.identity?.username || "Authenticated user"
+                : "Netlight Guest"}</span>
+              <span className="user-role">{auth.authenticated ? auth.role : "Not signed in"}</span>
+              {auth.mode === "cognito_rbac" && (auth.authenticated
+                ? <button type="button" className="sidebar-auth-action" onClick={auth.logout}><LogOut size={14} aria-hidden="true" /><span>Sign out</span></button>
+                : <button type="button" className="sidebar-auth-action" onClick={() => void auth.login()}><LogIn size={14} aria-hidden="true" /><span>Sign in</span></button>)}
             </div>
           </div>
+          {auth.error && <div className="sidebar-auth-error" role="alert">{auth.error}</div>}
           {activeTab === "admin" && <button className="sidebar-health-check" onClick={() => checkBffHealth()}>
             <Activity size={15} />
             <span>Check backend connection</span>
@@ -2679,7 +2670,7 @@ export default function App() {
         <AppHeader
           filterCount={activeHeaderState.filterCount}
           filtersExpanded={activeHeaderState.filtersExpanded}
-          filtersDisabled={activeTab === "admin" || activeTab === "favorites"}
+          filtersDisabled={activeTab === "admin" || activeTab === "users" || activeTab === "favorites"}
           resetDisabled={activeHeaderState.resetDisabled}
           dataSources={dataSourceNames}
           selectedDataSources={selectedDataSources}
@@ -2749,6 +2740,7 @@ export default function App() {
                   key={`${favoriteDonorWorkspace.kind}:${favoriteDonorWorkspace.item.key}`}
                   apiBase={API_BASE}
                   online={isBffOnline}
+                  canOperate={canOperate}
                   selectedSources={selectedDataSources}
                   onHeaderStateChange={setDonorHeaderState}
                   onBackToLandscape={() => closeFavoriteDonorWorkspace()}
@@ -2883,6 +2875,12 @@ export default function App() {
                 )}
               </section>
             )
+          )}
+
+          {activeTab === "users" && isAdmin && (
+            <Suspense fallback={<div className="glass-card">Loading user management…</div>}>
+              <UserManagementPage apiBase={API_BASE} />
+            </Suspense>
           )}
 
           {/* Retained for rollback only; the active Overview is the compact, globally-filtered dashboard above. */}
@@ -3043,6 +3041,7 @@ export default function App() {
               <DonorDirectoryPage
                 apiBase={API_BASE}
                 online={isBffOnline}
+                canOperate={canOperate}
                 selectedSources={selectedDataSources}
                 onHeaderStateChange={setDonorHeaderState}
                 onBackToLandscape={(scope: GrantScope) => {
@@ -3091,6 +3090,7 @@ export default function App() {
                   key={directoryHandoff.version}
                   apiBase={API_BASE}
                   online={isBffOnline}
+                  canOperate={canOperate}
                   initialQuery={directoryHandoff.query}
                   initialBeneficiaryGeography=""
                   onOpenEnrichedProfile={(id, name) => {
@@ -3433,7 +3433,7 @@ export default function App() {
             <div className="flex-col-gap">
               <div className="grid-cols-2">
                 {/* Trigger Buttons */}
-                <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {canOperate && <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <h3 style={{ fontSize: "16px", fontWeight: "600" }}>Predefined Pipeline Controls</h3>
                   <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
                     Safely trigger the execution of scraping, crawling, or database reload operations.
@@ -3445,7 +3445,7 @@ export default function App() {
                       <button
                         className="btn btn-primary"
                         style={{ flexGrow: "1" }}
-                        disabled={isTriggering || pipelineStatus.status === "running"}
+                        disabled={isTriggering || pipelineStatus.status === "queued" || pipelineStatus.status === "running"}
                         onClick={() => triggerPipeline("full_run")}
                       >
                         <Play size={16} />
@@ -3533,7 +3533,7 @@ export default function App() {
 
                     </div>
                   </div>
-                </div>
+                </div>}
 
                 {/* Status Indicator Panel */}
                 <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -3542,7 +3542,7 @@ export default function App() {
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "var(--text-secondary)" }}>Pipeline State:</span>
-                      <span className={`badge ${pipelineStatus.status === "running" ? "badge-warning" : pipelineStatus.status === "success" ? "badge-success" : "badge-tag"}`}>
+                      <span className={`badge ${pipelineStatus.status === "queued" || pipelineStatus.status === "running" ? "badge-warning" : pipelineStatus.status === "success" ? "badge-success" : "badge-tag"}`}>
                         {pipelineStatus.status}
                       </span>
                     </div>
@@ -3562,6 +3562,12 @@ export default function App() {
                         <strong>Error:</strong> {pipelineStatus.error}
                       </div>
                     )}
+                    {!canOperate && scraperSources.map(source => (
+                      <div key={source.name} className="scraper-source-status">
+                        <span><strong>{source.name}</strong><small>{source.last_success_at ? `Last success ${new Date(source.last_success_at).toLocaleString()}` : "No successful run recorded"}</small></span>
+                        <span className={`badge ${source.freshness === "fresh" ? "badge-success" : "badge-tag"}`}>{source.freshness}{source.record_count !== null ? ` · ${source.record_count.toLocaleString()} records` : ""}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -3619,7 +3625,7 @@ export default function App() {
               </div>
 
               {/* Logs output window */}
-              <div className="terminal-window">
+              {isAdmin && <div className="terminal-window">
                 <div className="terminal-header">
                   <div className="terminal-title">
                     <Terminal size={14} />
@@ -3631,11 +3637,11 @@ export default function App() {
                     <span className="dot dot-green"></span>
                   </div>
                 </div>
-                <div className={`terminal-body ${pipelineStatus.status === "running" ? "running" : ""}`}>
+                <div className={`terminal-body ${pipelineStatus.status === "queued" || pipelineStatus.status === "running" ? "running" : ""}`}>
                   {logs}
                   <div ref={logsEndRef}></div>
                 </div>
-              </div>
+              </div>}
             </div>
           )}
 
@@ -3741,14 +3747,14 @@ export default function App() {
                       <Download size={16} /> Download PDF
                     </button>
                   )}
-                  <button
+                  {canOperate && <button
                     type="button"
                     className={`btn ${newsLoading ? "btn-secondary" : "btn-primary"}`}
                     onClick={() => fetchFoundationNews(selectedCharity)}
                     disabled={newsLoading}
                   >
                     {newsLoading ? <><span className="spinner-mini" /> Researching…</> : <><Newspaper size={16} /> Research latest news</>}
-                  </button>
+                  </button>}
                 </div>
               </div>
 

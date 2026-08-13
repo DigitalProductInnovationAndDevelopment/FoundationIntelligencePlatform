@@ -10,9 +10,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from bff.auth import router as auth_router
 from bff.proxy import router as proxy_router
 from bff.news import router as news_router
+from bff.user_management import router as user_management_router
 from bff.audit import StructuredLogAuditSink, event_from_request
 from bff.config import SECURITY_SETTINGS, validate_security_settings
-from bff.database import DatabaseManager, DatabaseSettings
+from bff.database import DatabaseAccess
 from bff.security import IdempotencyStore, SlidingWindowRateLimiter
 from bff.utils.logging import logger, pseudonymous_actor_id
 from observability.metrics import MetricsRegistry, load_observability_configuration
@@ -29,16 +30,15 @@ TRANSITION_SETTINGS = load_transition_settings()
 POSTGRESQL_ONLY_RUNTIME = TRANSITION_SETTINGS.postgresql_authoritative
 if POSTGRESQL_ONLY_RUNTIME:
     from bff.postgres.admin_routes import router as admin_router
-    from bff.postgres.audit_repository import PostgresAuditSink
     from bff.postgres.base import ANALYTICS_CACHE
-    from bff.postgres.governance_repository import GovernanceRepository
     from bff.postgres.governance_routes import router as governance_router
-    from bff.postgres.idempotency_repository import PostgresIdempotencyStore
+    from bff.postgres.idempotency_repository import (
+        PostgresIdempotencyStore,
+        UnavailablePostgresIdempotencyStore,
+    )
     from bff.postgres.observability_routes import router as observability_router
-    from bff.postgres.pipeline_repository import PipelineRepository
     from bff.postgres.routes import router as charity_router
-    from governance.retention import load_governance_configuration
-    from pipelines.durable import load_source_configurations
+    from bff.postgres.scraper_routes import router as scraper_router
 else:
     # The legacy SQLite repository is restricted to development/test while the
     # remaining domain journeys are ported in Phase 5.
@@ -76,39 +76,22 @@ else:
 async def lifespan(application: FastAPI):
     """Validate security before accepting traffic, then initialize repository state."""
     validate_security_settings(application.state.security_settings)
-    application.state.database = DatabaseManager(DatabaseSettings.from_env())
+    application.state.database = DatabaseAccess.from_env()
     if POSTGRESQL_ONLY_RUNTIME:
-        # Constructing the pool remains lazy; readiness owns the first bounded
-        # connection and all production repositories use the same manager.
-        sessions = application.state.database.sessions()
-        public_readonly = (
-            application.state.security_settings.auth_mode == "public_readonly"
-        )
-        if public_readonly:
-            # The public web task has a database role with SELECT only. It must
-            # never synchronize configuration or persist audit/idempotency rows
-            # as a side effect of startup or anonymous reads.
-            application.state.audit_sink = StructuredLogAuditSink()
-            application.state.idempotency_store = IdempotencyStore()
-            logger.info("Public read-only PostgreSQL runtime initialized without writes.")
+        # Pool construction is lazy and startup performs no SQL. All defaults,
+        # role grants and schema work belong to the explicit release task.
+        application.state.database.sessions()
+        application.state.audit_sink = StructuredLogAuditSink()
+        if application.state.database.writer_configured:
+            application.state.idempotency_store = PostgresIdempotencyStore(
+                application.state.database.write_sessions()
+            )
         else:
-            application.state.audit_sink = PostgresAuditSink(sessions)
-            application.state.idempotency_store = PostgresIdempotencyStore(sessions)
-            synchronized_sources = await PipelineRepository(sessions).synchronize_sources(
-                load_source_configurations()
-            )
-            synchronized_policies = await GovernanceRepository(sessions).synchronize_policies(
-                load_governance_configuration()
-            )
-            logger.info(
-                "Synchronized %s governance-gated source configurations.",
-                synchronized_sources,
-            )
-            logger.info(
-                "Synchronized %s non-destructive retention policies.",
-                synchronized_policies,
-            )
-        logger.info("PostgreSQL repository runtime initialized.")
+            application.state.idempotency_store = UnavailablePostgresIdempotencyStore()
+        logger.info(
+            "PostgreSQL runtime initialized without startup DML; writer_configured=%s.",
+            application.state.database.writer_configured,
+        )
     else:
         get_charity_repository()
         logger.info(
@@ -131,6 +114,9 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None if SECURITY_SETTINGS.auth_mode == "cognito_rbac" else "/docs",
+    redoc_url=None if SECURITY_SETTINGS.auth_mode == "cognito_rbac" else "/redoc",
+    openapi_url=None if SECURITY_SETTINGS.auth_mode == "cognito_rbac" else "/openapi.json",
 )
 
 app.state.security_settings = SECURITY_SETTINGS
@@ -140,7 +126,7 @@ app.state.rate_limiter = SlidingWindowRateLimiter(
 )
 app.state.idempotency_store = IdempotencyStore()
 app.state.audit_sink = StructuredLogAuditSink()
-app.state.database = DatabaseManager(DatabaseSettings.from_env())
+app.state.database = DatabaseAccess.from_env()
 app.state.observability_configuration = load_observability_configuration()
 app.state.metrics_registry = MetricsRegistry(app.state.observability_configuration)
 
@@ -154,8 +140,8 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(SECURITY_SETTINGS.cors_origins),
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_credentials=SECURITY_SETTINGS.auth_mode == "development",
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Accept",
         "Authorization",
@@ -347,13 +333,17 @@ app.include_router(charity_router)
 app.include_router(proxy_router)
 app.include_router(admin_router)
 if POSTGRESQL_ONLY_RUNTIME:
+    app.include_router(scraper_router)
     app.include_router(governance_router)
     app.include_router(observability_router)
 app.include_router(news_router)
+app.include_router(user_management_router)
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
     """Redirect root access to Swagger interactive documentation."""
+    if app.state.security_settings.auth_mode == "cognito_rbac":
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
     return RedirectResponse(url="/docs")
 
 

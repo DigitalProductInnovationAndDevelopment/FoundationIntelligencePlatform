@@ -13,6 +13,50 @@ from pipelines.durable import IngestionManifest, SourceConfiguration, StorageObj
 
 
 class PipelineRepository(PostgresRepository):
+    async def public_source_statuses(self) -> list[dict[str, Any]]:
+        """Return the intentionally small, credential-free customer status view."""
+        async with self.sessions() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT configuration.source_name,
+                               configuration.enabled,
+                               configuration.last_success_at,
+                               configuration.freshness_sla_hours,
+                               latest.completed_at AS latest_completed_at,
+                               latest.record_count
+                        FROM source_configurations AS configuration
+                        LEFT JOIN LATERAL (
+                            SELECT completed_at, record_count
+                            FROM source_ingestion_runs
+                            WHERE source_namespace=configuration.source_name
+                              AND status='loaded'
+                            ORDER BY completed_at DESC NULLS LAST, started_at DESC
+                            LIMIT 1
+                        ) AS latest ON TRUE
+                        ORDER BY configuration.source_name
+                        """
+                    )
+                )
+            ).mappings()
+        return [
+            {
+                "name": str(row["source_name"]),
+                "enabled": bool(row["enabled"]),
+                "last_success_at": iso_value(
+                    row["last_success_at"] or row["latest_completed_at"]
+                ),
+                "freshness_sla_hours": int(row["freshness_sla_hours"]),
+                "record_count": (
+                    int(row["record_count"])
+                    if row["record_count"] is not None
+                    else None
+                ),
+            }
+            for row in rows
+        ]
+
     async def synchronize_sources(
         self, configurations: Iterable[SourceConfiguration]
     ) -> int:

@@ -483,8 +483,10 @@ def _converted_record(
     return ((dataset_version,) + values) if table in VERSIONED_TABLES else values
 
 
-async def _connect_postgres() -> asyncpg.Connection:
-    settings = DatabaseSettings.from_env()
+async def _connect_postgres(
+    settings: DatabaseSettings | None = None,
+) -> asyncpg.Connection:
+    settings = settings or DatabaseSettings.from_env()
     url = settings.sqlalchemy_url()
     connection = await asyncpg.connect(
         host=url.host,
@@ -956,7 +958,7 @@ async def _activate(
     reconciliation: dict[str, dict[str, Any]],
     staged_global_records: dict[str, list[tuple[Any, ...]]],
     staged_global_columns: dict[str, tuple[str, ...]],
-) -> Optional[str]:
+) -> tuple[Optional[str], int]:
     failures = [name for name, result in reconciliation.items() if result["status"] == "fail"]
     if failures:
         await connection.execute(
@@ -995,6 +997,21 @@ async def _activate(
         previous = await connection.fetchval(
             "SELECT dataset_version FROM dataset_versions WHERE is_active FOR UPDATE"
         )
+        retargeted = await connection.execute(
+            """
+            UPDATE source_funder_link_overrides AS override
+            SET target_dataset_version=$1, revision=override.revision + 1,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE override.link_mode='link_profile'
+              AND override.target_dataset_version<>$1
+              AND EXISTS (
+                  SELECT 1 FROM charities
+                  WHERE dataset_version=$1
+                    AND charity_id=override.target_profile_id
+              )
+            """,
+            dataset_version,
+        )
         if previous:
             await connection.execute(
                 """
@@ -1024,7 +1041,7 @@ async def _activate(
             json.dumps(counts, sort_keys=True),
             json.dumps(reconciliation, sort_keys=True),
         )
-    return previous
+    return previous, int(retargeted.rsplit(" ", 1)[-1])
 
 
 async def migrate(
@@ -1041,6 +1058,7 @@ async def migrate(
     enforce_baseline: bool = True,
     enforce_capacity: bool = True,
     remote_postgres: bool = False,
+    database_settings: DatabaseSettings | None = None,
 ) -> dict[str, Any]:
     if not re.fullmatch(r"[a-f0-9]{40}", code_revision):
         raise PreflightError("Code revision must be a full lowercase Git SHA")
@@ -1057,7 +1075,7 @@ async def migrate(
         uuid.NAMESPACE_URL,
         f"foundation-intelligence:{preflight.checksum}:{dataset_version}:{code_revision}",
     )
-    target = await _connect_postgres()
+    target = await _connect_postgres(database_settings)
     started_at = datetime.now(timezone.utc)
     try:
         await _ensure_schema(target)
@@ -1101,7 +1119,7 @@ async def migrate(
             EXPECTED_COUNTS if enforce_baseline else None,
             EXPECTED_CONTROLS if enforce_baseline else None,
         )
-        previous = await _activate(
+        previous, retargeted_overrides = await _activate(
             target,
             dataset_version,
             migration_run_id,
@@ -1129,6 +1147,7 @@ async def migrate(
             "reconciliation_results": reconciliation,
             "activation_status": "active",
             "rollback_dataset_version": previous,
+            "retargeted_overrides": retargeted_overrides,
             "errors": [],
             "actor": {"id": actor_id, "type": actor_type},
             "capacity": preflight.capacity.as_dict(),

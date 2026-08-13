@@ -50,6 +50,49 @@ def _route_contract(router) -> set[tuple[str, tuple[str, ...]]]:
 
 
 class TestPostgreSQLRouteParity(unittest.TestCase):
+    def test_cognito_runtime_startup_performs_no_database_io(self):
+        script = """
+from fastapi.testclient import TestClient
+from bff.main import app
+with TestClient(app):
+    pass
+"""
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("DATABASE_")
+        }
+        environment.update(
+            {
+                "APP_ENV": "demo",
+                "DATA_RUNTIME_MODE": "postgresql",
+                "AUTH_MODE": "cognito_rbac",
+                "COGNITO_REGION": "eu-west-1",
+                "COGNITO_USER_POOL_ID": "eu-west-1_startupcheck",
+                "COGNITO_CLIENT_ID": "startup-check-client",
+                "COGNITO_DOMAIN": "https://startup-check.auth.eu-west-1.amazoncognito.com",
+                "CORS_ORIGINS": "",
+                "DEV_AUTH_ENABLED": "false",
+                "CORE_PROXY_ENABLED": "false",
+                "DATABASE_HOST": "database-must-not-be-contacted.invalid",
+                "DATABASE_NAME": "foundation_intelligence",
+                "DATABASE_USER": "foundation_app",
+                "DATABASE_PASSWORD": "not-a-real-secret",
+                "DATABASE_CONNECT_TIMEOUT_SECONDS": "1",
+                "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+            }
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[2],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_postgresql_router_covers_every_legacy_application_route(self):
         from bff.charity import router as legacy_router
         from bff.postgres.routes import router as postgresql_router

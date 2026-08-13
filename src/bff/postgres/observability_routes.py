@@ -13,7 +13,7 @@ router = APIRouter(
     prefix="/api/admin/observability",
     tags=["Observability"],
     dependencies=[
-        Depends(require_roles(Role.ADMINISTRATOR, action="observability.read"))
+        Depends(require_roles(Role.OPERATOR, action="observability.read"))
     ],
 )
 

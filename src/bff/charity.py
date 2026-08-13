@@ -385,7 +385,9 @@ def _official_charity_url(charity_number: int) -> str:
     )
 
 
-def _fast_link_confirmed_profiles(reg_numbers: List[int]) -> List[Dict[str, Any]]:
+def _fast_link_confirmed_profiles(
+    reg_numbers: List[int], database_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Create lightweight profiles from cached official records and link known grants.
 
     This intentionally performs no network calls, database clone, currency
@@ -395,10 +397,11 @@ def _fast_link_confirmed_profiles(reg_numbers: List[int]) -> List[Dict[str, Any]
     The operation is one small SQLite transaction so the directory can open a
     profile immediately after the user confirms it.
     """
-    if not os.path.exists(DB_PATH):
+    target_database = database_path or DB_PATH
+    if not os.path.exists(target_database):
         raise RuntimeError("The local organization database is unavailable.")
 
-    conn = sqlite3.connect(DB_PATH, timeout=8)
+    conn = sqlite3.connect(target_database, timeout=8)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -1002,7 +1005,7 @@ async def get_default_charity_relevance_score(
 @router.post(
     "/{reg_charity_number}/score",
     response_model=ScoreResponse,
-    dependencies=[Depends(require_roles(Role.ANALYST, action="score.calculate"))],
+    dependencies=[Depends(require_roles(Role.OPERATOR, action="score.calculate"))],
 )
 async def score_charity_relevance(
     reg_charity_number: int,

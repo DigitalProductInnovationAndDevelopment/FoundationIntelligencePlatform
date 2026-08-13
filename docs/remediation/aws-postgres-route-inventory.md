@@ -68,10 +68,13 @@ There is no internal-service route in the current application. Queue/task callba
 ## Phase boundary
 
 Production/staging application data, job state, request idempotency, link
-overrides, profile caches and audit records use PostgreSQL. Manual refresh
+overrides and profile caches use PostgreSQL through separate reader/writer
+pools. Security audit events use structured application logs so a GET never
+causes PostgreSQL DML. Manual refresh
 routes only enqueue durable jobs and return a job ID. Phase-8 workers claim
 through PostgreSQL leases and the transactional outbox supplies the SQS
 delivery contract; neither path uses a production local lock or API
-subprocess. Production audit events are append-only PostgreSQL rows; local
-unit tests may replace the sink with deterministic memory state.
+subprocess. The exact mutation/session/table contract is documented in
+`database-access-architecture.md`; local unit tests may replace durable stores
+with deterministic memory state.
 Edge/distributed rate limiting remains a Terraform and deployment concern.

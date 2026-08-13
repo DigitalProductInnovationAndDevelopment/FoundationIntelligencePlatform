@@ -170,6 +170,7 @@ const overview = {
 
 const browserMock = `(() => {
   const responses = {
+    auth: ${JSON.stringify({ mode: "public_readonly" })},
     health: ${JSON.stringify({ status: "ok" })},
     stats: ${JSON.stringify({ total_charities: 42, active_charities: 40, removed_charities: 2, average_income: 1000000, average_expenditure: 800000, source: ["360Giving", "Charity Commission for England and Wales", "Philea"] })},
     overview: ${JSON.stringify(overview)},
@@ -184,7 +185,8 @@ const browserMock = `(() => {
     const key = url.pathname + url.search;
     window.__phase7Requests[key] = (window.__phase7Requests[key] || 0) + 1;
     let body;
-    if (url.pathname === "/health") body = responses.health;
+    if (url.pathname === "/api/auth/config") body = responses.auth;
+    else if (url.pathname === "/health") body = responses.health;
     else if (url.pathname === "/api/charities/stats") body = responses.stats;
     else if (url.pathname === "/api/charities/grants/overview") body = responses.overview;
     else if (url.pathname === "/api/charities/grants/beneficiary-geographies") body = responses.geographies;

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from bff.postgres.job_repository import PIPELINE_JOB_TYPES, PostgresJobRepository
 from bff.postgres.pipeline_repository import PipelineRepository
+from bff.postgres.dependencies import reader_sessions, writer_sessions
 from bff.schemas import PipelineStatus, PipelineTrigger, SourceScheduleUpdate
 from bff.security import Role, require_roles
 from bff.utils.logging import redact_text
@@ -25,7 +27,11 @@ GOVERNANCE_CONFIGURATION = load_governance_configuration()
 
 
 def _jobs(request: Request) -> PostgresJobRepository:
-    return PostgresJobRepository(request.app.state.database.sessions())
+    return PostgresJobRepository(reader_sessions(request))
+
+
+def _write_jobs(request: Request) -> PostgresJobRepository:
+    return PostgresJobRepository(writer_sessions(request))
 
 
 def _actor(request: Request) -> str:
@@ -34,7 +40,11 @@ def _actor(request: Request) -> str:
 
 
 def _pipelines(request: Request) -> PipelineRepository:
-    return PipelineRepository(request.app.state.database.sessions())
+    return PipelineRepository(reader_sessions(request))
+
+
+def _write_pipelines(request: Request) -> PipelineRepository:
+    return PipelineRepository(writer_sessions(request))
 
 
 @router.get("/pipeline/status", response_model=PipelineStatus)
@@ -52,7 +62,7 @@ async def get_pipeline_status(
 async def trigger_pipeline(
     payload: PipelineTrigger,
     request: Request,
-    repository: PostgresJobRepository = Depends(_jobs),
+    repository: PostgresJobRepository = Depends(_write_jobs),
 ):
     if payload.source not in PIPELINE_JOB_TYPES[:4]:
         raise HTTPException(
@@ -64,6 +74,9 @@ async def trigger_pipeline(
         payload.model_dump(exclude={"source"}),
         actor_id=_actor(request),
         idempotency_key=str(request.headers.get("idempotency-key") or "").strip(),
+        active_dedupe_key=f"pipeline:{payload.source}",
+        max_attempts=1,
+        timeout_seconds=21_600 if payload.source == "full_run" else 3_600,
     )
     return {
         "status": job["status"],
@@ -94,6 +107,17 @@ async def get_pipeline_jobs(
             for job in jobs
         ]
     }
+
+
+@router.get("/pipeline/jobs/{job_id}")
+async def get_pipeline_job(
+    job_id: uuid.UUID,
+    repository: PostgresJobRepository = Depends(_jobs),
+):
+    job = await repository.get(str(job_id))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Pipeline job not found")
+    return job
 
 
 @router.get(
@@ -148,7 +172,7 @@ async def get_pipeline_sources(
 async def update_pipeline_source_schedule(
     source_name: str,
     payload: SourceScheduleUpdate,
-    repository: PipelineRepository = Depends(_pipelines),
+    repository: PipelineRepository = Depends(_write_pipelines),
 ):
     try:
         return await repository.set_source_enabled(source_name, enabled=payload.enabled)

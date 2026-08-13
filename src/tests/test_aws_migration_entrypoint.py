@@ -20,8 +20,29 @@ class _RecordingConnection:
         self.statements.append(statement)
         return self.role_exists
 
-    async def execute(self, statement: str):
+    async def fetchrow(self, statement: str, *_args):
         self.statements.append(statement)
+        if not self.role_exists:
+            return None
+        return {
+            "rolname": "foundation_app",
+            "rolsuper": False,
+            "rolcreaterole": False,
+            "rolcreatedb": False,
+            "rolreplication": False,
+            "rolbypassrls": False,
+            "rolinherit": False,
+            "rolcanlogin": True,
+        }
+
+    async def fetch(self, statement: str, *_args):
+        self.statements.append(statement)
+        return []
+
+    async def execute(self, statement: str, *_args):
+        self.statements.append(statement)
+        if statement.startswith("CREATE ROLE"):
+            self.role_exists = True
 
 
 class _VerifiedApplicationConnection:
@@ -116,14 +137,19 @@ class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
             },
         )
         sql = "\n".join(connection.statements)
-        self.assertIn("NOSUPERUSER NOCREATEDB NOCREATEROLE", sql)
-        self.assertIn("GRANT SELECT ON ALL TABLES", sql)
+        self.assertIn("CREATE ROLE", sql)
+        self.assertIn("NOCREATEDB NOCREATEROLE", sql)
+        self.assertNotIn("SUPERUSER", sql)
+        self.assertIn("GRANT SELECT ON TABLE", sql)
+        self.assertIn('"source_configurations"', sql)
         self.assertIn("REVOKE ALL ON ALL SEQUENCES", sql)
         self.assertIn("REVOKE EXECUTE ON ALL FUNCTIONS", sql)
         self.assertIn("default_transaction_read_only = on", sql)
+        self.assertNotIn("GRANT SELECT ON ALL TABLES", sql)
+        self.assertNotIn("GRANT ALL", sql)
         self.assertNotIn("GRANT SELECT, INSERT", sql)
 
-    async def test_existing_role_is_demoted_before_reuse(self):
+    async def test_existing_safe_role_is_reconfigured_without_superuser_attribute(self):
         connection = _RecordingConnection(role_exists=True)
         await _configure_application_role(
             connection,  # type: ignore[arg-type]
@@ -139,7 +165,8 @@ class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
             for statement in connection.statements
             if statement.startswith("ALTER ROLE \"foundation_app\" LOGIN")
         )
-        self.assertIn("NOSUPERUSER NOCREATEDB NOCREATEROLE", alter_role)
+        self.assertIn("LOGIN NOINHERIT PASSWORD", alter_role)
+        self.assertNotIn("SUPERUSER", alter_role)
 
     def test_unsafe_identifiers_fail_before_sql(self):
         with self.assertRaises(AwsMigrationConfigurationError):

@@ -16,6 +16,7 @@ from typing import Any, Deque, Dict, FrozenSet, Iterable, Mapping, Optional, Tup
 
 import httpx
 from fastapi import HTTPException, Request, status
+from sqlalchemy.exc import SQLAlchemyError
 from jose import JWTError, jwt
 
 from bff.config import SECURITY_SETTINGS, SecuritySettings
@@ -23,18 +24,26 @@ from bff.utils.logging import logger
 
 
 class Role(str, Enum):
-    VIEWER = "viewer"
-    ANALYST = "analyst"
+    CUSTOMER = "customer"
     OPERATOR = "operator"
-    ADMINISTRATOR = "administrator"
+    ADMIN = "admin"
+
+    # Compatibility aliases keep the established development/public-readonly
+    # routes stable while all emitted role values use the three app roles.
+    VIEWER = "customer"
+    ANALYST = "customer"
+    ADMINISTRATOR = "admin"
 
 
 _ROLE_RANK = {
-    Role.VIEWER: 10,
-    Role.ANALYST: 20,
-    Role.OPERATOR: 30,
-    Role.ADMINISTRATOR: 40,
+    Role.CUSTOMER: 10,
+    Role.OPERATOR: 20,
+    Role.ADMIN: 30,
 }
+
+APP_ROLES: FrozenSet[Role] = frozenset(
+    {Role.CUSTOMER, Role.OPERATOR, Role.ADMIN}
+)
 
 
 # This allowlist deliberately contains only the read-only route templates used
@@ -64,6 +73,7 @@ PUBLIC_READONLY_ROUTE_ALLOWLIST: FrozenSet[str] = frozenset(
         "/api/charities/grants/summary",
         "/api/charities/grants/themes",
         "/api/charities/grants/trends",
+        "/api/scraper/status",
     }
 )
 PUBLIC_READONLY_METHOD_ALLOWLIST: FrozenSet[str] = frozenset({"GET", "HEAD"})
@@ -188,7 +198,7 @@ class OIDCVerifier:
 
     async def _load_jwks(self, settings: SecuritySettings) -> Mapping[str, Any]:
         now = time.monotonic()
-        cache_source = settings.oidc_jwks_json or str(settings.oidc_jwks_url)
+        cache_source = settings.oidc_jwks_json or _jwks_url(settings)
         with self._lock:
             if (
                 self._jwks
@@ -202,7 +212,7 @@ class OIDCVerifier:
         else:
             try:
                 async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
-                    response = await client.get(str(settings.oidc_jwks_url))
+                    response = await client.get(_jwks_url(settings))
                     response.raise_for_status()
                     if len(response.content) > 256_000:
                         raise ValueError("OIDC JWKS response exceeds the configured safety bound")
@@ -239,6 +249,25 @@ class OIDCVerifier:
         if len(matching_keys) != 1:
             raise _invalid_token()
         try:
+            if settings.auth_mode == "cognito_rbac":
+                claims = jwt.decode(
+                    token,
+                    matching_keys[0],
+                    algorithms=list(settings.oidc_algorithms),
+                    issuer=_issuer(settings),
+                    options={
+                        "verify_aud": False,
+                        "require_exp": True,
+                        "require_iat": True,
+                        "require_sub": True,
+                    },
+                )
+                if (
+                    claims.get("token_use") != "access"
+                    or claims.get("client_id") != settings.cognito_client_id
+                ):
+                    raise _invalid_token()
+                return claims
             return jwt.decode(
                 token,
                 matching_keys[0],
@@ -247,12 +276,29 @@ class OIDCVerifier:
                 issuer=settings.oidc_issuer,
                 options={"require_exp": True, "require_iat": True, "require_sub": True},
             )
+        except HTTPException:
+            raise
         except JWTError as exc:
             logger.warning("OIDC token validation failed: %s", exc.__class__.__name__)
             raise _invalid_token() from exc
 
 
 _oidc_verifier = OIDCVerifier()
+
+
+def _issuer(settings: SecuritySettings) -> str:
+    if settings.auth_mode == "cognito_rbac":
+        return (
+            f"https://cognito-idp.{settings.cognito_region}.amazonaws.com/"
+            f"{settings.cognito_user_pool_id}"
+        )
+    return str(settings.oidc_issuer)
+
+
+def _jwks_url(settings: SecuritySettings) -> str:
+    if settings.auth_mode == "cognito_rbac":
+        return f"{_issuer(settings)}/.well-known/jwks.json"
+    return str(settings.oidc_jwks_url)
 
 
 def _invalid_token() -> HTTPException:
@@ -294,7 +340,7 @@ def _public_readonly_principal(
         return None
     return Principal(
         actor_id="public-readonly-demo",
-        roles=frozenset({Role.VIEWER}),
+        roles=frozenset({Role.CUSTOMER}),
         claims={"sub": "public-readonly-demo", "auth_mode": "public_readonly"},
     )
 
@@ -308,7 +354,11 @@ def _roles_from_claims(claims: Mapping[str, Any], claim_name: str) -> FrozenSet[
     else:
         candidates = []
     normalized = set()
-    aliases = {"admin": Role.ADMINISTRATOR, "administrator": Role.ADMINISTRATOR}
+    aliases = {
+        "viewer": Role.CUSTOMER,
+        "analyst": Role.CUSTOMER,
+        "administrator": Role.ADMIN,
+    }
     for candidate in candidates:
         value = candidate.strip().lower()
         try:
@@ -319,9 +369,29 @@ def _roles_from_claims(claims: Mapping[str, Any], claim_name: str) -> FrozenSet[
     return frozenset(normalized)
 
 
+def _cognito_roles_from_claims(claims: Mapping[str, Any]) -> FrozenSet[Role]:
+    raw_groups = claims.get("cognito:groups", [])
+    if not isinstance(raw_groups, (list, tuple, set)):
+        raw_groups = []
+    roles: set[Role] = set()
+    for group in raw_groups:
+        try:
+            role = Role(str(group).strip().lower())
+        except ValueError:
+            continue
+        if role in APP_ROLES:
+            roles.add(role)
+    if len(roles) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Exactly one application role group is required.",
+        )
+    return frozenset(roles)
+
+
 def create_development_access_token(
     subject: str,
-    roles: Iterable[Role] = (Role.ADMINISTRATOR,),
+    roles: Iterable[Role] = (Role.ADMIN,),
     *,
     settings: SecuritySettings = SECURITY_SETTINGS,
     expires_delta: Optional[timedelta] = None,
@@ -359,7 +429,7 @@ async def _decode_token(token: str, request: Request, settings: SecuritySettings
             )
         except JWTError as exc:
             raise _invalid_token() from exc
-    if settings.auth_mode == "oidc":
+    if settings.auth_mode in {"oidc", "cognito_rbac"}:
         return await _oidc_verifier.decode(token, settings)
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -416,9 +486,14 @@ async def authenticate_request(request: Request) -> Principal:
     subject = claims.get("sub")
     if not isinstance(subject, str) or not subject.strip():
         raise _invalid_token()
+    roles = (
+        _cognito_roles_from_claims(claims)
+        if settings.auth_mode == "cognito_rbac"
+        else _roles_from_claims(claims, settings.oidc_role_claim)
+    )
     principal = Principal(
         actor_id=subject.strip(),
-        roles=_roles_from_claims(claims, settings.oidc_role_claim),
+        roles=roles,
         claims=claims,
     )
     retry_after = _limiter_for(request, settings).check(f"actor:{principal.actor_id}")
@@ -457,6 +532,15 @@ async def reserve_idempotency(request: Request, principal: Principal, action: st
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+    except Exception as exc:
+        from bff.database import WriterDatabaseUnavailable
+
+        if not isinstance(exc, (WriterDatabaseUnavailable, SQLAlchemyError)):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The mutation database path is temporarily unavailable.",
+        ) from exc
     request.state.idempotency_record_key = record_key
 
 
@@ -477,6 +561,22 @@ def require_roles(*roles: Role, action: str = "authenticated.read", idempotent: 
         return principal
 
     return dependency
+
+
+def require_authenticated_user(*, action: str = "authenticated.read"):
+    return require_roles(Role.CUSTOMER, action=action)
+
+
+def require_role(role: Role, *, action: str = "authenticated.read", idempotent: bool = False):
+    return require_roles(role, action=action, idempotent=idempotent)
+
+
+def require_any_role(
+    *roles: Role,
+    action: str = "authenticated.read",
+    idempotent: bool = False,
+):
+    return require_roles(*roles, action=action, idempotent=idempotent)
 
 
 async def enforce_login_rate_limit(request: Request) -> None:
