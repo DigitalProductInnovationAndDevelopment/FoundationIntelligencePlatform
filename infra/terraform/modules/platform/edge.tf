@@ -33,6 +33,8 @@ resource "aws_cloudfront_response_headers_policy" "security" {
   }
 }
 
+# Static private-S3 frontend; dynamic API traffic uses the separately WAF-protected ALB.
+#trivy:ignore:AVD-AWS-0011
 resource "aws_cloudfront_distribution" "frontend" {
   enabled         = true
   is_ipv6_enabled = true

@@ -261,6 +261,8 @@ resource "aws_ecs_task_definition" "release_gate" {
   tags = local.common_tags
 }
 
+# Public by design: this is the API ingress and is protected by the regional WAF.
+#trivy:ignore:AVD-AWS-0053
 resource "aws_lb" "api" {
   name                       = substr("${local.name}-api", 0, 32)
   internal                   = false

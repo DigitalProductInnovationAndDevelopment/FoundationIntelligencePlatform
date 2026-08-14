@@ -215,6 +215,16 @@ class TestGovernanceRetentionPostgresIntegration(unittest.TestCase):
             dataset_version = await connection.scalar(
                 text("SELECT dataset_version FROM dataset_versions WHERE is_active")
             )
+            if dataset_version is None:
+                dataset_version = f"phase9-fixture-{unique}"
+                await connection.execute(
+                    text(
+                        "INSERT INTO dataset_versions "
+                        "(dataset_version, status, is_active, activated_at) "
+                        "VALUES (:dataset_version, 'active', TRUE, CURRENT_TIMESTAMP)"
+                    ),
+                    {"dataset_version": dataset_version},
+                )
             self.assertEqual(
                 await repository.synchronize_policies(configuration),
                 len(configuration.policies),

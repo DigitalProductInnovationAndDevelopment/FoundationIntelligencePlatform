@@ -58,6 +58,8 @@ resource "aws_vpc_security_group_ingress_rule" "api_from_alb" {
   referenced_security_group_id = aws_security_group.alb.id
 }
 
+# Approved external HTTPS APIs use dynamic destination ranges; egress stays limited to TCP/443.
+#trivy:ignore:AVD-AWS-0104
 resource "aws_vpc_security_group_egress_rule" "ecs_https" {
   security_group_id = aws_security_group.ecs.id
   description       = "TLS to AWS endpoints and approved external sources"

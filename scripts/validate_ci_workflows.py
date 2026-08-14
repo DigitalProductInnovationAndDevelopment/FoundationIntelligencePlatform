@@ -24,7 +24,7 @@ REQUIRED_CI_MARKERS = frozenset(
         "npm test",
         "npm run build",
         "npm run test:e2e",
-        "gitleaks/gitleaks-action",
+        "zricethezav/gitleaks@sha256:",
         "gh-action-pip-audit",
         "npm audit",
         "check_licenses.py",

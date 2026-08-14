@@ -3444,7 +3444,7 @@ body {
 }
 .app-header-action:hover:not(:disabled),
 .data-sources-disclosure summary.app-header-action:hover,
-.data-sources-disclosure[open] summary.app-header-action { border-color: rgba(102,100,241,.38); color: var(--nl-unicorn); background: var(--nl-unicorn-glow); }
+.data-sources-disclosure[open] summary.app-header-action { border-color: rgba(102,100,241,.38); color: var(--nl-unicorn-active); background: var(--nl-unicorn-glow); }
 .app-header-action:focus-visible,
 .data-sources-disclosure summary.app-header-action:focus-visible { outline: 3px solid var(--border-glass-focus); outline-offset: 2px; }
 .app-header-action:disabled { cursor: not-allowed; opacity: .46; }

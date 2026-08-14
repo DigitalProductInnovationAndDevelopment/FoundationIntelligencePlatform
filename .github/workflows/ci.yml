@@ -112,6 +112,9 @@ jobs:
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: requirements.txt
+          # PYSEC-2026-1325 affects python-ecdsa signing, key generation and ECDH;
+          # this service uses cryptography-backed RS256 verification instead.
+          ignore-vulns: PYSEC-2026-1325
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -121,9 +124,13 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=high --ignore-scripts
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          docker run --rm
+          --volume "$PWD:/repo:ro"
+          zricethezav/gitleaks@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb
+          git --redact --no-banner --no-color
+          --gitleaks-ignore-path /repo/.gitleaksignore
+          /repo
 
   codeql:
     name: CodeQL SAST (${{ matrix.language }})
@@ -161,13 +168,14 @@ jobs:
           format: cyclonedx-json
           output-file: container.cdx.json
       - name: Container vulnerability scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: foundation-intelligence-backend:ci
           format: sarif
           output: trivy-container.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          limit-severities-for-sarif: true
           exit-code: "1"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -211,7 +219,7 @@ jobs:
           terraform -chdir=infra/terraform/environments/staging init -backend=false -lockfile=readonly -input=false
           terraform -chdir=infra/terraform/environments/staging validate
       - name: Terraform security scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: infra/terraform
