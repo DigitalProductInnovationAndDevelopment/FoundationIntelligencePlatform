@@ -124,9 +124,13 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=high --ignore-scripts
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          docker run --rm
+          --volume "$PWD:/repo:ro"
+          zricethezav/gitleaks@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb
+          git --redact --no-banner --no-color
+          --gitleaks-ignore-path /repo/.gitleaksignore
+          /repo
 
   codeql:
     name: CodeQL SAST (${{ matrix.language }})

@@ -1,0 +1,7 @@
+# Fixed browser storage identifiers; these are not credentials.
+4fff4728e434eb480e7f05b6f28b10691cda89b6:frontend/src/App.tsx:generic-api-key:151
+4fff4728e434eb480e7f05b6f28b10691cda89b6:frontend/src/App.tsx:generic-api-key:152
+
+# Repository lookup variables in test fixtures; these are not credentials.
+4fff4728e434eb480e7f05b6f28b10691cda89b6:src/tests/test_source_funders.py:generic-api-key:221
+4fff4728e434eb480e7f05b6f28b10691cda89b6:src/tests/test_source_funders.py:generic-api-key:224
