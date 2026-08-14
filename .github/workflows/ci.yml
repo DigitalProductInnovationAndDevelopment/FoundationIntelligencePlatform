@@ -161,7 +161,7 @@ jobs:
           format: cyclonedx-json
           output-file: container.cdx.json
       - name: Container vulnerability scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           image-ref: foundation-intelligence-backend:ci
           format: sarif
@@ -211,7 +211,7 @@ jobs:
           terraform -chdir=infra/terraform/environments/staging init -backend=false -lockfile=readonly -input=false
           terraform -chdir=infra/terraform/environments/staging validate
       - name: Terraform security scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: config
           scan-ref: infra/terraform
