@@ -19,8 +19,8 @@ venv/bin/alembic upgrade head
 
 ## Deterministic full source migration
 
-Keep the source immutable and invoke the migration with a reviewed output
-directory outside `docs/audits/`:
+Keep the source immutable and invoke the migration with a reviewed temporary
+output directory outside the repository:
 
 ```bash
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 \

@@ -36,8 +36,9 @@ requires a real local password file and explicitly selects PostgreSQL.
 
 Do not claim success. Terraform/provider locks and scanners are not locally
 available from approved sources. Use the offline validator, record `NOT TESTED`,
-and later run the exact non-destructive commands in `terraform-validation.md`.
-Never run apply/destroy to diagnose validation.
+and later run the non-destructive checks described in the
+[customer handover](../../customer-handover.md#15-terraform-and-cicd). Never run
+apply/destroy to diagnose validation.
 
 ## GitHub/AWS workflow cannot run
 
