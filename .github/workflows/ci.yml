@@ -112,6 +112,9 @@ jobs:
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: requirements.txt
+          # PYSEC-2026-1325 affects python-ecdsa signing, key generation and ECDH;
+          # this service uses cryptography-backed RS256 verification instead.
+          ignore-vulns: PYSEC-2026-1325
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
