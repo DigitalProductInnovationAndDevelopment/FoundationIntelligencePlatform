@@ -171,6 +171,7 @@ jobs:
           output: trivy-container.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          limit-severities-for-sarif: true
           exit-code: "1"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
