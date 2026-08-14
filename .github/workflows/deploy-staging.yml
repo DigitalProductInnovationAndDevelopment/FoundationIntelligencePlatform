@@ -1,0 +1,245 @@
+name: Protected Staging Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type I_APPROVE_STAGING to start the protected workflow"
+        required: true
+        type: string
+
+concurrency:
+  group: staging-deployment
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_STAGING_REGION }}
+  TF_ROOT: infra/terraform/environments/staging
+  PYTHONPATH: src
+
+jobs:
+  build:
+    name: Build immutable candidate artefacts
+    if: github.event.inputs.confirmation == 'I_APPROVE_STAGING'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build backend image
+        run: |
+          docker build --target backend-runtime --tag foundation-intelligence-backend:${GITHUB_SHA} .
+          scripts/verify_container_image.sh foundation-intelligence-backend:${GITHUB_SHA}
+          docker save foundation-intelligence-backend:${GITHUB_SHA} -o backend-image.tar
+      - name: Build deterministic frontend
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run lint
+          npm test
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-candidate-${{ github.sha }}
+          path: |
+            backend-image.tar
+            frontend/dist
+          if-no-files-found: error
+          retention-days: 3
+
+  publish-and-plan:
+    name: Publish immutable images and produce reviewed plan
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging-publish
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      worker_image: ${{ steps.images.outputs.worker_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: staging-candidate-${{ github.sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: staging-publish-${{ github.run_id }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Push candidate and resolve immutable ECR digests
+        id: images
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_STAGING_ACCOUNT_ID }}
+        run: |
+          docker load -i backend-image.tar
+          api_repository="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/foundation-intelligence-staging/api"
+          worker_repository="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/foundation-intelligence-staging/worker"
+          docker tag foundation-intelligence-backend:${GITHUB_SHA} "${api_repository}:${GITHUB_SHA}"
+          docker tag foundation-intelligence-backend:${GITHUB_SHA} "${worker_repository}:${GITHUB_SHA}"
+          docker push "${api_repository}:${GITHUB_SHA}"
+          docker push "${worker_repository}:${GITHUB_SHA}"
+          api_digest=$(aws ecr describe-images --repository-name foundation-intelligence-staging/api --image-ids imageTag=${GITHUB_SHA} --query 'imageDetails[0].imageDigest' --output text)
+          worker_digest=$(aws ecr describe-images --repository-name foundation-intelligence-staging/worker --image-ids imageTag=${GITHUB_SHA} --query 'imageDetails[0].imageDigest' --output text)
+          test -n "$api_digest"
+          test -n "$worker_digest"
+          echo "api_image=${api_repository}@${api_digest}" >> "$GITHUB_OUTPUT"
+          echo "worker_image=${worker_repository}@${worker_digest}" >> "$GITHUB_OUTPUT"
+          echo "frontend_digest=${api_digest}" >> "$GITHUB_OUTPUT"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Initialize approved encrypted state backend
+        run: >-
+          terraform -chdir=${TF_ROOT} init -reconfigure -lockfile=readonly -input=false
+          -backend-config=bucket=${{ vars.AWS_STAGING_STATE_BUCKET }}
+          -backend-config=key=foundation-intelligence/staging/terraform.tfstate
+          -backend-config=region=${AWS_REGION}
+          -backend-config=dynamodb_table=${{ vars.AWS_STAGING_STATE_LOCK_TABLE }}
+      - name: Create non-destructive review plan
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+          TF_VAR_api_image: ${{ steps.images.outputs.api_image }}
+          TF_VAR_worker_image: ${{ steps.images.outputs.worker_image }}
+          TF_VAR_frontend_origin_image_digest: ${{ steps.images.outputs.frontend_digest }}
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_github_oidc_provider_arn: ${{ vars.AWS_GITHUB_OIDC_PROVIDER_ARN }}
+          TF_VAR_domain_name: ${{ vars.STAGING_API_DOMAIN }}
+          TF_VAR_hosted_zone_id: ${{ vars.AWS_STAGING_HOSTED_ZONE_ID }}
+          TF_VAR_manage_dns: "true"
+        run: |
+          terraform -chdir=${TF_ROOT} fmt -check
+          terraform -chdir=${TF_ROOT} validate
+          terraform -chdir=${TF_ROOT} plan -input=false -out=reviewed.tfplan
+          terraform -chdir=${TF_ROOT} show -no-color reviewed.tfplan > staging-plan.txt
+          terraform -chdir=${TF_ROOT} show -json reviewed.tfplan > staging-plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-staging-plan-${{ github.run_id }}
+          path: |
+            infra/terraform/environments/staging/reviewed.tfplan
+            infra/terraform/environments/staging/staging-plan.txt
+            infra/terraform/environments/staging/staging-plan.json
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    name: Apply reviewed plan and run deployment gates
+    needs: [build, publish-and-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: staging-candidate-${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: reviewed-staging-plan-${{ github.run_id }}
+          path: infra/terraform/environments/staging
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOYMENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: staging-deploy-${{ github.run_id }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Initialize the same approved backend
+        run: >-
+          terraform -chdir=${TF_ROOT} init -reconfigure -lockfile=readonly -input=false
+          -backend-config=bucket=${{ vars.AWS_STAGING_STATE_BUCKET }}
+          -backend-config=key=foundation-intelligence/staging/terraform.tfstate
+          -backend-config=region=${AWS_REGION}
+          -backend-config=dynamodb_table=${{ vars.AWS_STAGING_STATE_LOCK_TABLE }}
+      - name: Capture rollback task definitions
+        run: |
+          aws ecs describe-services --cluster foundation-intelligence-staging --services api worker --query 'services[].{name:serviceName,taskDefinition:taskDefinition}' > previous-task-definitions.json
+          test "$(jq length previous-task-definitions.json)" -eq 2
+      - name: Apply exactly the reviewed plan
+        run: terraform -chdir=${TF_ROOT} apply -input=false reviewed.tfplan
+      - name: Run Alembic as a private one-off task
+        run: |
+          release=$(terraform -chdir=${TF_ROOT} output -json release_gate)
+          network=$(jq -cn --argjson release "$release" '{awsvpcConfiguration:{subnets:$release.application_subnets,securityGroups:[$release.security_group_id],assignPublicIp:"DISABLED"}}')
+          overrides='{"containerOverrides":[{"name":"release-gate","command":["alembic","upgrade","head"]}]}'
+          task=$(aws ecs run-task --cluster "$(jq -r .cluster_name <<<"$release")" --task-definition "$(jq -r .task_definition_arn <<<"$release")" --launch-type FARGATE --network-configuration "$network" --overrides "$overrides" --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped --cluster "$(jq -r .cluster_name <<<"$release")" --tasks "$task"
+          test "$(aws ecs describe-tasks --cluster "$(jq -r .cluster_name <<<"$release")" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)" = "0"
+      - name: Deploy API and workers after migration
+        run: |
+          release=$(terraform -chdir=${TF_ROOT} output -json release_gate)
+          aws ecs update-service --cluster "$(jq -r .cluster_name <<<"$release")" --service api --task-definition "$(jq -r .api_task_definition <<<"$release")" >/dev/null
+          aws ecs update-service --cluster "$(jq -r .cluster_name <<<"$release")" --service worker --task-definition "$(jq -r .worker_task_definition <<<"$release")" >/dev/null
+          aws ecs wait services-stable --cluster "$(jq -r .cluster_name <<<"$release")" --services api worker
+      - name: Deploy frontend and invalidate exact distribution
+        run: |
+          release=$(terraform -chdir=${TF_ROOT} output -json release_gate)
+          aws s3 sync frontend/dist "s3://$(jq -r .frontend_bucket <<<"$release")/" --delete --only-show-errors
+          aws cloudfront create-invalidation --distribution-id "$(jq -r .cloudfront_id <<<"$release")" --paths '/*' >/dev/null
+      - name: Smoke and authenticated load gate
+        env:
+          STAGING_TEST_BEARER_TOKEN: ${{ secrets.STAGING_TEST_BEARER_TOKEN }}
+        run: |
+          python -m pip install --require-hashes -r requirements-locking.txt
+          python -m pip install --require-hashes -r requirements.txt
+          curl --fail --silent --show-error "${{ vars.STAGING_API_URL }}/health/ready"
+          python scripts/http_load_smoke.py --base-url "${{ vars.STAGING_API_URL }}" --token "$STAGING_TEST_BEARER_TOKEN" --samples 10 --concurrency 5
+      - name: PostgreSQL reconciliation release gate
+        run: |
+          release=$(terraform -chdir=${TF_ROOT} output -json release_gate)
+          network=$(jq -cn --argjson release "$release" '{awsvpcConfiguration:{subnets:$release.application_subnets,securityGroups:[$release.security_group_id],assignPublicIp:"DISABLED"}}')
+          task=$(aws ecs run-task --cluster "$(jq -r .cluster_name <<<"$release")" --task-definition "$(jq -r .task_definition_arn <<<"$release")" --launch-type FARGATE --network-configuration "$network" --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped --cluster "$(jq -r .cluster_name <<<"$release")" --tasks "$task"
+          test "$(aws ecs describe-tasks --cluster "$(jq -r .cluster_name <<<"$release")" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)" = "0"
+      - name: Browser E2E and accessibility
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          PHASE7_CHROME_PATH: /usr/bin/google-chrome
+          PHASE7_BASE_URL: ${{ vars.STAGING_FRONTEND_URL }}
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run test:e2e
+      - name: Security and rollback-readiness assertions
+        run: |
+          release=$(terraform -chdir=${TF_ROOT} output -json release_gate)
+          aws ecs describe-task-definition --task-definition "$(jq -r .api_task_definition <<<"$release")" > deployed-api-task.json
+          jq -e '.taskDefinition.containerDefinitions[0].image | contains("@sha256:")' deployed-api-task.json
+          jq -e '.taskDefinition.containerDefinitions[0].readonlyRootFilesystem == true' deployed-api-task.json
+          jq -e 'all(.[]; .taskDefinition | length > 0)' previous-task-definitions.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-deployment-evidence-${{ github.run_id }}
+          path: |
+            previous-task-definitions.json
+            deployed-api-task.json
+            infra/terraform/environments/staging/staging-plan.txt
+            infra/terraform/environments/staging/staging-plan.json
+          if-no-files-found: warn
+          retention-days: 30

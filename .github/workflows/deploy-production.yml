@@ -1,0 +1,16 @@
+name: Production Deployment Disabled
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  production-disabled:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "Production deployment remains disabled until all approvals and gates pass."

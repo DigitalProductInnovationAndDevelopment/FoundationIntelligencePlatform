@@ -1,0 +1,177 @@
+import unittest
+from unittest.mock import AsyncMock, patch
+
+from migration.aws_entrypoint import (
+    AwsMigrationConfigurationError,
+    _connect_admin,
+    _configure_application_role,
+    _identifier,
+    _run_alembic,
+    _verify_application_role,
+)
+
+
+class _RecordingConnection:
+    def __init__(self, role_exists: bool = False):
+        self.role_exists = role_exists
+        self.statements: list[str] = []
+
+    async def fetchval(self, statement: str, *_args):
+        self.statements.append(statement)
+        return self.role_exists
+
+    async def fetchrow(self, statement: str, *_args):
+        self.statements.append(statement)
+        if not self.role_exists:
+            return None
+        return {
+            "rolname": "foundation_app",
+            "rolsuper": False,
+            "rolcreaterole": False,
+            "rolcreatedb": False,
+            "rolreplication": False,
+            "rolbypassrls": False,
+            "rolinherit": False,
+            "rolcanlogin": True,
+        }
+
+    async def fetch(self, statement: str, *_args):
+        self.statements.append(statement)
+        return []
+
+    async def execute(self, statement: str, *_args):
+        self.statements.append(statement)
+        if statement.startswith("CREATE ROLE"):
+            self.role_exists = True
+
+
+class _VerifiedApplicationConnection:
+    async def fetchval(self, statement: str):
+        if statement == "SELECT 1":
+            return 1
+        if statement.startswith("SELECT ssl FROM pg_stat_ssl"):
+            return True
+        if statement == "SHOW default_transaction_read_only":
+            return "on"
+        raise AssertionError(f"Unexpected query: {statement}")
+
+    async def execute(self, statement: str):
+        if statement.startswith("UPDATE dataset_versions"):
+            import asyncpg
+
+            raise asyncpg.ReadOnlySQLTransactionError("read-only transaction")
+        raise AssertionError(f"Unexpected statement: {statement}")
+
+    async def close(self):
+        return None
+
+
+class TestAwsMigrationRoleSafety(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_connection_requires_tls_for_rds(self):
+        password = "A@b:%/+#?&xyz"
+        connection = AsyncMock()
+        with patch(
+            "migration.aws_entrypoint.asyncpg.connect",
+            new=AsyncMock(return_value=connection),
+        ) as connect:
+            result = await _connect_admin(
+                {
+                    "DATABASE_HOST": "private-postgresql.internal",
+                    "DATABASE_NAME": "foundation_intelligence",
+                    "DATABASE_ADMIN_USER": "foundation_admin",
+                    "DATABASE_ADMIN_PASSWORD": password,
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+        self.assertIs(result, connection)
+        self.assertEqual(connect.await_args.kwargs["ssl"], "require")
+        self.assertEqual(connect.await_args.kwargs["password"], password)
+
+    def test_alembic_environment_receives_unmodified_reserved_password(self):
+        password = "A@b:%/+#?&xyz"
+        with patch("migration.aws_entrypoint.subprocess.run") as run:
+            _run_alembic(
+                {
+                    "DATABASE_ADMIN_USER": "foundation_admin",
+                    "DATABASE_ADMIN_PASSWORD": password,
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+        self.assertEqual(run.call_args.kwargs["env"]["DATABASE_PASSWORD"], password)
+
+    async def test_application_role_verification_requires_tls_and_denied_update(self):
+        connection = _VerifiedApplicationConnection()
+        with patch(
+            "migration.aws_entrypoint.asyncpg.connect",
+            new=AsyncMock(return_value=connection),
+        ) as connect:
+            result = await _verify_application_role(
+                {
+                    "DATABASE_HOST": "private-postgresql.internal",
+                    "DATABASE_NAME": "foundation_intelligence",
+                    "DATABASE_APP_USER": "foundation_app",
+                    "DATABASE_APP_PASSWORD": "runtime-only-secret",
+                    "DATABASE_SSL_MODE": "require",
+                }
+            )
+        self.assertEqual(connect.await_args.kwargs["ssl"], "require")
+        self.assertEqual(
+            result,
+            {
+                "select_succeeded": True,
+                "tls_in_use": True,
+                "default_read_only": True,
+                "update_denied": True,
+            },
+        )
+
+    async def test_application_role_is_select_only_and_default_read_only(self):
+        connection = _RecordingConnection()
+        await _configure_application_role(
+            connection,  # type: ignore[arg-type]
+            {
+                "DATABASE_APP_USER": "foundation_app",
+                "DATABASE_APP_PASSWORD": "generatedsecret",
+                "DATABASE_ADMIN_USER": "foundation_admin",
+                "DATABASE_NAME": "foundation_intelligence",
+            },
+        )
+        sql = "\n".join(connection.statements)
+        self.assertIn("CREATE ROLE", sql)
+        self.assertIn("NOCREATEDB NOCREATEROLE", sql)
+        self.assertNotIn("SUPERUSER", sql)
+        self.assertIn("GRANT SELECT ON TABLE", sql)
+        self.assertIn('"source_configurations"', sql)
+        self.assertIn("REVOKE ALL ON ALL SEQUENCES", sql)
+        self.assertIn("REVOKE EXECUTE ON ALL FUNCTIONS", sql)
+        self.assertIn("default_transaction_read_only = on", sql)
+        self.assertNotIn("GRANT SELECT ON ALL TABLES", sql)
+        self.assertNotIn("GRANT ALL", sql)
+        self.assertNotIn("GRANT SELECT, INSERT", sql)
+
+    async def test_existing_safe_role_is_reconfigured_without_superuser_attribute(self):
+        connection = _RecordingConnection(role_exists=True)
+        await _configure_application_role(
+            connection,  # type: ignore[arg-type]
+            {
+                "DATABASE_APP_USER": "foundation_app",
+                "DATABASE_APP_PASSWORD": "generatedsecret",
+                "DATABASE_ADMIN_USER": "foundation_admin",
+                "DATABASE_NAME": "foundation_intelligence",
+            },
+        )
+        alter_role = next(
+            statement
+            for statement in connection.statements
+            if statement.startswith("ALTER ROLE \"foundation_app\" LOGIN")
+        )
+        self.assertIn("LOGIN NOINHERIT PASSWORD", alter_role)
+        self.assertNotIn("SUPERUSER", alter_role)
+
+    def test_unsafe_identifiers_fail_before_sql(self):
+        with self.assertRaises(AwsMigrationConfigurationError):
+            _identifier("foundation_app; DROP SCHEMA public", "DATABASE_APP_USER")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -114,6 +114,11 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
 .venv
 env/
 venv/
@@ -159,3 +164,23 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Project custom ignores
+response.html
+detail_response.txt
+
+# Local data directory ignores
+src/data/*.db
+src/data/preprocessed/
+src/data/processed/
+src/data/raw/charity_commission_bulk/
+src/data/pipeline_status.json
+src/data/pipeline_run.log
+
+# Terraform local state and generated plans (provider locks stay tracked)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.auto.tfvars

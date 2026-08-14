@@ -1,0 +1,43 @@
+services:
+  backend:
+    image: foundation-intelligence-backend:aws-readiness-local
+    environment:
+      APP_ENV: "${ECS_APP_ENV:-development}"
+      AUTH_MODE: "${ECS_AUTH_MODE:-development}"
+      DEV_AUTH_ENABLED: "${ECS_DEV_AUTH_ENABLED:-true}"
+      DATABASE_USER: "${ECS_DATABASE_USER:-foundation_app}"
+      DEV_AUTH_USERNAME: ${DEV_AUTH_USERNAME:?Set DEV_AUTH_USERNAME for the isolated local test}
+      DEV_AUTH_PASSWORD: ${DEV_AUTH_PASSWORD:?Set DEV_AUTH_PASSWORD for the isolated local test}
+      DEV_AUTH_SECRET: ${DEV_AUTH_SECRET:?Set DEV_AUTH_SECRET for the isolated local test}
+      DEV_AUTH_ALLOWED_HOSTS: ${DEV_AUTH_ALLOWED_HOSTS:-127.0.0.1,::1,localhost}
+    ports:
+      - "127.0.0.1:${ECS_FRONTEND_HOST_PORT:-8081}:8080"
+
+  frontend:
+    image: foundation-intelligence-frontend:aws-readiness-local
+
+  frontend-ecs:
+    image: foundation-intelligence-frontend:ecs-local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-runtime-ecs
+    network_mode: service:backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,uid=101,gid=101
+      - /var/cache/nginx:rw,noexec,nosuid,size=32m,uid=101,gid=101
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped

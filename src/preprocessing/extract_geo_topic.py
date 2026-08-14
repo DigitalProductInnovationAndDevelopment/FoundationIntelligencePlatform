@@ -1,452 +1,150 @@
-import requests
-from bs4 import BeautifulSoup, NavigableString
-import pprint
-import time
-import json
-import re
-import argparse
-import logging
-import os
+"""Backward-compatible entry points for deterministic enrichment.
 
-# Configure logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler()
-    ]
+The active taxonomies and regex configuration live in :mod:`enrichment`.
+These mutating wrappers retain the historical ``tags_focus`` and
+``geo_locations`` output expected by existing callers.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+
+from preprocessing.enrichment import (
+    GEOGRAPHY_TAXONOMY,
+    PROGRAMME_SOURCE_ALIASES,
+    PROGRAMME_TAXONOMY,
+    classify_geography_fields,
+    classify_programme_fields,
 )
 
-# 1. Alle Roh-Tags, die jemals in den Philea-Daten auftauchen können (inkl. Human/Civil Rights)
-MASTER_TAGS = [
-    "Citizenship, Social Justice & Public Affairs",
-    "Civil society, Voluntarism & Non-Profit Sector",
-    "Socio-economic Development, Poverty",
-    "Socio-economic Development",
-    "Food, Agriculture & Nutrition",
-    "Recreation, Sport & Well-being",
-    "Humanitarian & Disaster Relief",
-    "Peace & Conflict Resolution",
-    "Youth/Children Development",
-    "Sciences & Research",
-    "Employment/Workforce",
-    "Environment/Climate",
-    "Social/Human Services",
-    "Arts & Culture",
-    "Arts and Culture",
-    "Policy development",
-    "Education",
-    "Health",
-    "Animal-Related",
-    "Water",
-    "Nature",
-    "Human/Civil Rights"  # FIX: War vorher vergessen
-]
 
-# 2. Die zentrale Mapping-Schmiede (Konsolidiert von ~24 auf 13 Hauptkategorien)
+logger = logging.getLogger(__name__)
+
+# Compatibility exports. They now point to the centralized configuration.
+MASTER_TAGS = list(PROGRAMME_TAXONOMY)
 TAG_NORMALIZATION = {
-    # Schreibweisen-Korrekturen
-    "Arts and Culture": "Arts & Culture",
-    "Socio-economic Development": "Socio-economic Development, Poverty",
-    "Environment": "Environment/Climate",
-    
-    # Strategische Zusammenfassungen für ein sauberes Datenmodell
-    "Nature": "Environment/Climate",
-    "Water": "Environment/Climate",
-    "Animal-Related": "Environment/Climate",
-    "Employment/Workforce": "Socio-economic Development, Poverty",
-    "Social/Human Services": "Socio-economic Development, Poverty",
-    "Recreation, Sport & Well-being": "Health",
-    "Policy development": "Citizenship, Social Justice & Public Affairs"
+    alias: targets if isinstance(targets, str) else targets[0]
+    for alias, targets in PROGRAMME_SOURCE_ALIASES.items()
 }
+KEYWORD_MAPPING = {}
+NATIVE_CLASSIFICATIONS_TO_TAGS = PROGRAMME_SOURCE_ALIASES
+GEO_TAXONOMY = GEOGRAPHY_TAXONOMY
 
-# 3. Die Keyword-Kanten für den Freitext-Fallback (Exakt synchron zu den Normalisierungs-Targets)
-KEYWORD_MAPPING = {
-    "Environment/Climate": [
-        r"climates?", r"emissions?", r"carbon", r"energy transition", r"fossil fuels?",
-        r"biodiversity", r"nature conservation", r"planet", r"agroecology", r"built environment",
-        r"plastic( pollution)?", r"petrochemical", r"economies of reuse", r"ocean economy", r"maritime", r"gardens?",
-        r"animals?", r"wildlife", r"water security", r"water supply"
-        # FIX: Fängt 'Animal-Related', 'Nature' & 'Water' ab
-    ],
-    "Education": [
-        r"educations?", r"learnings?", r"schools?", r"scholarships?", r"students?", r"stem", r"teachers?", r"trainings?"
-    ],
-    "Arts & Culture": [
-        r"arts?", r"culture?", r"cultural", r"museums?", r"exhibitions?", r"music", r"artists?", r"heritage",
-        r"theatres?", r"villa"
-    ],
-    "Citizenship, Social Justice & Public Affairs": [
-        r"democrac\w+", r"civil societ\w+", r"civic", r"citizenship", r"public affairs",
-        r"press freedom", r"independent media", r"advocacy", r"journalism", r"newsrooms?",
-        r"social cohesion", r"responsible leadership", r"criminal justice", r"social change", r"polycrisis",
-        r"policy development"  # FIX: Fängt 'Policy development' ab
-    ],
-    "Human/Civil Rights": [
-        r"human rights", r"civil rights", r"gender equality", r"women’s rights",
-        r"lgbti\+", r"feminist", r"discrimination", r"gender justice"
-    ],
-    "Youth/Children Development": [
-        r"children", r"youths?", r"child", r"young people", r"early childhood", r"infants?", r"neonatal",
-        r"0-5 year olds"
-    ],
-    "Socio-economic Development, Poverty": [
-        r"poverty", r"low-income", r"vulnerabilit\w+", r"marginalized", r"homeless\w*",
-        r"social inclusion", r"disadvantaged", r"social justice", r"social innovation",
-        r"economic justice", r"social leaders?", r"social development", r"economic development",
-        r"employ\w+", r"workforce", r"jobs?", r"labour", r"social services?"
-        # FIX: Fängt 'Employment' & 'Social Services' ab
-    ],
-    "Health": [
-        r"health\w*", r"medical", r"diseases?", r"healthcare", r"illness\w*", r"pain therapy", r"sanitation",
-        r"sports?", r"recreation", r"well[- ]being"  # FIX: Fängt 'Recreation, Sport & Well-being' ab
-    ],
-    "Sciences & Research": [
-        r"research\w*", r"scientific", r"sciences?", r"phd", r"academia", r"universit\w+"
-    ],
-    "Food, Agriculture & Nutrition": [
-        r"food", r"agriculture", r"nutrition", r"farming", r"diets?"
-    ],
-    "Humanitarian & Disaster Relief": [
-        r"disaster relief", r"humanitarian", r"emergency response", r"refugees?", r"asylum seekers?", r"migration",
-        r"foreign aid"
-    ],
-    "Civil society, Voluntarism & Non-Profit Sector": [
-        r"philanthrop\w+", r"fundraising", r"donors?", r"grant-making", r"fiscal sponsorship"
-    ],
-    "Peace & Conflict Resolution": [
-        r"peacebuilding", r"conflict sensitivity", r"peace work"
-    ]
-}
 
-GEO_TAXONOMY = {
-    "Worldwide": {
-        "Global": r"global\w*",
-        "Worldwide": r"worldwide",
-        "International": r"international\w*",
-        "World": r"\bworld\b"
-    },
-    "Global South / Majority World": {
-        "Global South": r"global south",
-        "Majority World": r"majority world",
-        "Developing Countries": r"developing world|developing countr\w+|low and middle income"
-    },
-    "Europe (Western / General)": {
-        "Europe": r"europ\w+",
-        "European Union": r"european union|\beu\b",
-        "United Kingdom": r"\buk\b|united kingdom|great britain|london|scotland|west midlands|english",
-        "Ireland": r"ireland|irish",
-        "France": r"franc\w+",
-        "Germany": r"german\w+",
-        "Switzerland": r"switzerland|swiss",
-        "Austria": r"austria\w*",
-        "Luxembourg": r"luxembourg\w*",
-        "Belgium": r"belgium\w*|belgian\w*|brussels",
-        "Netherlands": r"netherlands|dutch|the hague|delft|zoetermeer|leiden|noordwijk"
-    },
-    "Europe (Nordic Region)": {
-        "Nordic Region": r"nordic",
-        "Denmark": r"denmark|danish",
-        "Finland": r"finland|finnish|herlin", # fängt Herlin-Stiftung ab
-        "Sweden": r"sweden|swedish|\bse\b",
-        "Norway": r"norway|norwegian|kristiansand",
-        "Greenland": r"greenland",
-        "Faroe Islands": r"faroe islands"
-    },
-    "Europe (Southern / Mediterranean)": {
-        "Spain": r"spain|spanish|galicia",
-        "Italy": r"ital\w+|sicily|sardinia|piedmont|aosta valley|modena|parma|padua|rovigo|tuscany|florence|grosseto|arezzo|cuneo|alto adige|lucca|lombardy|torino|bologna",
-        "Greece": r"gree\w+",
-        "Portugal": r"portug\w+",
-        "Turkey": r"turk\w+|türkiye"
-    },
-    "Europe (Central & Eastern / Balkans)": {
-        "Balkans": r"balkans?|western balkans|serbian?|croatian?|slovenian?|bosnia\w*",
-        "Central & Eastern Europe": r"cee\b|eastern europe|central and eastern europe|baltic\w*",
-        "Slovakia": r"slovakia\w*",
-        "Bulgaria": r"bulgari\w*",
-        "Kosovo": r"kosovo\w*",
-        "Croatia": r"croatia\w*",
-        "Slovenia": r"slovenia\w*",
-        "Ukraine": r"ukrain\w*",
-        "Estonia": r"estonia\w*",
-        "Lithuania": r"lithuania\w*",
-        "Poland": r"pol\w+|fundacja", # 'fundacja' deutet direkt auf Polen hin
-        "Latvia": r"latvia\w*",
-        "Georgia": r"georgia\w*",
-        "Czech Republic": r"czech\w*",
-        "Romania": r"romani\w*",
-        "Hungary": r"hungar\w*",
-        "Belarus": r"belarus\w*",
-        "Moldova": r"moldova\w*"
-    },
-    "North America": {
-        "United States": r"united states|\busa\b|\bus\b|america\w*|flint|michigan",
-        "Canada": r"canada\w*"
-    },
-    "Latin America & Caribbean": {
-        "Latin America": r"latin america|south america|central america",
-        "Caribbean": r"caribbean",
-        "Brazil": r"brazil\w*",
-        "Mexico": r"mexico\w*",
-        "Colombia": r"colombia\w*",
-        "Peru": r"peru\w*",
-        "Bolivia": r"bolivia\w*",
-        "Ecuador": r"ecuador\w*",
-        "Guyana": r"guyana\w*"
-    },
-    "Africa / Sub-Saharan Africa": {
-        "Africa": r"afric\w+",
-        "Sub-Saharan Africa": r"sub-saharan",
-        "Tanzania": r"tanzania\w*",
-        "Kenya": r"kenya\w*",
-        "Ethiopia": r"ethiopia\w*",
-        "Uganda": r"uganda\w*",
-        "Malawi": r"malawi\w*",
-        "Ghana": r"ghana\w*",
-        "Burkina Faso": r"burkina faso",
-        "Zambia": r"zambia\w*",
-        "Sierra Leone": r"sierra leone",
-        "Madagascar": r"madagascar\w*",
-        "Rwanda": r"rwanda\w*",
-        "Zimbabwe": r"zimbabwe\w*",
-        "South Africa": r"south africa|botswana|namibia|senegal|gambia|togo|benin|mali"
-    },
-    "Asia & Pacific": {
-        "Asia": r"asia\w*",
-        "Pacific": r"pacific",
-        "India": r"india\w*",
-        "China": r"china\w*",
-        "Vietnam": r"vietnam\w*",
-        "Cambodia": r"cambodia\w*",
-        "Laos": r"laos\w*",
-        "Myanmar": r"myanmar\w*",
-        "Thailand": r"thailand\w*",
-        "Nepal": r"nepal\w*",
-        "Sri Lanka": r"sri lanka",
-        "Indonesia": r"indonesia\w*",
-        "Bangladesh": r"bangladesh\w*",
-        "Philippines": r"philippines?",
-        "Afghanistan": r"afghanistan\w*",
-        "Australia": r"australia\w*|singapore"
-    },
-    "Middle East & North Africa (MENA)": {
-        "Middle East": r"middle east",
-        "MENA": r"mena\b",
-        "Arab World": r"arab world",
-        "Israel": r"israel\w*",
-        "Palestine": r"palestin\w+",
-        "Yemen": r"yemen\w*"
-    }
-}
+def _details(member):
+    value = member.get("all_details")
+    return value if isinstance(value, dict) else {}
+
+
+def _philea(member):
+    value = member.get("philea_info")
+    return value if isinstance(value, dict) else {}
+
+
+def _classification_values(value):
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        for key in ("classification_desc", "name", "title", "value"):
+            if value.get(key):
+                return [value[key]]
+        return []
+    if isinstance(value, list):
+        result = []
+        for item in value:
+            result.extend(_classification_values(item))
+        return result
+    return [str(value)]
+
 
 def extract_tags(members):
-    def extract_tags_final(raw_text):
-        if not raw_text:
-            return []
-        
-        found_tags = set()
-        text_lower = raw_text.lower()
-        
-        for tag, keywords in KEYWORD_MAPPING.items():
-            for kw in keywords:
-                # Use lookarounds instead of word boundaries to correctly match lgbti+ and similar:
-                # (?<![a-zA-Z0-9]) ensure no alphanumeric prefix.
-                # (?![a-zA-Z0-9]) ensure no alphanumeric suffix.
-                pattern = r'(?<![a-zA-Z0-9])(?:' + kw + r')(?![a-zA-Z0-9])'
-                if re.search(pattern, text_lower):
-                    found_tags.add(tag)
-        
-        return sorted(list(found_tags))
-    
-    def extract_tags_robust(raw_text):
-        if not raw_text:
-            return []
-        
-        # Tags stehen bei Philea IMMER ganz am Anfang vor dem Fließtext.
-        # Wir untersuchen daher nur die ersten 600 Zeichen (Sicherheitsfenster).
-        zone = raw_text[:600].lower()
-        
-        # Text-Normalisierung: Zeilenumbrüche und alle Arten von Bindestrichen/Bulletpoints
-        # durch einfache Leerzeichen ersetzen. Kommas bleiben als Trenner erhalten.
-        zone_clean = re.sub(r'[\s\–\—\-]+', ' ', zone)
-        
-        found_tags = set()
-        
-        # Wichtig: Wir sortieren nach Länge (absteigend), damit lange Phrasen wie
-        # "Socio-economic Development, Poverty" vor "Education" oder "Health" gematched werden.
-        sorted_master_tags = sorted(MASTER_TAGS, key=len, reverse=True)
-        
-        for original_tag in sorted_master_tags:
-            tag_clean = original_tag.lower()
-            tag_clean = re.sub(r'[\s\–\—\-]+', ' ', tag_clean)
-            
-            if tag_clean in zone_clean:
-                # Sicherheits-Check für sehr kurze Tags (z.B. "Health"), damit sie nicht
-                # fälschlicherweise in Wörtern wie "Healthcare" oder "Healthy" matchen.
-                if len(tag_clean) <= 10:
-                    # Regex prüft, ob vor und nach dem Tag kein Buchstabe (a-z) steht
-                    pattern = r'(?<![a-z])' + re.escape(tag_clean) + r'(?![a-z])'
-                    if re.search(pattern, zone_clean):
-                        found_tags.add(original_tag)
-                        # Löschen, um Doppel-Treffer zu vermeiden
-                        zone_clean = zone_clean.replace(tag_clean, " ")
-                else:
-                    found_tags.add(original_tag)
-                    zone_clean = zone_clean.replace(tag_clean, " ")
-        
-        # Normalisieren (z.B. "Arts and Culture" -> "Arts & Culture")
-        final_tags = [TAG_NORMALIZATION.get(t, t) for t in found_tags]
-        
-        return sorted(list(set(final_tags)))
-    
-    parsed_results = {}
+    """Populate historical tags from source classifications and traceable regexes."""
     for member in members:
-        member_name = member.get("name", "Unknown")
-        info = member.get("philea_info", {})
-        if not isinstance(info, dict):
-            info = {}
-            
-        tags = extract_tags_robust(info.get("Programme Areas", ""))
-        if not tags:  # Fallback auf die Freitext-Analyse, wenn keine Tags gefunden wurden
-            tags = extract_tags_final(info.get("Programme Areas", ""))
-        if not tags:  # Letzte Chance: Manchmal stehen die Tags nicht unter "Programme Areas", sondern nur im allgemeinen "About"-Text
-            tags = extract_tags_final(info.get("About", ""))
-        if not tags:
-            tags = extract_tags_final(info.get("Mission", ""))
-            
-        parsed_results[member_name] = tags
-    
-    logging.info(f"Total processed members for tags: {len(parsed_results)}")
-    empty_count = sum(1 for tags in parsed_results.values() if not tags)
-    logging.info(f"Number of members without tags: {empty_count}")
-    
-    for member in members:
-        member_name = member.get("name", "Unknown")
-        member["tags_focus"] = sorted(parsed_results.get(member_name, []))
-        
-def extract_geo(members):
-    # HILFS-STRUKTUREN AUTOMATISCH GENERIERT (Keine doppelte Pflege nötig!)
-    ALL_COUNTRIES = []
-    COUNTRY_TO_MACRO = {}
-    for macro_region, country_dict in GEO_TAXONOMY.items():
-        for country_name in country_dict.keys():
-            ALL_COUNTRIES.append(country_name)
-            COUNTRY_TO_MACRO[country_name] = macro_region
-    
-    # Sortierung nach Länge (absteigend) schützt "Sub-Saharan Africa" vor "Africa"
-    SORTED_COUNTRIES = sorted(ALL_COUNTRIES, key=len, reverse=True)
-    
-    def extract_geos_robust(raw_text):
-        """ Stufe 1: Sucht nach exakten Begriffen im Header-Bereich """
-        if not raw_text:
-            return {}
-        
-        zone = raw_text.lower()
-        zone_clean = re.sub(r'[\s\–\—\-]+', ' ', zone)
-        found = {}
-        
-        for country in SORTED_COUNTRIES:
-            c_clean = country.lower()
-            if c_clean in zone_clean:
-                is_match = False
-                if len(c_clean) <= 5:  # Für kurze Token wie UK, US, Spain
-                    # Safe lookaround matching:
-                    pattern = r'(?<![a-zA-Z0-9])' + re.escape(c_clean) + r'(?![a-zA-Z0-9])'
-                    if re.search(pattern, zone_clean):
-                        is_match = True
-                else:
-                    is_match = True
-                
-                if is_match:
-                    macro = COUNTRY_TO_MACRO[country]
-                    if macro not in found:
-                        found[macro] = set()
-                    found[macro].add(country)
-                    zone_clean = zone_clean.replace(c_clean, " ")  # Konsumieren
-        
-        return {k: sorted(list(v)) for k, v in found.items()}
-    
-    def extract_geos_final(raw_text):
-        """ Stufe 2: Tiefe Regex-Suche im gesamten Freitext """
-        if not raw_text:
-            return {}
-        
-        found = {}
-        text_lower = raw_text.lower()
-        
-        for macro, country_dict in GEO_TAXONOMY.items():
-            for country_name, pattern in country_dict.items():
-                # FIX: Wrap pattern in a non-capturing group and use alphanumeric lookarounds
-                # This fixes the precedence bugs with A|B|C and boundaries:
-                regex_pattern = r'(?<![a-zA-Z0-9])(?:' + pattern + r')(?![a-zA-Z0-9])'
-                if re.search(regex_pattern, text_lower):
-                    if macro not in found:
-                        found[macro] = set()
-                    found[macro].add(country_name)
-        
-        return {k: sorted(list(v)) for k, v in found.items()}
-    
-    parsed_geo_results = {}
-    for member in members:
-        member_name = member.get("name", "Unknown")
-        info = member.get("philea_info", {})
-        if not isinstance(info, dict):
-            info = {}
-            
-        raw_geo_text = info.get("Geographic Focus", "")
-        
-        # Kaskade abfeuern
-        geos = extract_geos_robust(raw_geo_text)
-        if not geos:
-            geos = extract_geos_final(raw_geo_text)
-        
-        parsed_geo_results[member_name] = geos
-    
-    # Zurückschreiben in dein Haupt-Objekt
-    for member in members:
-        member_name = member.get("name", "Unknown")
-        member["geo_locations"] = parsed_geo_results.get(member_name, {})
-        
-def save_data(members, path):
-    logging.info(f"Saving preprocessed data to {path}...")
-    try:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(members, f, ensure_ascii=False, indent=4)
-        logging.info("Preprocessed data saved successfully.")
-    except Exception as e:
-        logging.error(f"Failed to save data to {path}: {e}")
-        
-def load_data(path):
-    logging.info(f"Loading raw data from {path}...")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logging.error(f"Failed to load data from {path}: {e}")
-        raise e
-    
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Preprocess Philea organization data to extract tags and geographic focus.")
-    parser.add_argument(
-        "--input", 
-        type=str, 
-        default=os.path.join(os.path.dirname(__file__), "../data/raw/philea_members.json"),
-        help="Path to the raw JSON file containing scraped member data."
-    )
-    parser.add_argument(
-        "--output", 
-        type=str, 
-        default=os.path.join(os.path.dirname(__file__), "../data/preprocessed/philea_members_preprocessed.json"),
-        help="Path where the preprocessed JSON file should be saved."
-    )
-    args = parser.parse_args()
+        details = _details(member)
+        philea = _philea(member)
+        sources = []
+        sources.extend(_classification_values(member.get("who_what_how")))
+        sources.extend(_classification_values(details.get("who_what_where")))
+        sources.extend(_classification_values(philea.get("Programme Areas")))
+        result = classify_programme_fields(
+            {
+                "programme_area_text": philea.get("Programme Areas"),
+                "about": philea.get("About"),
+                "mission": philea.get("Mission"),
+                "description": member.get("description"),
+                "activities": details.get("activities") or details.get("charitable_objects"),
+            },
+            sources,
+        )
+        source_categories = set(result["source_categories"])
+        categories = source_categories | set(result["categories"])
+        member["tags_focus"] = [
+            {"tag": category, "source": "exact_match" if category in source_categories else "regex_fallback"}
+            for category in sorted(categories)
+        ]
+        member["programme_area_evidence"] = result["source_evidence"] + result["evidence"]
+        member["programme_area_review_required"] = result["review_required"]
 
-    try:
-        members = load_data(args.input)
-        extract_tags(members)
-        extract_geo(members)
-        save_data(members, args.output)
-    except Exception as e:
-        logging.error(f"Preprocessing pipeline failed: {e}")
+
+def extract_geo(members):
+    """Populate historical macro-region output without using names as evidence."""
+    for member in members:
+        details = _details(member)
+        philea = _philea(member)
+        focus = philea.get("Geographic Focus")
+        area = philea.get("areaOfOperation")
+        fields = {
+            "stated_geographic_focus": focus,
+            "area_of_operation": area,
+            "about": philea.get("About"),
+            "description": member.get("description"),
+        }
+        # Legacy behavior used an address fallback. Keep it only in this wrapper;
+        # the canonical enrichment stores headquarters separately and never treats
+        # the address as a funding destination.
+        if not focus or not str(focus).strip():
+            fields["headquarters_fallback"] = member.get("address")
+        result = classify_geography_fields(fields)
+
+        ambiguous_targets = {
+            item["target_category"]
+            for item in result["evidence"]
+            if item.get("ambiguous")
+        }
+        grouped = {}
+        for target in result["categories"]:
+            if target in ambiguous_targets:
+                continue
+            taxonomy = GEOGRAPHY_TAXONOMY.get(target)
+            if not taxonomy:
+                continue
+            macro = taxonomy["macro_region"]
+            legacy_name = "Global" if target == "Worldwide" else target
+            grouped.setdefault(macro, set()).add(legacy_name)
+        member["geo_locations"] = {
+            macro: sorted(values) for macro, values in sorted(grouped.items())
+        }
+        member["geography_evidence"] = result["source_evidence"] + result["evidence"]
+        member["geography_review_required"] = result["review_required"]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Enrich organization JSON with deterministic taxonomy rules")
+    parser.add_argument("input")
+    parser.add_argument("output")
+    args = parser.parse_args()
+    with open(args.input, "r", encoding="utf-8") as source:
+        members = json.load(source)
+    extract_tags(members)
+    extract_geo(members)
+    with open(args.output, "w", encoding="utf-8") as target:
+        json.dump(members, target, ensure_ascii=False, indent=2)
+    logger.info("Enriched %s records into %s", len(members), args.output)
+
+
+if __name__ == "__main__":
+    main()

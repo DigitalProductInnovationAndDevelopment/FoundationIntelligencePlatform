@@ -1,0 +1,37 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && npm run check:bundle",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "lint": "oxlint",
+    "test": "tsc -p tsconfig.tests.json && node --test .test-dist/tests/*.test.js",
+    "test:e2e": "npm run build && env -u NO_COLOR playwright test",
+    "test:runtime": "npm run build && node scripts/check-runtime-layout.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@svg-maps/world": "^2.0.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.25.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.9.2"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.62.0",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "oxlint": "^1.71.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}

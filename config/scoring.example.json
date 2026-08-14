@@ -1,0 +1,28 @@
+{
+  "score_version": "example-relevance-v2",
+  "configuration_status": "experimental",
+  "score_target": "relevance of an organization to a user-selected target profile",
+  "missing_data_behavior": "zero_for_missing_components",
+  "review_confidence_threshold": 0.6,
+  "weights": {
+    "thematic_fit": 0.35,
+    "geographic_fit": 0.25,
+    "funding_capacity_fit": 0.15,
+    "historical_grant_size_fit": 0.15,
+    "organization_type_fit": 0.1
+  },
+  "example_target_profile": {
+    "programme_areas": ["Education", "Health"],
+    "geographies": ["United Kingdom", "Ghana"],
+    "minimum_annual_expenditure": 1000000,
+    "target_average_grant_amount": 50000,
+    "currency": "EUR",
+    "organization_types": ["foundation", "Funder", "Trust", "CIO", "Charity"]
+  },
+  "assumptions": [
+    "This is an example configuration and is not client-approved.",
+    "The score supports exploration of target-profile relevance; it is not a donation probability or prediction.",
+    "The final score is the weighted sum of all criteria; missing criteria contribute zero rather than inflating a partial match.",
+    "Grant-size comparisons use the requested currency; EUR comparisons use stored official ECB conversions."
+  ]
+}

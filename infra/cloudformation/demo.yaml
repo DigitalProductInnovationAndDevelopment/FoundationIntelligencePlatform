@@ -1,0 +1,1201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Cost-conscious, non-production Foundation Intelligence customer pilot.
+  Browser TLS terminates at CloudFront while the CloudFront-to-ALB and ALB-to-ECS
+  hops remain HTTP-only accepted temporary residual risks. DesiredCount defaults
+  to zero and no data, image or stack operation is performed by this template.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0348ad96c2afcf8dd
+    Description: Existing VPC confirmed in account 208337080387, eu-west-1.
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-04d4e3e5af84a7ea4,subnet-076f66fcdd86cd28f
+    Description: Two existing public subnets in distinct Availability Zones.
+  DatabaseAvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-1a
+  DatabaseAvailabilityZoneB:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: eu-west-1b
+  DatabaseSubnetCidrA:
+    Type: String
+    Default: 172.31.240.0/28
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/28$'
+  DatabaseSubnetCidrB:
+    Type: String
+    Default: 172.31.240.16/28
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/28$'
+  BackendImageUri:
+    Type: String
+    Description: Immutable ARM64 backend ECR URI, preferably pinned by digest.
+    AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  MigrationImageUri:
+    Type: String
+    Default: ''
+    Description: Optional backend image used to apply schema before enabling its runtime.
+    AllowedPattern: '^$|^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/backend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  FrontendImageUri:
+    Type: String
+    Description: Immutable ARM64 frontend-runtime-ecs ECR URI, preferably pinned by digest.
+    AllowedPattern: '^208337080387\.dkr\.ecr\.eu-west-1\.amazonaws\.com/foundation-intelligence-platform/frontend:(?!latest$)[A-Za-z0-9._-]+(@sha256:[a-f0-9]{64})?$'
+  AwsCliImageUri:
+    Type: String
+    Default: public.ecr.aws/aws-cli/aws-cli:2.27.41
+    Description: Multi-architecture AWS CLI image used only by migration init/evidence containers.
+  ApplicationDesiredCount:
+    Type: Number
+    Default: 0
+    AllowedValues: [0, 1]
+    Description: Keep zero until migration and release-gate evidence pass.
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.medium
+    AllowedValues: [db.t4g.small, db.t4g.medium]
+  DatabaseEngineVersion:
+    Type: String
+    Default: '16.14'
+    AllowedPattern: '^16\.[0-9]+$'
+  ApplicationDatabaseUser:
+    Type: String
+    Default: foundation_app
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: SELECT-only runtime reader provisioned by the release path.
+  ApplicationDatabaseWriterUser:
+    Type: String
+    Default: foundation_app_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: Restricted DML writer; must differ from ApplicationDatabaseUser.
+  ApplicationDatabaseWriterSecretArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: >-
+      Output of the separately executed DB-access prerequisite stack. Keep empty
+      until the writer role and grants have been provisioned and verified.
+  ApplicationDatabasePipelineUser:
+    Type: String
+    Default: foundation_pipeline_writer
+    AllowedPattern: '^[a-z_][a-z0-9_]{0,62}$'
+    Description: Dedicated versioned-dataset publisher used only by the worker.
+  ApplicationDatabasePipelineSecretArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:secretsmanager:eu-west-1:208337080387:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: Output of the verified DB-access prerequisite stack.
+  AnthropicSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/anthropic-api-key-[A-Za-z0-9]{6}$'
+    Description: Existing JSON secret containing the server-side Anthropic api_key.
+  CharityCommissionSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:eu-west-1:208337080387:secret:foundation-intelligence/demo/charity-commission-api-key-[A-Za-z0-9]{6}$'
+    Description: Existing JSON secret containing the worker-only Charity Commission api_key.
+  WorkerEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Enable only after schema and dedicated database grants are ready.
+  SourceObjectKey:
+    Type: String
+    Default: imports/charities.db
+    AllowedPattern: '^[A-Za-z0-9!_.*()/''-]+$'
+  SourceSha256:
+    Type: String
+    Default: 8fc0cce61c81d54869a3cc9a61d9378e1cb03f2b9607a70c2836b52fba257651
+    AllowedPattern: '^[a-f0-9]{64}$'
+  SourceSchemaVersion:
+    Type: String
+    Default: '7'
+    AllowedPattern: '^[0-9]+$'
+  DatasetVersion:
+    Type: String
+    Default: demo-initial-2026-08-06
+    AllowedPattern: '^[A-Za-z0-9._-]{1,200}$'
+  CodeRevision:
+    Type: String
+    Description: Full Git commit SHA used to build the approved backend image.
+    AllowedPattern: '^[a-f0-9]{40}$'
+  OriginLockdownEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: false for Deployment A; true only for the approved CloudFront-only origin lockdown.
+  CloudFrontOriginPrefixListId:
+    Type: String
+    Default: ''
+    Description: >-
+      Region-specific com.amazonaws.global.cloudfront.origin-facing prefix list.
+      It is intentionally supplied at deployment time and never hardcoded.
+    AllowedPattern: '^$|^pl-[a-f0-9]+$'
+  OriginVerificationToken:
+    Type: String
+    NoEcho: true
+    MinLength: 43
+    MaxLength: 128
+    AllowedPattern: '^[A-Za-z0-9_-]{43,128}$'
+    Description: >-
+      At least 32 bytes of cryptographic entropy encoded as base64url. NoEcho is
+      not protection from privileged principals who can inspect AWS configuration.
+  CognitoDomainPrefix:
+    Type: String
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+    Description: Globally available, project-specific Cognito managed-login prefix.
+
+Rules:
+  RequireDistinctRuntimeDatabasePrincipals:
+    Assertions:
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabaseWriterUser]
+        AssertDescription: Reader and writer PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseUser, !Ref ApplicationDatabasePipelineUser]
+        AssertDescription: Reader and pipeline PostgreSQL principals must differ.
+      - Assert: !Not
+          - !Equals [!Ref ApplicationDatabaseWriterUser, !Ref ApplicationDatabasePipelineUser]
+        AssertDescription: Writer and pipeline PostgreSQL principals must differ.
+  RequireWorkerPrerequisites:
+    RuleCondition: !Equals [!Ref WorkerEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
+        AssertDescription: Runtime writer secret is required when the worker is enabled.
+      - Assert: !Not [!Equals [!Ref ApplicationDatabasePipelineSecretArn, '']]
+        AssertDescription: Pipeline publisher secret is required when the worker is enabled.
+  RequireCloudFrontPrefixListForLockdown:
+    RuleCondition: !Equals [!Ref OriginLockdownEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref CloudFrontOriginPrefixListId, '']]
+        AssertDescription: CloudFrontOriginPrefixListId is required when origin lockdown is enabled.
+
+Conditions:
+  OriginLockdown: !Equals [!Ref OriginLockdownEnabled, 'true']
+  PublicOriginAccess: !Equals [!Ref OriginLockdownEnabled, 'false']
+  RuntimeWriterConfigured: !Not [!Equals [!Ref ApplicationDatabaseWriterSecretArn, '']]
+  RuntimePipelineConfigured: !Not [!Equals [!Ref ApplicationDatabasePipelineSecretArn, '']]
+  PipelineWorkerEnabled: !Equals [!Ref WorkerEnabled, 'true']
+  SeparateMigrationImage: !Not [!Equals [!Ref MigrationImageUri, '']]
+
+Resources:
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref DatabaseAvailabilityZoneA
+      CidrBlock: !Ref DatabaseSubnetCidrA
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-database-a'
+        - Key: Environment
+          Value: demo
+
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref DatabaseAvailabilityZoneB
+      CidrBlock: !Ref DatabaseSubnetCidrB
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-database-b'
+        - Key: Environment
+          Value: demo
+
+  DatabaseRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-database-isolated'
+
+  DatabaseSubnetRouteAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      SubnetId: !Ref DatabaseSubnetA
+
+  DatabaseSubnetRouteAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DatabaseRouteTable
+      SubnetId: !Ref DatabaseSubnetB
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Temporary public HTTP ingress for the non-production demo
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-alb'
+
+  PublicAlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: PublicOriginAccess
+    Properties:
+      Description: Deployment A public HTTP origin access
+      GroupId: !GetAtt AlbSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  CloudFrontAlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: OriginLockdown
+    Properties:
+      Description: Deployment B HTTP access from CloudFront origin-facing servers only
+      GroupId: !GetAtt AlbSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourcePrefixListId: !Ref CloudFrontOriginPrefixListId
+
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Shared application and one-off task ENIs
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: TLS to ECR, S3, Secrets Manager, logs and approved sources
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: PostgreSQL to the private RDS security group
+          IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ecs'
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL only from the ECS task security group
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-rds'
+
+  FrontendIngressFromAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: ALB to the ECS frontend only
+      GroupId: !GetAtt EcsSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !GetAtt AlbSecurityGroup.GroupId
+
+  DatabaseIngressFromEcs:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: ECS application and one-off tasks to PostgreSQL
+      GroupId: !GetAtt DatabaseSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt EcsSecurityGroup.GroupId
+
+  ImportBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTemporaryImports
+            Status: Enabled
+            Prefix: imports/
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: Purpose
+          Value: one-off-private-import
+
+  ImportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImportBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt ImportBucket.Arn
+              - !Sub '${ImportBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/frontend'
+      RetentionInDays: 7
+
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/backend'
+      RetentionInDays: 7
+
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/worker'
+      RetentionInDays: 7
+
+  MigrationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/foundation-intelligence/demo/${AWS::StackName}/migration'
+      RetentionInDays: 7
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: 'ON'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: Foundation Intelligence Platform invitation
+          EmailMessage: 'Your username is {username} and temporary password is {####}.'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+      UserPoolTier: ESSENTIALS
+      DeletionProtection: !If [OriginLockdown, ACTIVE, INACTIVE]
+      UserPoolTags:
+        Environment: demo
+
+  CustomerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: customer
+      Description: Normal analytics and sanitized scraper status
+      Precedence: 30
+
+  OperatorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: operator
+      Description: Customer access plus operational scraper and pipeline controls
+      Precedence: 20
+
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GroupName: admin
+      Description: Full administration including users, roles and critical settings
+      Precedence: 10
+
+  AppDatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Restricted application database role for the public demo
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${ApplicationDatabaseUser}"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Two isolated database subnets without internet routes
+      SubnetIds:
+        - !Ref DatabaseSubnetA
+        - !Ref DatabaseSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-postgresql'
+
+  DatabaseParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: PostgreSQL 16 encrypted transport for the demo
+      Family: postgres16
+      Parameters:
+        rds.force_ssl: '1'
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${AWS::StackName}-postgresql'
+      Engine: postgres
+      EngineVersion: !Ref DatabaseEngineVersion
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBName: foundation_intelligence
+      MasterUsername: foundation_admin
+      ManageMasterUserPassword: true
+      Port: 5432
+      AllocatedStorage: '30'
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 1
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+      EnablePerformanceInsights: false
+      DeletionProtection: false
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      DBParameterGroupName: !Ref DatabaseParameterGroup
+      VPCSecurityGroups:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: ResizeAfterImport
+          Value: db.t4g.small
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  EcsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadApplicationSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AppDatabaseSecret
+                  - !Ref AnthropicSecretArn
+                  - !Ref CharityCommissionSecretArn
+                  - !If
+                    - RuntimeWriterConfigured
+                    - !Ref ApplicationDatabaseWriterSecretArn
+                    - !Ref AWS::NoValue
+                  - !If
+                    - RuntimePipelineConfigured
+                    - !Ref ApplicationDatabasePipelineSecretArn
+                    - !Ref AWS::NoValue
+
+  MigrationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadMigrationDatabaseSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AppDatabaseSecret
+                  - !GetAtt Database.MasterUserSecret.SecretArn
+
+  ApplicationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoUserAdministration
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListUsersInGroup
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminResetUserPassword
+                Resource: !GetAtt CognitoUserPool.Arn
+        - PolicyName: PipelineSnapshotArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DiscoverCurrentSnapshotFallback
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ImportBucket.Arn
+                Condition:
+                  StringEquals:
+                    s3:prefix: pipeline-snapshots/current.db
+              - Sid: ReadApprovedBaselineAndCurrentSnapshot
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub '${ImportBucket.Arn}/${SourceObjectKey}'
+                  - !Sub '${ImportBucket.Arn}/pipeline-snapshots/current.db'
+              - Sid: PublishVersionedCurrentSnapshot
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ImportBucket.Arn}/pipeline-snapshots/current.db'
+
+  MigrationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: OneOffImportObjectAndEvidence
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadApprovedSourceObject
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub '${ImportBucket.Arn}/${SourceObjectKey}'
+              - Sid: WriteMigrationEvidence
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ImportBucket.Arn}/migration-evidence/${DatasetVersion}/*'
+
+  ApplicationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-application'
+      Cpu: !If [PipelineWorkerEnabled, '1024', '512']
+      Memory: !If [PipelineWorkerEnabled, '4096', '2048']
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
+      TaskRoleArn: !GetAtt ApplicationTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: backend
+          Image: !Ref BackendImageUri
+          Essential: true
+          User: '10001:10001'
+          StopTimeout: 30
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: AUTH_MODE
+              Value: cognito_rbac
+            - Name: DEV_AUTH_ENABLED
+              Value: 'false'
+            - Name: COGNITO_REGION
+              Value: !Ref AWS::Region
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
+            - Name: COGNITO_DOMAIN
+              Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+            - Name: CORE_PROXY_ENABLED
+              Value: 'false'
+            - Name: CORS_ORIGINS
+              Value: ''
+            - Name: ANTHROPIC_BASE_URL
+              Value: https://llm.netlight.ai/
+            - Name: DATA_RUNTIME_MODE
+              Value: postgresql
+            - Name: DATABASE_HOST
+              Value: !GetAtt Database.Endpoint.Address
+            - Name: DATABASE_PORT
+              Value: '5432'
+            - Name: DATABASE_NAME
+              Value: foundation_intelligence
+            - Name: DATABASE_USER
+              Value: !Ref ApplicationDatabaseUser
+            - !If
+              - RuntimeWriterConfigured
+              - Name: DATABASE_WRITE_USER
+                Value: !Ref ApplicationDatabaseWriterUser
+              - !Ref AWS::NoValue
+            - Name: DATABASE_SSL_MODE
+              Value: require
+            - Name: DATABASE_POOL_SIZE
+              Value: '5'
+            - Name: DATABASE_MAX_OVERFLOW
+              Value: '5'
+          Secrets:
+            - Name: DATABASE_PASSWORD
+              ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+            - Name: ANTHROPIC_API_KEY
+              ValueFrom: !Sub '${AnthropicSecretArn}:api_key::'
+            - !If
+              - RuntimeWriterConfigured
+              - Name: DATABASE_WRITE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabaseWriterSecretArn}:password::'
+              - !Ref AWS::NoValue
+          HealthCheck:
+            Command:
+              - CMD
+              - python
+              - -c
+              - >-
+                import urllib.request;
+                urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 120
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+        - Name: frontend
+          Image: !Ref FrontendImageUri
+          Essential: true
+          User: '101:101'
+          DependsOn:
+            - ContainerName: backend
+              Condition: HEALTHY
+          PortMappings:
+            - Name: http
+              ContainerPort: 8080
+              HostPort: 8080
+              Protocol: tcp
+              AppProtocol: http
+          HealthCheck:
+            Command:
+              - CMD
+              - wget
+              - -q
+              - -O
+              - /dev/null
+              - http://127.0.0.1:8080/
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FrontendLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+        - !If
+          - PipelineWorkerEnabled
+          - Name: worker
+            Image: !Ref BackendImageUri
+            Essential: true
+            User: '10001:10001'
+            EntryPoint: [python, -m]
+            Command: [pipelines.worker]
+            StopTimeout: 120
+            Environment:
+              - Name: APP_ENV
+                Value: demo
+              - Name: AUTH_MODE
+                Value: cognito_rbac
+              - Name: DATA_RUNTIME_MODE
+                Value: postgresql
+              - Name: DATABASE_HOST
+                Value: !GetAtt Database.Endpoint.Address
+              - Name: DATABASE_PORT
+                Value: '5432'
+              - Name: DATABASE_NAME
+                Value: foundation_intelligence
+              - Name: DATABASE_USER
+                Value: !Ref ApplicationDatabaseUser
+              - Name: DATABASE_WRITE_USER
+                Value: !Ref ApplicationDatabaseWriterUser
+              - Name: DATABASE_PIPELINE_USER
+                Value: !Ref ApplicationDatabasePipelineUser
+              - Name: DATABASE_SSL_MODE
+                Value: require
+              - Name: WORKER_QUEUE_NAME
+                Value: pipeline
+              - Name: WORKER_LEASE_SECONDS
+                Value: '90'
+              - Name: WORKER_IDLE_SECONDS
+                Value: '2'
+              - Name: PIPELINE_SNAPSHOT_S3_URI
+                Value: !Sub 's3://${ImportBucket}/pipeline-snapshots/current.db'
+              - Name: PIPELINE_FALLBACK_S3_URI
+                Value: !Sub 's3://${ImportBucket}/${SourceObjectKey}'
+              - Name: PIPELINE_FALLBACK_SHA256
+                Value: !Ref SourceSha256
+              - Name: PIPELINE_SOURCE_SCHEMA_VERSION
+                Value: !Ref SourceSchemaVersion
+              - Name: CODE_REVISION
+                Value: !Ref CodeRevision
+            Secrets:
+              - Name: DATABASE_PASSWORD
+                ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+              - Name: DATABASE_WRITE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabaseWriterSecretArn}:password::'
+              - Name: DATABASE_PIPELINE_PASSWORD
+                ValueFrom: !Sub '${ApplicationDatabasePipelineSecretArn}:password::'
+              - Name: CHARITY_COMMISSION_API_KEY
+                ValueFrom: !Sub '${CharityCommissionSecretArn}:api_key::'
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref WorkerLogGroup
+                awslogs-region: !Ref AWS::Region
+                awslogs-stream-prefix: worker
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: EphemeralStorageGiB
+          Value: '20-default'
+
+  MigrationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-migration'
+      Cpu: '1024'
+      Memory: '4096'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt MigrationExecutionRole.Arn
+      TaskRoleArn: !GetAtt MigrationTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      Volumes:
+        - Name: migration-work
+      ContainerDefinitions:
+        - Name: download-source
+          Image: !Ref AwsCliImageUri
+          Essential: false
+          EntryPoint: [sh, -c]
+          Command:
+            - >-
+              aws s3 cp "$SOURCE_URI" /migration-work/charities.db --only-show-errors
+              && mkdir -p /migration-work/evidence
+              && chown -R 10001:10001 /migration-work
+          Environment:
+            - Name: SOURCE_URI
+              Value: !Sub 's3://${ImportBucket}/${SourceObjectKey}'
+          MountPoints:
+            - SourceVolume: migration-work
+              ContainerPath: /migration-work
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: download
+        - Name: migrate
+          Image: !If [SeparateMigrationImage, !Ref MigrationImageUri, !Ref BackendImageUri]
+          Essential: false
+          User: '10001:10001'
+          EntryPoint: [python, -m]
+          Command: [migration.aws_entrypoint]
+          DependsOn:
+            - ContainerName: download-source
+              Condition: SUCCESS
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: DATABASE_HOST
+              Value: !GetAtt Database.Endpoint.Address
+            - Name: DATABASE_PORT
+              Value: '5432'
+            - Name: DATABASE_NAME
+              Value: foundation_intelligence
+            - Name: DATABASE_APP_USER
+              Value: !Ref ApplicationDatabaseUser
+            - Name: DATABASE_SSL_MODE
+              Value: require
+            - Name: MIGRATION_SOURCE_PATH
+              Value: /migration-work/charities.db
+            - Name: MIGRATION_OUTPUT_DIRECTORY
+              Value: /migration-work/evidence
+            - Name: MIGRATION_EXPECTED_CHECKSUM
+              Value: !Ref SourceSha256
+            - Name: MIGRATION_EXPECTED_SCHEMA_VERSION
+              Value: !Ref SourceSchemaVersion
+            - Name: MIGRATION_DATASET_VERSION
+              Value: !Ref DatasetVersion
+            - Name: MIGRATION_CODE_REVISION
+              Value: !Ref CodeRevision
+          Secrets:
+            - Name: DATABASE_ADMIN_USER
+              ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:username::'
+            - Name: DATABASE_ADMIN_PASSWORD
+              ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:password::'
+            - Name: DATABASE_APP_PASSWORD
+              ValueFrom: !Sub '${AppDatabaseSecret}:password::'
+          MountPoints:
+            - SourceVolume: migration-work
+              ContainerPath: /migration-work
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: migrate
+        - Name: upload-evidence
+          Image: !Ref AwsCliImageUri
+          Essential: true
+          EntryPoint: [aws]
+          Command:
+            - s3
+            - cp
+            - /migration-work/evidence/
+            - !Sub 's3://${ImportBucket}/migration-evidence/${DatasetVersion}/'
+            - --recursive
+            - --only-show-errors
+          DependsOn:
+            - ContainerName: migrate
+              Condition: SUCCESS
+          MountPoints:
+            - SourceVolume: migration-work
+              ContainerPath: /migration-work
+              ReadOnly: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: evidence
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: EphemeralStorageGiB
+          Value: '20-default'
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Type: application
+      IpAddressType: ipv4
+      SecurityGroups:
+        - !GetAtt AlbSecurityGroup.GroupId
+      Subnets: !Ref PublicSubnetIds
+      Tags:
+        - Key: Environment
+          Value: demo
+        - Key: TransportNotice
+          Value: accepted-temporary-http-cloudfront-to-alb
+
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VpcId
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /health/live
+      HealthCheckPort: traffic-port
+      Matcher:
+        HttpCode: '200'
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - !If
+          - OriginLockdown
+          - Type: fixed-response
+            FixedResponseConfig:
+              ContentType: text/plain
+              MessageBody: Forbidden
+              StatusCode: '403'
+          - Type: forward
+            TargetGroupArn: !Ref FrontendTargetGroup
+
+  OriginVerificationListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpListener
+      Priority: 1
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-FIP-Origin-Verify
+            Values: [!Ref OriginVerificationToken]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  DefaultOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub '${AWS::StackName}-default-origin'
+        Comment: Forward OAuth callback query strings without viewer Host or cookies
+        CookiesConfig:
+          CookieBehavior: none
+        HeadersConfig:
+          HeaderBehavior: none
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: OriginVerificationListenerRule
+    Properties:
+      DistributionConfig:
+        Comment: !Sub '${AWS::StackName} authenticated customer pilot'
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+        Origins:
+          - Id: AlbOrigin
+            DomainName: !GetAtt LoadBalancer.DNSName
+            ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            OriginCustomHeaders:
+              - HeaderName: X-FIP-Origin-Verify
+                HeaderValue: !Ref OriginVerificationToken
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: AlbOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          # AWS managed policy Managed-CachingDisabled.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: !Ref DefaultOriginRequestPolicy
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: AlbOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            # AWS managed policies Managed-CachingDisabled and
+            # Managed-AllViewerExceptHostHeader. The latter forwards
+            # Authorization while replacing the viewer Host for the ALB origin.
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            Compress: true
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Environment
+          Value: demo
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Sub '${AWS::StackName}-browser'
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs:
+        - !Sub 'https://${CloudFrontDistribution.DomainName}/auth/callback'
+      LogoutURLs:
+        - !Sub 'https://${CloudFrontDistribution.DomainName}/'
+      DefaultRedirectURI: !Sub 'https://${CloudFrontDistribution.DomainName}/auth/callback'
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      ReadAttributes: [email, email_verified]
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 2
+
+  CognitoManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: CognitoUserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientId: !Ref CognitoUserPoolClient
+      UseCognitoProvidedValues: true
+
+  ApplicationService:
+    Type: AWS::ECS::Service
+    DependsOn: OriginVerificationListenerRule
+    Properties:
+      ServiceName: application
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref ApplicationTaskDefinition
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      DesiredCount: !Ref ApplicationDesiredCount
+      EnableExecuteCommand: false
+      HealthCheckGracePeriodSeconds: 180
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt EcsSecurityGroup.GroupId
+          Subnets: !Ref PublicSubnetIds
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: 8080
+          TargetGroupArn: !Ref FrontendTargetGroup
+      Tags:
+        - Key: Environment
+          Value: demo
+
+Outputs:
+  TemporaryDemoUrl:
+    Description: Legacy output name retained for automation; now points to CloudFront HTTPS.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  LoadBalancerDnsName:
+    Description: Raw HTTP origin name for diagnostics; not the customer URL.
+    Value: !GetAtt LoadBalancer.DNSName
+  CloudFrontUrl:
+    Description: Public customer URL using the CloudFront default certificate.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  CloudFrontDistributionId:
+    Value: !Ref CloudFrontDistribution
+  CognitoUserPoolId:
+    Value: !Ref CognitoUserPool
+  CognitoUserPoolClientId:
+    Value: !Ref CognitoUserPoolClient
+  CognitoManagedLoginDomain:
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+  ClusterArn:
+    Value: !GetAtt EcsCluster.Arn
+  ApplicationServiceArn:
+    Value: !Ref ApplicationService
+  MigrationTaskDefinitionArn:
+    Value: !Ref MigrationTaskDefinition
+  ImportBucketName:
+    Value: !Ref ImportBucket
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabaseInstanceClass:
+    Value: !Ref DatabaseInstanceClass
+  ApplicationDesiredCount:
+    Value: !Ref ApplicationDesiredCount
+  ApplicationDatabaseReaderUser:
+    Value: !Ref ApplicationDatabaseUser
+  ApplicationDatabaseWriterUser:
+    Value: !Ref ApplicationDatabaseWriterUser
+  ApplicationDatabaseWriterSecretArn:
+    Condition: RuntimeWriterConfigured
+    Value: !Ref ApplicationDatabaseWriterSecretArn
+  ApplicationDatabasePipelineUser:
+    Value: !Ref ApplicationDatabasePipelineUser
+  ApplicationDatabasePipelineSecretArn:
+    Condition: RuntimePipelineConfigured
+    Value: !Ref ApplicationDatabasePipelineSecretArn
+  WorkerEnabled:
+    Value: !Ref WorkerEnabled
+  DatabaseSubnetIds:
+    Value: !Join [',', [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]]
