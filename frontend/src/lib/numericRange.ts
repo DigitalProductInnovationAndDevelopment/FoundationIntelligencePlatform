@@ -1,3 +1,6 @@
+/**
+ * Validation for optional min/max numeric filter inputs.
+ */
 export type OptionalNumericRangeValidation = {
   minimum: number | null;
   maximum: number | null;

@@ -141,7 +141,7 @@ resource "aws_cloudwatch_metric_alarm" "custom" {
   for_each = local.custom_alarms
 
   alarm_name          = "${local.name}-${each.key}"
-  alarm_description   = "Runbook: docs/remediation/observability-runbooks.md#${each.value.runbook}"
+  alarm_description   = "Runbook: docs/runbooks.md#${each.value.runbook}"
   namespace           = "FoundationIntelligence"
   metric_name         = each.value.metric
   comparison_operator = each.value.comparison
@@ -164,7 +164,7 @@ resource "aws_cloudwatch_metric_alarm" "custom" {
 
 resource "aws_cloudwatch_metric_alarm" "queue_backlog" {
   alarm_name          = "${local.name}-queue-backlog"
-  alarm_description   = "Runbook: docs/remediation/observability-runbooks.md#queue-backlog"
+  alarm_description   = "Runbook: docs/runbooks.md#queue-backlog"
   namespace           = "AWS/SQS"
   metric_name         = "ApproximateAgeOfOldestMessage"
   comparison_operator = "GreaterThanThreshold"
@@ -181,7 +181,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_backlog" {
 
 resource "aws_cloudwatch_metric_alarm" "dlq" {
   alarm_name          = "${local.name}-dlq-messages"
-  alarm_description   = "Runbook: docs/remediation/observability-runbooks.md#dlq-replay"
+  alarm_description   = "Runbook: docs/runbooks.md#dlq-replay"
   namespace           = "AWS/SQS"
   metric_name         = "ApproximateNumberOfMessagesVisible"
   comparison_operator = "GreaterThanThreshold"
@@ -200,7 +200,7 @@ resource "aws_cloudwatch_metric_alarm" "rds" {
   for_each = local.rds_alarms
 
   alarm_name          = "${local.name}-${each.key}"
-  alarm_description   = "Runbook: docs/remediation/observability-runbooks.md#rds-outage"
+  alarm_description   = "Runbook: docs/runbooks.md#rds-outage"
   namespace           = "AWS/RDS"
   metric_name         = each.value.metric
   comparison_operator = each.value.comparison

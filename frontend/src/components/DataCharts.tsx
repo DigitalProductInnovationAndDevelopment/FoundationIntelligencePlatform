@@ -1,3 +1,11 @@
+/**
+ * The three Recharts visualisations shared across views.
+ *
+ * GrantAwardsChart plots award-date period totals; null periods mean unknown
+ * coverage, not zero activity. ProgrammeAllocationChart plots minor-unit
+ * allocations, keeping `Unclassified` visible. FinancialHistoryChart plots an
+ * organization's reported financial years.
+ */
 import {
   Area,
   AreaChart,

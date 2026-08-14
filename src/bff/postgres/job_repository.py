@@ -23,6 +23,7 @@ PIPELINE_JOB_TYPES = (
 
 
 class PostgresJobRepository(PostgresRepository):
+    """Durable job enqueue, lease claiming, status, history and event reads."""
     async def enqueue(
         self,
         job_type: str,
@@ -34,6 +35,7 @@ class PostgresJobRepository(PostgresRepository):
         max_attempts: int = 3,
         timeout_seconds: int = 3600,
     ) -> dict[str, Any]:
+        """Durably enqueue a job, deduplicating on the caller's idempotency key."""
         job_type = str(job_type).strip()
         if not job_type or len(job_type) > 120:
             raise ValueError("Invalid job type")
@@ -154,6 +156,7 @@ class PostgresJobRepository(PostgresRepository):
         queue_name: str = "pipeline",
         lease_seconds: int = 60,
     ) -> dict[str, Any] | None:
+        """Claim the next due job under a time-bounded worker lease."""
         worker_id = str(worker_id).strip()
         queue_name = str(queue_name).strip()
         if not worker_id or len(worker_id) > 200:
@@ -232,6 +235,7 @@ class PostgresJobRepository(PostgresRepository):
         worker_id: str,
         lease_seconds: int = 60,
     ) -> bool:
+        """Extend a worker's lease to show the claimed job is still progressing."""
         async with self.sessions() as session, session.begin():
             updated = await session.scalar(
                 text(
@@ -267,6 +271,7 @@ class PostgresJobRepository(PostgresRepository):
         worker_id: str,
         result: Mapping[str, Any],
     ) -> bool:
+        """Mark a claimed job complete and record its result manifest."""
         async with self.sessions() as session, session.begin():
             updated = await session.scalar(
                 text(
@@ -299,6 +304,7 @@ class PostgresJobRepository(PostgresRepository):
         failure_reason: str,
         retryable: bool,
     ) -> str:
+        """Record a job failure, applying retry or dead-letter state."""
         async with self.sessions() as session, session.begin():
             row = (
                 await session.execute(
@@ -351,6 +357,7 @@ class PostgresJobRepository(PostgresRepository):
         return status_value
 
     async def requeue_expired(self, *, queue_name: str = "pipeline") -> dict[str, int]:
+        """Return jobs whose worker lease expired to the queue."""
         async with self.sessions() as session, session.begin():
             retry_rows = (
                 await session.execute(
@@ -401,6 +408,7 @@ class PostgresJobRepository(PostgresRepository):
         return {"requeued": len(retry_rows), "dead_lettered": len(dead_rows)}
 
     async def due_dispatches(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return outbox rows ready to be published to the delivery transport."""
         bounded_limit = min(max(int(limit), 1), 100)
         async with self.sessions() as session:
             rows = (
@@ -424,6 +432,7 @@ class PostgresJobRepository(PostgresRepository):
     async def mark_dispatch_published(
         self, outbox_id: str, *, queue_message_id: str
     ) -> bool:
+        """Mark an outbox row delivered to the transport."""
         async with self.sessions() as session, session.begin():
             updated = await session.scalar(
                 text(
@@ -452,6 +461,7 @@ class PostgresJobRepository(PostgresRepository):
         retry_delay_seconds: int = 30,
         maximum_attempts: int = 5,
     ) -> str:
+        """Record an outbox delivery failure and its retry state."""
         async with self.sessions() as session, session.begin():
             row = (
                 await session.execute(
@@ -492,6 +502,7 @@ class PostgresJobRepository(PostgresRepository):
 
     @staticmethod
     async def _event(session, job_id, event_type, actor_id, details) -> None:
+        """Append one structured job event in sequence."""
         await session.execute(
             text(
                 """
@@ -516,6 +527,7 @@ class PostgresJobRepository(PostgresRepository):
 
     @staticmethod
     async def _idle_worker(session, worker_id: str) -> None:
+        """Report whether a worker heartbeat has gone stale."""
         await session.execute(
             text(
                 """
@@ -529,6 +541,7 @@ class PostgresJobRepository(PostgresRepository):
 
     @staticmethod
     def _job_row(row: Mapping[str, Any]) -> dict[str, Any]:
+        """Project a job row into the API job shape."""
         result = dict(row)
         result["job_id"] = str(result.pop("job_run_id"))
         for field in ("requested_at", "started_at", "completed_at"):
@@ -538,6 +551,7 @@ class PostgresJobRepository(PostgresRepository):
 
     @staticmethod
     def _dispatch_row(row: Mapping[str, Any]) -> dict[str, Any]:
+        """Project an outbox row into the dispatch shape."""
         result = dict(row)
         result["outbox_id"] = str(result.pop("job_dispatch_outbox_id"))
         result["job_id"] = str(result.pop("job_run_id"))
@@ -545,6 +559,7 @@ class PostgresJobRepository(PostgresRepository):
         return result
 
     async def latest_status(self) -> dict[str, Any]:
+        """Return the most recent job's state."""
         async with self.sessions() as session:
             row = (
                 await session.execute(
@@ -589,6 +604,7 @@ class PostgresJobRepository(PostgresRepository):
         }
 
     async def history(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Return a bounded window of recent job runs."""
         limit = min(max(int(limit), 1), 100)
         async with self.sessions() as session:
             rows = (
@@ -622,6 +638,7 @@ class PostgresJobRepository(PostgresRepository):
         ]
 
     async def events(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return a bounded window of recent structured job events."""
         limit = min(max(int(limit), 1), 100)
         async with self.sessions() as session:
             rows = (

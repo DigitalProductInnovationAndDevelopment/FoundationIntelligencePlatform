@@ -53,12 +53,14 @@ COUNTRY_ALIASES = {
 
 
 def _as_list(value: Any) -> list[Any]:
+    """Coerce a source field into a list of values."""
     if value is None:
         return []
     return value if isinstance(value, list) else [value]
 
 
 def _grant_data(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the raw grant payload for a stored record."""
     value = record.get("data")
     return value if isinstance(value, Mapping) else record
 
@@ -132,6 +134,7 @@ def beneficiary_country_codes(record: Mapping[str, Any]) -> list[str]:
 
 
 def grant_id(record: Mapping[str, Any]) -> str | None:
+    """Return a grant's stable source identifier."""
     data = _grant_data(record)
     value = record.get("grant_id") or data.get("id") or data.get("grant_id")
     value = str(value or "").strip()
@@ -139,11 +142,13 @@ def grant_id(record: Mapping[str, Any]) -> str | None:
 
 
 def award_date(record: Mapping[str, Any]) -> str:
+    """Return a grant's award date as supplied by the source."""
     data = _grant_data(record)
     return str(data.get("awardDate") or data.get("date") or "")
 
 
 def programme_sources(record: Mapping[str, Any]) -> list[Any]:
+    """Return the grant's source-declared programme classifications."""
     data = _grant_data(record)
     result: list[Any] = []
     for item in _as_list(data.get("grantProgramme")):
@@ -176,6 +181,7 @@ def tech_classification(record: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def candidate_from_grant(record: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Build a curation candidate from one grant, or None when ineligible."""
     identifier = grant_id(record)
     if not identifier:
         return None
@@ -243,6 +249,7 @@ def select_candidates(
 
 
 def curated_record(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    """Project a candidate into its curated output record."""
     return {
         "grant_id": candidate["grant_id"],
         "selection": {
@@ -265,6 +272,7 @@ def curate_file(
     target: int = 10_000,
     dach_share: float = 0.60,
 ) -> dict[str, Any]:
+    """Screen a cached grant file into a traceable curated subset."""
     if target < 1:
         raise ValueError("target must be at least 1")
     if not 0 <= dach_share <= 1:

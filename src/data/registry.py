@@ -26,6 +26,7 @@ DEFAULT_SOURCE_PATH = Path(__file__).resolve().parent / "raw" / "charity_commiss
 
 
 def utc_now() -> str:
+    """Return the current timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -60,6 +61,7 @@ def normalize_organization_name(value: Any) -> str:
 
 
 def _fts_available(conn: sqlite3.Connection) -> bool:
+    """Report whether SQLite FTS5 is available for registry name search."""
     return bool(
         conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -266,6 +268,7 @@ def iter_json_array(path: os.PathLike[str] | str, chunk_size: int = 1024 * 1024)
 
 
 def _text(record: Dict[str, Any], *keys: str) -> Optional[str]:
+    """Coerce a source value to trimmed text, or None."""
     for key in keys:
         value = record.get(key)
         if value is not None and str(value).strip():
@@ -274,6 +277,7 @@ def _text(record: Dict[str, Any], *keys: str) -> Optional[str]:
 
 
 def _number(record: Dict[str, Any], *keys: str) -> Optional[float]:
+    """Coerce a source value to a number, returning None rather than raising."""
     for key in keys:
         value = record.get(key)
         if value in (None, ""):
@@ -335,6 +339,7 @@ REGISTRY_COLUMNS = (
 
 
 def _write_batch(conn: sqlite3.Connection, rows: Sequence[Tuple[Any, ...]]) -> Tuple[int, int]:
+    """Insert one bounded batch of registry rows."""
     if not rows:
         return 0, 0
     ids = [row[0] for row in rows]

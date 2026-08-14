@@ -1,3 +1,12 @@
+"""Extracts contact and imprint details from organization websites.
+
+Optional crawling step, skipped by ``--skip-contact-crawler`` and omitted from the
+reproducible cached-source build because it depends on live third-party pages.
+
+Extracted values are inferred, not source facts: they carry their own provenance and
+never overwrite a value supplied by an official register.
+"""
+
 import re
 import argparse
 import logging

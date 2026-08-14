@@ -1,3 +1,25 @@
+"""Main data pipeline entry point: collect, consolidate, enrich, publish.
+
+Orchestrates the offline half of the platform. Modes, from least to most external
+dependency:
+
+``consolidate``
+    Deterministic rebuild from checked-in caches. Calls no external API and is the
+    reproducible path used for demonstrations.
+``refresh_charities`` / ``refresh_grants``
+    Refresh one source from its live API.
+``full_run``
+    Collect everything, then consolidate and enrich.
+
+Everything except ``consolidate`` reaches out to external sources, so those modes are
+slow, rate-limited and non-deterministic. Use them deliberately and with conservative
+limits.
+
+Output lands in ``src/data/preprocessed/`` as JSONL plus coverage reports, and is then
+published through ``data.db_loader``, which validates before it atomically swaps the
+active database.
+"""
+
 import os
 import sys
 import argparse

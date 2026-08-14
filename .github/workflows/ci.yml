@@ -50,7 +50,7 @@ jobs:
       - name: Generate and verify deterministic SBOMs
         run: |
           python scripts/generate_sbom.py
-          git diff --exit-code -- docs/remediation/evidence/sbom
+          git diff --exit-code -- evidence/sbom
       - name: Licence policy
         run: python scripts/check_licenses.py --node-modules frontend/node_modules
       - uses: actions/upload-artifact@v4
@@ -58,8 +58,8 @@ jobs:
           name: backend-quality-evidence
           path: |
             coverage.xml
-            docs/remediation/evidence/sbom/backend.cdx.json
-            docs/remediation/evidence/sbom/frontend.cdx.json
+            evidence/sbom/backend.cdx.json
+            evidence/sbom/frontend.cdx.json
           if-no-files-found: error
           retention-days: 14
 

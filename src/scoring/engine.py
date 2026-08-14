@@ -25,6 +25,7 @@ class ScoreConfigurationError(ValueError):
 
 @dataclass(frozen=True)
 class ScoreConfiguration:
+    """A validated, versioned relevance-score configuration."""
     score_version: str
     configuration_status: str
     score_target: str
@@ -36,6 +37,7 @@ class ScoreConfiguration:
 
 
 def validate_score_configuration(raw: Mapping[str, Any]) -> ScoreConfiguration:
+    """Reject a configuration whose weights, target or policy are incoherent."""
     version = str(raw.get("score_version") or "").strip()
     if not version:
         raise ScoreConfigurationError("score_version is required")
@@ -92,6 +94,7 @@ def validate_score_configuration(raw: Mapping[str, Any]) -> ScoreConfiguration:
 
 
 def default_score_config_path() -> str:
+    """Return the configuration path, honouring SCORE_CONFIG_PATH."""
     project_root = Path(__file__).resolve().parents[2]
     return os.environ.get(
         "SCORE_CONFIG_PATH", str(project_root / "config" / "scoring.example.json")
@@ -99,6 +102,7 @@ def default_score_config_path() -> str:
 
 
 def load_score_configuration(path: str | None = None) -> ScoreConfiguration:
+    """Load and validate the active score configuration."""
     config_path = path or default_score_config_path()
     try:
         with open(config_path, "r", encoding="utf-8") as source:
@@ -109,6 +113,7 @@ def load_score_configuration(path: str | None = None) -> ScoreConfiguration:
 
 
 def _list(value: Any) -> list[Any]:
+    """Coerce a configuration value into a list."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -121,6 +126,7 @@ def _list(value: Any) -> list[Any]:
 
 
 def _normalized_set(values: Any) -> set[str]:
+    """Normalize a collection of labels into a comparable set."""
     return {str(value).strip().casefold() for value in _list(values) if str(value).strip()}
 
 
@@ -145,6 +151,7 @@ def _normalized_geography_set(values: Any) -> set[str]:
 
 
 def _component(score, weight, confidence, evidence, missing_reason=None):
+    """Build one score component with its inputs, method, confidence and gaps."""
     available = score is not None
     return {
         "score": round(float(score), 2) if available else None,

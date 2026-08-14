@@ -24,11 +24,13 @@ from pipelines.curate_europe_tech_grants import grant_id, iter_grants
 
 
 def _source_data(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the raw source payload for a record."""
     data = record.get("data")
     return data if isinstance(data, Mapping) else record
 
 
 def _first_organisation(data: Mapping[str, Any], field: str) -> Mapping[str, Any]:
+    """Return the first organisation entry from a source record."""
     value = data.get(field)
     if isinstance(value, list) and value and isinstance(value[0], Mapping):
         return value[0]
@@ -38,6 +40,7 @@ def _first_organisation(data: Mapping[str, Any], field: str) -> Mapping[str, Any
 
 
 def _programme_titles(data: Mapping[str, Any]) -> list[str]:
+    """Return the source-declared programme titles for a grant."""
     values = data.get("grantProgramme")
     if not isinstance(values, list):
         return []
@@ -119,6 +122,7 @@ def prepare_grants(payload: Any, publisher_record_limit: int | None = None) -> t
 
 
 def _existing_ids(connection: sqlite3.Connection, grant_ids: Iterable[str]) -> set[str]:
+    """Return the grant IDs already present, so appends stay idempotent."""
     identifiers = list(grant_ids)
     found: set[str] = set()
     for start in range(0, len(identifiers), 900):
@@ -171,6 +175,7 @@ def import_file(
     target_new_grants: int | None = None,
     seed: int | None = None,
 ) -> dict[str, Any]:
+    """Append observed grants from one cached file, atomically."""
     valid, reason = db_loader.validate_database(str(database_path))
     if not valid:
         raise ValueError(f"Refusing to modify invalid active database: {reason}")

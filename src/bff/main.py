@@ -1,3 +1,24 @@
+"""FastAPI application construction and the process-wide runtime wiring.
+
+Start reading the backend here. This module builds the app, selects the route surface
+for the configured storage runtime, installs middleware, and exposes the health probes.
+
+The runtime choice happens at *import time*: ``DATA_RUNTIME_MODE`` decides whether the
+PostgreSQL routers under ``bff.postgres`` or the legacy SQLite routers (``bff.charity``,
+``bff.admin``) are bound. PostgreSQL is the default and the only mode permitted outside
+development and test; see ``transition.runtime``.
+
+Middleware order is significant: CORS, then optional shadow comparison, then request
+instrumentation (request/trace IDs, body-size and timeout limits). Authentication and
+authorization are route dependencies rather than middleware, so that unauthenticated
+access is impossible by construction rather than by ordering.
+
+``/health/live`` reports process viability only. ``/health/ready`` additionally verifies
+the database, the expected Alembic revision, exactly one active dataset, configuration
+synchronisation and outbox availability, using an independent no-pool connection so an
+exhausted analytical pool cannot mask readiness.
+"""
+
 import asyncio
 from contextlib import asynccontextmanager
 import inspect
@@ -48,6 +69,7 @@ else:
 
 
 def _shadow_log(payload):
+    """Emit a shadow-comparison evidence record to the structured log."""
     logger.info("shadow_comparison", extra={"shadow": payload})
 
 
@@ -157,6 +179,7 @@ _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Assign request and trace IDs, enforce limits, and log one structured line."""
     start_time = time.time()
     supplied_request_id = request.headers.get("x-request-id", "")
     request.state.request_id = (
@@ -296,6 +319,7 @@ async def log_requests(request: Request, call_next):
 # Custom centralized exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    """Return a redacted JSON error without leaking exception internals."""
     logger.error(
         "request_unhandled_exception",
         extra={

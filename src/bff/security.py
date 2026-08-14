@@ -23,6 +23,7 @@ from bff.utils.logging import logger
 
 
 class Role(str, Enum):
+    """Application roles, ordered so a higher role satisfies lower-role reads."""
     VIEWER = "viewer"
     ANALYST = "analyst"
     OPERATOR = "operator"
@@ -39,17 +40,20 @@ _ROLE_RANK = {
 
 @dataclass(frozen=True)
 class Principal:
+    """The authenticated actor, its roles and its verified token claims."""
     actor_id: str
     roles: FrozenSet[Role]
     claims: Mapping[str, Any]
 
     @property
     def primary_role(self) -> str:
+        """Return the highest role held by this principal."""
         if not self.roles:
             return "unassigned"
         return max(self.roles, key=lambda role: _ROLE_RANK[role]).value
 
     def permits_any(self, required_roles: Iterable[Role]) -> bool:
+        """Report whether this principal satisfies any of the required roles."""
         required = tuple(required_roles)
         if not required:
             return True
@@ -61,12 +65,14 @@ class SlidingWindowRateLimiter:
     """Process-local protection; the AWS edge layer supplies distributed limiting."""
 
     def __init__(self, limit: int, window_seconds: int):
+        """Create a per-key sliding-window limiter with the configured bounds."""
         self.limit = limit
         self.window_seconds = window_seconds
         self._events: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
     def check(self, key: str, now: Optional[float] = None) -> Optional[int]:
+        """Return seconds to wait when a key is over its limit, otherwise None."""
         timestamp = time.monotonic() if now is None else now
         oldest_allowed = timestamp - self.window_seconds
         with self._lock:
@@ -80,12 +86,14 @@ class SlidingWindowRateLimiter:
         return None
 
     def clear(self) -> None:
+        """Discard all recorded request timestamps."""
         with self._lock:
             self._events.clear()
 
 
 @dataclass
 class _IdempotencyRecord:
+    """One reserved idempotency key with its request fingerprint and state."""
     fingerprint: str
     state: str
     created_at: float
@@ -95,11 +103,13 @@ class IdempotencyStore:
     """Thread-safe local/test at-most-once guard."""
 
     def __init__(self, ttl_seconds: int = 86_400):
+        """Create an in-process idempotency store for single-instance runtimes."""
         self.ttl_seconds = ttl_seconds
         self._records: Dict[Tuple[str, str, str], _IdempotencyRecord] = {}
         self._lock = threading.Lock()
 
     def reserve(self, actor_id: str, action: str, key: str, fingerprint: str) -> Tuple[str, str, str]:
+        """Reserve a key, raising IdempotencyConflict on a differing replay."""
         record_key = (actor_id, action, key)
         now = time.monotonic()
         with self._lock:
@@ -119,18 +129,21 @@ class IdempotencyStore:
         return record_key
 
     def complete(self, record_key: Tuple[str, str, str]) -> None:
+        """Mark a reservation complete and retain its outcome."""
         with self._lock:
             record = self._records.get(record_key)
             if record:
                 record.state = "completed"
 
     def release(self, record_key: Tuple[str, str, str]) -> None:
+        """Release a reservation so a failed request can be retried."""
         with self._lock:
             record = self._records.get(record_key)
             if record and record.state == "reserved":
                 del self._records[record_key]
 
     def clear(self) -> None:
+        """Discard all reservations."""
         with self._lock:
             self._records.clear()
 
@@ -139,6 +152,7 @@ class IdempotencyConflict(RuntimeError):
     """A durable or local key already exists for the same actor/action."""
 
     def __init__(self, *, different_request: bool):
+        """Record the conflicting key and its existing reservation state."""
         self.different_request = different_request
         super().__init__(
             "Idempotency-Key was already used with a different request."
@@ -148,13 +162,16 @@ class IdempotencyConflict(RuntimeError):
 
 
 class OIDCVerifier:
+    """Validates OIDC bearer tokens against a cached JWKS."""
     def __init__(self):
+        """Create a verifier bound to the configured issuer, audience and key source."""
         self._jwks: Optional[Mapping[str, Any]] = None
         self._loaded_at = 0.0
         self._cache_source: Optional[str] = None
         self._lock = threading.Lock()
 
     async def _load_jwks(self, settings: SecuritySettings) -> Mapping[str, Any]:
+        """Fetch or reuse the cached JWKS, honouring the configured cache lifetime."""
         now = time.monotonic()
         cache_source = settings.oidc_jwks_json or str(settings.oidc_jwks_url)
         with self._lock:
@@ -194,6 +211,7 @@ class OIDCVerifier:
         return payload
 
     async def decode(self, token: str, settings: SecuritySettings) -> Mapping[str, Any]:
+        """Verify signature, issuer, audience and expiry, returning the claims."""
         try:
             header = jwt.get_unverified_header(token)
         except JWTError as exc:
@@ -224,6 +242,7 @@ _oidc_verifier = OIDCVerifier()
 
 
 def _invalid_token() -> HTTPException:
+    """Build the standard 401 response for an unusable token."""
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Access token is invalid or expired.",
@@ -232,10 +251,12 @@ def _invalid_token() -> HTTPException:
 
 
 def _request_host(request: Request) -> str:
+    """Return the request's host, used for development-auth host allowlisting."""
     return request.client.host.lower() if request.client and request.client.host else "unknown"
 
 
 def _extract_token(request: Request, settings: SecuritySettings) -> Optional[str]:
+    """Take the bearer token or session cookie from the request, if present."""
     authorization = request.headers.get("authorization", "")
     if authorization:
         scheme, _, credentials = authorization.partition(" ")
@@ -248,6 +269,7 @@ def _extract_token(request: Request, settings: SecuritySettings) -> Optional[str
 
 
 def _roles_from_claims(claims: Mapping[str, Any], claim_name: str) -> FrozenSet[Role]:
+    """Map the configured role claim onto known application roles."""
     raw_roles = claims.get(claim_name, [])
     if isinstance(raw_roles, str):
         candidates = raw_roles.replace(",", " ").split()
@@ -274,6 +296,7 @@ def create_development_access_token(
     settings: SecuritySettings = SECURITY_SETTINGS,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
+    """Sign a local-only development session token."""
     if settings.auth_mode != "development" or not settings.dev_auth_enabled or not settings.dev_auth_secret:
         raise RuntimeError("Development authentication is not explicitly enabled")
     now = datetime.now(timezone.utc)
@@ -290,6 +313,7 @@ def create_development_access_token(
 
 
 async def _decode_token(token: str, request: Request, settings: SecuritySettings) -> Mapping[str, Any]:
+    """Decode a token using OIDC verification or the development signing key."""
     if settings.auth_mode == "development":
         if _request_host(request) not in {host.lower() for host in settings.dev_auth_allowed_hosts}:
             raise HTTPException(
@@ -317,6 +341,7 @@ async def _decode_token(token: str, request: Request, settings: SecuritySettings
 
 
 def _limiter_for(request: Request, settings: SecuritySettings) -> SlidingWindowRateLimiter:
+    """Return the rate limiter bound to this application instance."""
     limiter = getattr(request.app.state, "rate_limiter", None)
     if limiter is None:
         limiter = SlidingWindowRateLimiter(
@@ -328,6 +353,7 @@ def _limiter_for(request: Request, settings: SecuritySettings) -> SlidingWindowR
 
 
 def _idempotency_store_for(request: Request) -> IdempotencyStore:
+    """Return the idempotency store bound to this application instance."""
     store = getattr(request.app.state, "idempotency_store", None)
     if store is None:
         store = IdempotencyStore()
@@ -336,6 +362,7 @@ def _idempotency_store_for(request: Request) -> IdempotencyStore:
 
 
 async def authenticate_request(request: Request) -> Principal:
+    """Resolve the request's principal, or reject it. There is no anonymous path."""
     cached = getattr(request.state, "principal", None)
     if cached is not None:
         return cached
@@ -368,6 +395,7 @@ async def authenticate_request(request: Request) -> Principal:
 
 
 async def reserve_idempotency(request: Request, principal: Principal, action: str) -> None:
+    """Require and durably reserve an Idempotency-Key for a mutating request."""
     key = request.headers.get("idempotency-key", "").strip()
     if not key or len(key) > 128:
         raise HTTPException(
@@ -399,6 +427,7 @@ def require_roles(*roles: Role, action: str = "authenticated.read", idempotent: 
     """Create a dependency that classifies and authorizes one API action."""
 
     async def dependency(request: Request) -> Principal:
+        """Authenticate, authorize and optionally reserve idempotency for one action."""
         request.state.audit_action = action
         request.state.audit_target = request.url.path
         principal = await authenticate_request(request)
@@ -415,6 +444,7 @@ def require_roles(*roles: Role, action: str = "authenticated.read", idempotent: 
 
 
 async def enforce_login_rate_limit(request: Request) -> None:
+    """Apply the per-host rate limit to development login attempts."""
     settings = getattr(request.app.state, "security_settings", SECURITY_SETTINGS)
     retry_after = _limiter_for(request, settings).check(f"login:{_request_host(request)}")
     if retry_after is not None:
@@ -430,6 +460,7 @@ def validate_development_credentials(
     username: str,
     password: str,
 ) -> SecuritySettings:
+    """Validate development credentials, returning 404 when the mode is disabled."""
     settings = getattr(request.app.state, "security_settings", SECURITY_SETTINGS)
     allowed_hosts = {host.lower() for host in settings.dev_auth_allowed_hosts}
     if (

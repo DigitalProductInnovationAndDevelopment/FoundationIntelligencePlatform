@@ -11,20 +11,24 @@ from transition.shadow import ShadowRequest
 
 
 def _first(query: dict[str, list[str]], key: str, default: Optional[str] = None) -> Optional[str]:
+    """Return the first row value, or None when the result is empty."""
     values = query.get(key)
     return values[-1] if values else default
 
 
 def _integer(query: dict[str, list[str]], key: str, default: int) -> int:
+    """Coerce a SQLite value to int, returning None rather than raising."""
     return int(_first(query, key, str(default)) or default)
 
 
 def _number(query: dict[str, list[str]], key: str) -> Optional[float]:
+    """Coerce a SQLite value to float, returning None rather than raising."""
     value = _first(query, key)
     return float(value) if value not in {None, ""} else None
 
 
 def _boolean(query: dict[str, list[str]], key: str) -> Optional[bool]:
+    """Coerce a SQLite value to bool."""
     value = _first(query, key)
     if value is None:
         return None
@@ -32,6 +36,7 @@ def _boolean(query: dict[str, list[str]], key: str) -> Optional[bool]:
 
 
 def _split(query: dict[str, list[str]], key: str) -> Optional[list[str]]:
+    """Split a delimited SQLite text value into trimmed, non-empty items."""
     value = _first(query, key)
     if value is None:
         return None
@@ -43,14 +48,17 @@ class SQLiteShadowReader:
 
     def __init__(self, snapshot_path: str):
         # Lazy import preserves the PostgreSQL-only runtime import boundary.
+        """Bind the reader to an explicit, separate SQLite snapshot."""
         from bff.repositories import SQLiteCharityRepository
 
         self.repository = SQLiteCharityRepository(snapshot_path)
 
     async def _call(self, method: Any, *args: Any, **kwargs: Any) -> Any:
+        """Execute one journey query against the snapshot."""
         return await asyncio.to_thread(lambda: asyncio.run(method(*args, **kwargs)))
 
     async def read(self, request: ShadowRequest) -> Any:
+        """Replay one journey against the snapshot and return its payload."""
         if request.method != "GET":
             raise ValueError("Only read-only GET journeys can use the SQLite shadow adapter")
         query = parse_qs(request.query_string, keep_blank_values=True)
@@ -255,6 +263,7 @@ class SQLiteShadowReader:
 
 
 def resolve_shadow_journey(method: str, path: str, query_string: str = "") -> Optional[str]:
+    """Map a request to its shadow journey, or None when not compared."""
     if method != "GET" or not path.startswith("/api/charities"):
         return None
     query = parse_qs(query_string, keep_blank_values=True)

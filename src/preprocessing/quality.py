@@ -1,3 +1,14 @@
+"""Predicates distinguishing informative source values from placeholders.
+
+Source records frequently carry filler text — ``n/a``, ``unknown``, ``-``, empty
+markup — where a value is absent. Treating those strings as data silently manufactures
+facts, so consolidation and enrichment route candidate values through these checks
+first.
+
+The distinction the callers depend on: a placeholder means *the source told us nothing*,
+which must stay explicitly absent rather than becoming an empty-but-present value.
+"""
+
 import re
 
 

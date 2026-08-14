@@ -1,3 +1,15 @@
+"""Legacy SQLite route surface — not used by the PostgreSQL runtime.
+
+Bound only when ``DATA_RUNTIME_MODE=sqlite_migration_source``, which is permitted in
+development and test alone and rejected in staging and production. The live route
+surface is ``bff.postgres.routes``, backed by async repositories over PostgreSQL.
+
+This module exists so that the migration source can still be served and compared during
+shadow runs. A subprocess test blocks the ``sqlite3`` import and loads the production
+application to prove this path cannot be reached in a production configuration. Do not
+extend it; new work belongs in ``bff.postgres``.
+"""
+
 import asyncio
 import json
 import os

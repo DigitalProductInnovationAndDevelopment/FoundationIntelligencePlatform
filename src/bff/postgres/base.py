@@ -26,6 +26,7 @@ class VersionedTTLCache:
     """Small async single-flight cache whose keys start with dataset version."""
 
     def __init__(self, *, ttl_seconds: float = 30.0, max_entries: int = 256):
+        """Create a bounded cache keyed by dataset version with a per-entry TTL."""
         self._ttl_seconds = ttl_seconds
         self._max_entries = max_entries
         self._entries: OrderedDict[tuple[Any, ...], tuple[float, Any]] = OrderedDict()
@@ -39,6 +40,7 @@ class VersionedTTLCache:
         key: tuple[Any, ...],
         loader: Callable[[], Awaitable[Any]],
     ) -> Any:
+        """Return the cached value for a key, building and storing it on a miss."""
         now = monotonic()
         async with self._lock:
             entry = self._entries.get(key)
@@ -70,12 +72,14 @@ class VersionedTTLCache:
         return deepcopy(value)
 
     async def retain_dataset(self, dataset_version: str) -> None:
+        """Drop every entry that does not belong to the given dataset version."""
         async with self._lock:
             stale = [key for key in self._entries if not key or key[0] != dataset_version]
             for key in stale:
                 self._entries.pop(key, None)
 
     async def clear(self) -> None:
+        """Discard all cached entries and reset hit accounting."""
         async with self._lock:
             self._entries.clear()
             self._inflight.clear()
@@ -84,6 +88,7 @@ class VersionedTTLCache:
 
     @property
     def hit_ratio(self) -> float:
+        """Return the observed cache hit ratio for observability reporting."""
         total = self.hits + self.misses
         return self.hits / total if total else 0.0
 
@@ -92,11 +97,14 @@ ANALYTICS_CACHE = VersionedTTLCache()
 
 
 class PostgresRepository:
+    """Base class supplying a session factory and active-dataset resolution."""
     def __init__(self, sessions: async_sessionmaker[AsyncSession]):
+        """Bind the repository to an async session factory."""
         self.sessions = sessions
 
     @staticmethod
     async def active_dataset(session: AsyncSession) -> str:
+        """Return the single active dataset version, failing closed if absent."""
         dataset_version = await session.scalar(
             text(
                 """
@@ -112,16 +120,19 @@ class PostgresRepository:
 
 
 def json_value(value: Any, fallback: Any) -> Any:
+    """Decode a JSON column value, returning the fallback when absent or invalid."""
     return value if isinstance(value, type(fallback)) else fallback
 
 
 def iso_value(value: Any) -> Any:
+    """Render a date or datetime column as an ISO string, or None."""
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     return value
 
 
 def number_value(value: Any) -> float | None:
+    """Coerce a numeric column to float, returning None rather than raising."""
     if value is None:
         return None
     if isinstance(value, (int, float, Decimal)):
@@ -130,10 +141,12 @@ def number_value(value: Any) -> float | None:
 
 
 def utc_now() -> str:
+    """Return the current timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def row_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert a SQLAlchemy result row into a plain dictionary."""
     return {
         key: iso_value(number_value(value) if isinstance(value, Decimal) else value)
         for key, value in row.items()

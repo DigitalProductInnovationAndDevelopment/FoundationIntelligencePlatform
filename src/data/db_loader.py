@@ -1,3 +1,16 @@
+"""Builds and atomically replaces the SQLite migration source.
+
+Consumes the consolidated and enriched pipeline output and writes the coherent SQLite
+database that ``migration.sqlite_to_postgres`` later reads. This file is a *build
+artifact and migration source*, never an operational datastore — the runtime container
+image deliberately contains no SQLite database at all.
+
+The load is staged: a candidate database is built in a temporary location and validated
+for schema correctness and minimum data volume, and only then does it atomically replace
+the active file. A failed load therefore leaves the previous database untouched rather
+than leaving a half-written one in place.
+"""
+
 import os
 import sys
 import sqlite3

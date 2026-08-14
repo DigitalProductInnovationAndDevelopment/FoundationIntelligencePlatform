@@ -1,3 +1,11 @@
+/**
+ * Beneficiary-country choropleth with country explorer.
+ *
+ * Built solely from stored grant beneficiary geography. It never consults funder
+ * headquarters or registered offices. Grants without a resolvable country are
+ * reported as unmapped rather than assigned one. The optional connection overlay
+ * is labelled as illustrative associations, not verified financial routes.
+ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Building2, X } from "lucide-react";
 import worldMap from "@svg-maps/world";

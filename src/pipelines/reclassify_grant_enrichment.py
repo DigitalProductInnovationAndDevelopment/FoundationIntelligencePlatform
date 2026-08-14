@@ -25,10 +25,12 @@ DEFAULT_SOURCES = ["360Giving", "Charity Commission for England and Wales", "Phi
 
 
 def _utc_now() -> str:
+    """Return the current timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _json(value: Any) -> str:
+    """Decode a stored JSON column, returning the fallback when absent."""
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -42,6 +44,7 @@ def _grant_enrichment(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _update_rows(connection: sqlite3.Connection) -> tuple[int, int]:
+    """Apply reclassified enrichment to the stored grant rows."""
     connection.row_factory = sqlite3.Row
     rows = connection.execute(
         """
@@ -98,6 +101,7 @@ def _update_rows(connection: sqlite3.Connection) -> tuple[int, int]:
 
 
 def _tech_grant_count(connection: sqlite3.Connection) -> int:
+    """Count grants classified as tech-enablement after reclassification."""
     return int(connection.execute(
         "SELECT COUNT(DISTINCT grant_id) FROM grant_programme_categories WHERE programme_area = ?",
         ("tech-enablement",),
@@ -105,6 +109,7 @@ def _tech_grant_count(connection: sqlite3.Connection) -> int:
 
 
 def _prewarm_default_overview(database_path: Path) -> int:
+    """Rebuild the default Overview payload after reclassification."""
     from bff.repositories import SQLiteCharityRepository
 
     repository = SQLiteCharityRepository(str(database_path))

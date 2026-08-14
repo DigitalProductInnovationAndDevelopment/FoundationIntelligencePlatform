@@ -80,6 +80,7 @@ class SearchCursor:
     registry_id: str
 
     def encode(self) -> str:
+        """Serialize a rank and registry ID pair into an opaque cursor."""
         payload = json.dumps(
             {"rank": format(self.rank, "f"), "registry_id": self.registry_id},
             separators=(",", ":"),
@@ -89,6 +90,7 @@ class SearchCursor:
 
     @classmethod
     def decode(cls, value: str) -> "SearchCursor":
+        """Parse an opaque cursor, rejecting malformed input."""
         if not value or len(value) > 2048:
             raise ValueError("Invalid search cursor")
         try:
@@ -107,6 +109,7 @@ class RegistrySearchRepository:
     """Execute bounded, index-backed registry searches with stable pagination."""
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession]):
+        """Bind the search repository to an async session factory."""
         self._sessions = sessions
 
     async def search(
@@ -117,6 +120,7 @@ class RegistrySearchRepository:
         cursor: Optional[str] = None,
         limit: int = 50,
     ) -> dict[str, Any]:
+        """Rank registry rows by full-text relevance with trigram fallback."""
         normalized_query = " ".join(str(query or "").casefold().split())
         if len(normalized_query) < 2 or len(normalized_query) > 200:
             raise ValueError("Search query must contain between 2 and 200 characters")
@@ -148,10 +152,12 @@ class RegistrySearchRepository:
 
 @dataclass(frozen=True)
 class RegistryPageCursor:
+    """Opaque cursor carrying the active sort key plus the registry ID tie-break."""
     offset: int
     signature: str
 
     def encode(self) -> str:
+        """Serialize the sort key and registry ID into an opaque cursor."""
         payload = json.dumps(
             {"offset": self.offset, "signature": self.signature},
             separators=(",", ":"),
@@ -161,6 +167,7 @@ class RegistryPageCursor:
 
     @classmethod
     def decode(cls, value: str, signature: str) -> "RegistryPageCursor":
+        """Parse an opaque page cursor, rejecting malformed input."""
         if not value or len(value) > 500:
             raise ValueError("Invalid registry cursor")
         try:
@@ -179,11 +186,14 @@ class RegistryRepository(PostgresRepository):
 
     @staticmethod
     def _filter_signature(filters: dict[str, Any]) -> str:
+        """Build a stable cache key from the applied registry filters."""
         payload = json.dumps(filters, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(payload.encode()).hexdigest()[:20]
 
     async def _registry_count(self, dataset_version: str) -> int:
+        """Return the cached total row count for the applied filters."""
         async def load() -> int:
+            """Count matching registry rows on a cache miss."""
             async with self.sessions() as session:
                 count = await session.scalar(
                     text(
@@ -220,6 +230,7 @@ class RegistryRepository(PostgresRepository):
         limit: int = 50,
         sort: str = "name",
     ) -> dict[str, Any]:
+        """Return one deterministic, cursor-paginated page of registry rows."""
         limit = min(max(int(limit), 1), 100)
         normalized_query = " ".join(str(query or "").casefold().split())
         if normalized_query and len(normalized_query) < 2:
@@ -408,6 +419,7 @@ class RegistryRepository(PostgresRepository):
         limit: int,
         filters: dict[str, Any],
     ) -> dict[str, Any]:
+        """Return a page ordered by search rank with a registry ID tie-break."""
         limit = min(max(int(limit), 1), 100)
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
@@ -543,6 +555,7 @@ class RegistryRepository(PostgresRepository):
         }
 
     async def detail(self, registry_id: str) -> Optional[dict[str, Any]]:
+        """Return one registry organization and its accepted profile link, or None."""
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
             row = (

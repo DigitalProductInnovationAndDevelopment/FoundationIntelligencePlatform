@@ -39,7 +39,7 @@ class TestObservabilityContracts(unittest.TestCase):
         self.assertTrue(REQUIRED_METRICS.issubset({item.name for item in configuration.metrics}))
         self.assertTrue(REQUIRED_ALARMS.issubset({item.name for item in configuration.alarms}))
 
-        runbooks = (REPOSITORY_ROOT / "docs/remediation/observability-runbooks.md").read_text(
+        runbooks = (REPOSITORY_ROOT / "docs/runbooks.md").read_text(
             encoding="utf-8"
         )
         for alarm in configuration.alarms:

@@ -15,6 +15,7 @@ from typing import Any, Optional, Protocol
 
 @dataclass(frozen=True)
 class ShadowRequest:
+    """One request replayed against the shadow source for comparison."""
     journey: str
     method: str
     path: str
@@ -25,6 +26,7 @@ class ShadowRequest:
 
 @dataclass(frozen=True)
 class Difference:
+    """One recorded difference between the served and shadow payloads."""
     path: str
     kind: str
     primary_fingerprint: str
@@ -33,6 +35,7 @@ class Difference:
 
 @dataclass(frozen=True)
 class ComparisonResult:
+    """The outcome of comparing a served payload against its shadow."""
     journey: str
     request_id: str
     status: str
@@ -44,20 +47,30 @@ class ComparisonResult:
 
 @dataclass(frozen=True)
 class ComparisonPolicy:
+    """Bounds and allowlists governing shadow comparison."""
     unordered_paths: frozenset[str] = frozenset()
     ignored_paths: frozenset[str] = frozenset()
     maximum_differences: int = 100
 
 
 class ShadowReader(Protocol):
-    async def read(self, request: ShadowRequest) -> Any: ...
+    """Contract for a source that can replay a journey for comparison."""
+
+    async def read(self, request: ShadowRequest) -> Any:
+        """Replay one journey and return its payload."""
+        ...
 
 
 class EvidenceSink(Protocol):
-    def record(self, result: ComparisonResult) -> None: ...
+    """Contract for recording shadow comparison evidence."""
+
+    def record(self, result: ComparisonResult) -> None:
+        """Record one comparison result as evidence."""
+        ...
 
 
 def _json_value(value: Any) -> Any:
+    """Coerce a value into a JSON-comparable form."""
     if is_dataclass(value) and not isinstance(value, type):
         return asdict(value)
     if hasattr(value, "model_dump"):
@@ -74,6 +87,7 @@ def _json_value(value: Any) -> Any:
 
 
 def _fingerprint(value: Any) -> str:
+    """Return a stable fingerprint for a payload."""
     encoded = json.dumps(
         _json_value(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -81,6 +95,7 @@ def _fingerprint(value: Any) -> str:
 
 
 def _canonical(value: Any, path: str, policy: ComparisonPolicy) -> Any:
+    """Canonicalize a payload, sorting approved unordered collections."""
     value = _json_value(value)
     if isinstance(value, dict):
         return {
@@ -110,6 +125,7 @@ def compare_payloads(
     policy: ComparisonPolicy = ComparisonPolicy(),
     shadow_duration_ms: float = 0.0,
 ) -> ComparisonResult:
+    """Compare two payloads, returning bounded, privacy-safe differences."""
     left = _canonical(primary, "$", policy)
     right = _canonical(shadow, "$", policy)
     differences: list[Difference] = []
@@ -171,9 +187,11 @@ class StructuredLogEvidenceSink:
     """Record paths and fingerprints without serializing potentially sensitive values."""
 
     def __init__(self, emit: Callable[[dict[str, Any]], None]):
+        """Create a sink that writes comparison evidence to the structured log."""
         self._emit = emit
 
     def record(self, result: ComparisonResult) -> None:
+        """Write one comparison result to the structured log."""
         self._emit(
             {
                 "event": "shadow_comparison",
@@ -200,6 +218,7 @@ class ShadowComparisonCoordinator:
         timeout_seconds: float,
         maximum_pending: int,
     ):
+        """Create a bounded coordinator for asynchronous shadow comparisons."""
         self.reader = reader
         self.sink = sink
         self.policy = policy
@@ -209,9 +228,11 @@ class ShadowComparisonCoordinator:
 
     @property
     def pending(self) -> int:
+        """Return the number of comparisons currently queued."""
         return len(self._tasks)
 
     def submit(self, request: ShadowRequest) -> bool:
+        """Queue a comparison, dropping it when the bound is reached."""
         if len(self._tasks) >= self.maximum_pending:
             self.sink.record(
                 ComparisonResult(
@@ -230,6 +251,7 @@ class ShadowComparisonCoordinator:
         return True
 
     async def _execute(self, request: ShadowRequest) -> None:
+        """Run one queued comparison and record its evidence."""
         started = time.perf_counter()
         try:
             shadow = await asyncio.wait_for(
@@ -265,6 +287,7 @@ class ShadowComparisonCoordinator:
         self.sink.record(result)
 
     async def drain(self) -> None:
+        """Wait for queued comparisons to finish, for deterministic tests."""
         tasks = tuple(self._tasks)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -281,12 +304,14 @@ class ShadowComparisonMiddleware:
         maximum_response_bytes: int,
         journey_resolver: Callable[[str, str, str], Optional[str]],
     ):
+        """Wrap an ASGI app so eligible responses are shadow-compared."""
         self.app = app
         self.coordinator = coordinator
         self.maximum_response_bytes = maximum_response_bytes
         self.journey_resolver = journey_resolver
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        """Serve the request unchanged and queue a comparison out of band."""
         if scope.get("type") != "http" or self.coordinator is None:
             await self.app(scope, receive, send)
             return

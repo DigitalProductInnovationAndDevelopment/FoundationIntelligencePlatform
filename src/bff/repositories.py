@@ -1,3 +1,15 @@
+"""Legacy synchronous SQLite data access — not used by the PostgreSQL runtime.
+
+Backs the legacy route surface (``bff.charity``, ``bff.admin``), which is bound only when
+``DATA_RUNTIME_MODE=sqlite_migration_source`` — permitted in development and test alone
+and rejected in staging and production. The live data layer is the async repository set
+under ``bff.postgres``, which takes a session factory and speaks SQLAlchemy over asyncpg.
+
+Retained so the migration source can still be served and compared during shadow runs. A
+subprocess test blocks the ``sqlite3`` import and loads the production application to
+prove this path is unreachable in a production configuration. Do not extend it.
+"""
+
 import json
 import os
 import sqlite3

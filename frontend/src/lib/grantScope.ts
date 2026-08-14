@@ -1,3 +1,9 @@
+/**
+ * The canonical grant filter scope shared by the Overview, map and donor directory.
+ *
+ * Keeps URL state, component state and API parameters in one shape. Change filter
+ * semantics here rather than in individual components.
+ */
 export type GrantScope = {
   beneficiaryCountry?: string;
   beneficiaryGeographies: string[];

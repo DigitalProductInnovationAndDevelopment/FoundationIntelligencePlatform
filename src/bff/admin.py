@@ -1,3 +1,13 @@
+"""Legacy SQLite administration routes — not used by the PostgreSQL runtime.
+
+Bound only when ``DATA_RUNTIME_MODE=sqlite_migration_source``, which is permitted in
+development and test alone and rejected in staging and production. The live
+administration surface is ``bff.postgres.admin_routes``, which enqueues durable jobs
+instead of spawning subprocesses.
+
+Retained for local migration-compatibility work and shadow comparison. Do not extend it.
+"""
+
 import os
 import json
 import subprocess

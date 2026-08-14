@@ -13,9 +13,11 @@ from pipelines.durable import IngestionManifest, SourceConfiguration, StorageObj
 
 
 class PipelineRepository(PostgresRepository):
+    """Source controls and immutable ingestion evidence."""
     async def synchronize_sources(
         self, configurations: Iterable[SourceConfiguration]
     ) -> int:
+        """Reconcile stored source configurations with the versioned configuration file."""
         records = [configuration.database_record() for configuration in configurations]
         async with self.sessions() as session, session.begin():
             for record in records:
@@ -68,6 +70,7 @@ class PipelineRepository(PostgresRepository):
         return len(records)
 
     async def sources(self) -> list[dict[str, Any]]:
+        """Return source schedules with credential references masked."""
         async with self.sessions() as session:
             rows = (
                 await session.execute(
@@ -97,6 +100,7 @@ class PipelineRepository(PostgresRepository):
         ]
 
     async def set_source_enabled(self, source_name: str, *, enabled: bool) -> dict[str, Any]:
+        """Enable or disable a source schedule, failing closed on unresolved legal status."""
         async with self.sessions() as session, session.begin():
             row = (
                 await session.execute(
@@ -146,6 +150,7 @@ class PipelineRepository(PostgresRepository):
         source_uri: str | None,
         watermark_before: str | None,
     ) -> str:
+        """Open an immutable ingestion run and return its identifier."""
         run_id = uuid.uuid4()
         async with self.sessions() as session, session.begin():
             active = await self.active_dataset(session)
@@ -179,6 +184,7 @@ class PipelineRepository(PostgresRepository):
     async def record_object(
         self, descriptor: StorageObject, *, metadata: Mapping[str, Any] | None = None
     ) -> None:
+        """Record an immutable raw object descriptor against an ingestion run."""
         descriptor.validate()
         async with self.sessions() as session, session.begin():
             await session.execute(
@@ -210,6 +216,7 @@ class PipelineRepository(PostgresRepository):
         *,
         status: str = "loaded",
     ) -> str:
+        """Close an ingestion run with its final counts and manifest."""
         manifest.validate()
         manifest_id = uuid.uuid4()
         payload = manifest.payload

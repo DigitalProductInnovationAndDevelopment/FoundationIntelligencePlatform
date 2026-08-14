@@ -1,3 +1,15 @@
+"""Collector for the Philea member directory.
+
+Fetches European foundation member records, caching raw responses for reproducible
+downstream consolidation. Requests are retried with backoff and paced by a sleep
+interval.
+
+Philea supplies **organization metadata only** — there are no grant transactions in this
+source. Records derived from it are marked ``organization_level_only`` downstream so the
+UI reports absent transaction data rather than zero activity, and no funding activity is
+ever inferred from membership.
+"""
+
 import json
 import requests
 import time

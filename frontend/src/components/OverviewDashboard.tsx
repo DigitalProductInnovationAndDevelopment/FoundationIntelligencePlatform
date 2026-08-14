@@ -1,3 +1,10 @@
+/**
+ * Overview: grant KPIs, map, trends and programme allocation from one aggregation.
+ *
+ * One applied grant scope drives every section, so coverage counters shift from
+ * ingested to filtered grants together. Organization-directory filters stay
+ * independent because they describe organizations, not the filtered grant set.
+ */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Building2, CalendarRange, ChevronRight, ExternalLink, LoaderCircle, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import {

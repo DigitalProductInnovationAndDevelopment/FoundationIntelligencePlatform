@@ -1,3 +1,13 @@
+"""Legacy Hinchilla website collector, retained for compatibility.
+
+Parses the site's React server-component payload to recover member records. It is
+retained so that previously collected data remains reproducible; it is not part of the
+active presentation build.
+
+The parsing is inherently tied to the upstream page structure and will break if that
+structure changes. Treat a failure here as an upstream change, not as a regression.
+"""
+
 import json
 import requests
 import time

@@ -24,6 +24,7 @@ VALID_EUR = "fact.eur_amount_status NOT IN ('negative','missing','invalid')"
 
 
 def _amount_policy(maximum: Optional[float] = None) -> dict[str, Any]:
+    """Describe which amounts are monetary-eligible under the requested currency mode."""
     return {
         "monetary_precision": "minor_units_2_decimal_places",
         "rounding": "ROUND_HALF_UP",
@@ -35,6 +36,7 @@ def _amount_policy(maximum: Optional[float] = None) -> dict[str, Any]:
 
 
 def _scope() -> dict[str, str]:
+    """Build the canonical grant scope from the supplied filters."""
     return {
         "coverage_note": "Available PostgreSQL active-dataset grant records only.",
         "market_scope": "available cached 360Giving records",
@@ -42,6 +44,7 @@ def _scope() -> dict[str, str]:
 
 
 class AnalyticsRepository(PostgresRepository):
+    """Async grant aggregates, map facts, trends and drill-downs."""
     _MATERIALIZED_FILTERS = {
         "date_from",
         "date_to",
@@ -57,15 +60,18 @@ class AnalyticsRepository(PostgresRepository):
 
     @classmethod
     def _can_use_materializations(cls, filters: dict[str, Any]) -> bool:
+        """Report whether the applied filters permit reading pre-built aggregates."""
         return not any(filters.get(name) for name in cls._MATERIALIZED_FILTERS)
 
     @staticmethod
     def _basis(currency: Optional[str]) -> tuple[str, str]:
+        """Return the aggregation basis for the requested currency mode."""
         selected = str(currency or "").upper()
         return ("original", selected) if selected else ("eur_converted", "EUR")
 
     @staticmethod
     async def _require_materialization(session, dataset_version: str) -> None:
+        """Fail closed when a required aggregate set is missing for the dataset."""
         available = await session.scalar(
             text(
                 """
@@ -86,6 +92,7 @@ class AnalyticsRepository(PostgresRepository):
 
     @staticmethod
     def _filtered_scope(filters: dict[str, Any]) -> tuple[str, dict[str, Any], str, str]:
+        """Execute a fact-table scan for filters the aggregates cannot serve."""
         conditions = ["fact.dataset_version=:dataset_version"]
         parameters: dict[str, Any] = {
             "currency": str(filters.get("currency") or "").upper() or None,
@@ -145,6 +152,7 @@ class AnalyticsRepository(PostgresRepository):
         return " AND ".join(conditions), parameters, amount_minor, selected_currency
 
     async def beneficiary_geographies(self) -> list[str]:
+        """List the distinct normalized beneficiary geographies for filtering."""
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
             await self._require_materialization(session, dataset_version)
@@ -162,6 +170,7 @@ class AnalyticsRepository(PostgresRepository):
         return [str(row[0]) for row in rows if row[0]]
 
     async def map(self, **filters: Any) -> dict[str, Any]:
+        """Return beneficiary-country associations, totals and coverage metadata."""
         if self._can_use_materializations(filters):
             return await self._materialized_map(**filters)
         conditions, parameters, amount_minor, selected_currency = self._filtered_scope(filters)
@@ -297,6 +306,7 @@ class AnalyticsRepository(PostgresRepository):
         }
 
     async def _materialized_map(self, **filters: Any) -> dict[str, Any]:
+        """Serve the map from pre-built country aggregates."""
         basis, selected_currency = self._basis(filters.get("currency"))
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
@@ -310,6 +320,7 @@ class AnalyticsRepository(PostgresRepository):
         )
 
         async def load() -> dict[str, Any]:
+            """Build the map payload on a cache miss."""
             async with self.sessions() as session:
                 await self._require_materialization(session, dataset_version)
                 rows = [
@@ -447,6 +458,7 @@ class AnalyticsRepository(PostgresRepository):
     async def map_connections(
         self, *, currency: Optional[str] = None, limit: int = 100
     ) -> dict[str, Any]:
+        """Return bounded illustrative funder-location to beneficiary associations."""
         basis, selected_currency = self._basis(currency)
         limit = min(max(int(limit), 1), 250)
         async with self.sessions() as session:
@@ -508,6 +520,7 @@ class AnalyticsRepository(PostgresRepository):
         sources: Optional[Sequence[str]],
         limit: int,
     ) -> dict[str, Any]:
+        """Return bounded donor and recipient typeahead suggestions."""
         limit = min(max(int(limit), 1), 5000)
         if not sources:
             async with self.sessions() as session:
@@ -602,6 +615,7 @@ class AnalyticsRepository(PostgresRepository):
         }
 
     async def trends(self, **filters: Any) -> dict[str, Any]:
+        """Return award-date period totals, including unknown-coverage periods."""
         if self._can_use_materializations(filters):
             return await self._materialized_trends(**filters)
         months = min(max(int(filters.get("months") or 120), 1), 120)
@@ -722,6 +736,7 @@ class AnalyticsRepository(PostgresRepository):
         }
 
     async def _materialized_trends(self, **filters: Any) -> dict[str, Any]:
+        """Serve trends from pre-built period aggregates."""
         basis, selected_currency = self._basis(filters.get("currency"))
         granularity = "yearly" if filters.get("granularity") == "yearly" else "monthly"
         months = (
@@ -741,6 +756,7 @@ class AnalyticsRepository(PostgresRepository):
         )
 
         async def load() -> dict[str, Any]:
+            """Build the trends payload on a cache miss."""
             month_condition = (
                 "AND period_start >= CURRENT_DATE "
                 "- CAST(:months AS integer) * INTERVAL '1 month'"
@@ -868,6 +884,7 @@ class AnalyticsRepository(PostgresRepository):
         return await ANALYTICS_CACHE.get_or_create(key, load)
 
     async def themes(self, *, currency: Optional[str] = None, **filters: Any) -> dict[str, Any]:
+        """Return programme allocations and classification coverage."""
         if self._can_use_materializations(filters):
             return await self._materialized_themes(currency=currency)
         filters = {**filters, "currency": currency}
@@ -1020,6 +1037,7 @@ class AnalyticsRepository(PostgresRepository):
     async def _materialized_themes(
         self, *, currency: Optional[str]
     ) -> dict[str, Any]:
+        """Serve programme allocations from pre-built aggregates."""
         basis, selected_currency = self._basis(currency)
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
@@ -1027,6 +1045,7 @@ class AnalyticsRepository(PostgresRepository):
         key = (dataset_version, "themes", basis, selected_currency)
 
         async def load() -> dict[str, Any]:
+            """Build the programme-allocation payload on a cache miss."""
             parameters = {
                 "dataset_version": dataset_version,
                 "basis": basis,
@@ -1176,12 +1195,14 @@ class AnalyticsRepository(PostgresRepository):
         return await ANALYTICS_CACHE.get_or_create(key, load)
 
     async def summary(self) -> dict[str, Any]:
+        """Return currency-separated network totals and rankings."""
         async with self.sessions() as session:
             dataset_version = await self.active_dataset(session)
         await ANALYTICS_CACHE.retain_dataset(dataset_version)
         key = (dataset_version, "network_summary")
 
         async def load() -> dict[str, Any]:
+            """Build the network summary on a cache miss."""
             parameters = {"dataset_version": dataset_version}
             async with self.sessions() as session:
                 await self._require_materialization(session, dataset_version)
@@ -1262,6 +1283,7 @@ class AnalyticsRepository(PostgresRepository):
         return await ANALYTICS_CACHE.get_or_create(key, load)
 
     async def overview(self, **filters: Any) -> dict[str, Any]:
+        """Return the combined Overview aggregation for one applied grant scope."""
         if self._can_use_materializations(filters):
             basis, selected_currency = self._basis(filters.get("currency"))
             async with self.sessions() as session:
@@ -1389,6 +1411,7 @@ class AnalyticsRepository(PostgresRepository):
         selection_value: str,
         **filters: Any,
     ) -> dict[str, Any]:
+        """Return the detailed rows behind one selected Overview segment."""
         conditions, parameters, amount_minor, selected_currency = self._filtered_scope(filters)
         valid = VALID_ORIGINAL if parameters["currency"] else VALID_EUR
         parameters["selection_value"] = selection_value

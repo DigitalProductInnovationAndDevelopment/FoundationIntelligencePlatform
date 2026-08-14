@@ -67,7 +67,9 @@ def registry_publishers(datasets: Iterable[Mapping[str, Any]]) -> list[dict[str,
 
 
 class RateLimitedClient:
+    """HTTP client applying a fixed minimum interval between requests."""
     def __init__(self, min_interval_seconds: float = DEFAULT_MIN_INTERVAL_SECONDS, timeout: float = 30.0):
+        """Create a client with the configured request interval and timeout."""
         self.min_interval_seconds = min_interval_seconds
         self.timeout = timeout
         self._last_request_at = 0.0
@@ -78,6 +80,7 @@ class RateLimitedClient:
         })
 
     def get_json(self, url: str, *, params: Mapping[str, Any] | None = None) -> tuple[int, Any]:
+        """Fetch and decode JSON, respecting the configured rate limit."""
         elapsed = time.monotonic() - self._last_request_at
         if elapsed < self.min_interval_seconds:
             time.sleep(self.min_interval_seconds - elapsed)
@@ -90,6 +93,7 @@ class RateLimitedClient:
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write a JSON payload atomically so a partial run leaves no corrupt file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     with temporary.open("w", encoding="utf-8") as output:
@@ -99,6 +103,7 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _load_existing(path: Path) -> list[dict[str, Any]]:
+    """Load prior results so a sampling run can resume."""
     if not path.exists():
         return []
     with path.open("r", encoding="utf-8") as source:
@@ -108,6 +113,7 @@ def _load_existing(path: Path) -> list[dict[str, Any]]:
 
 
 def _candidate_pool(client: RateLimitedClient, count: int, seed: int, page_size: int) -> tuple[int, list[dict[str, Any]]]:
+    """Build the pool of publishers eligible for sampling."""
     _, first_page = client.get_json(f"{API_BASE_URL}/org/", params={"limit": 1, "offset": 0})
     total = int((first_page or {}).get("count") or 0)
     if total <= 0:
@@ -125,6 +131,7 @@ def _candidate_pool(client: RateLimitedClient, count: int, seed: int, page_size:
 
 
 def _registry_publisher_pool(client: RateLimitedClient) -> tuple[int, list[dict[str, Any]]]:
+    """Build the publisher pool from stored registry identities."""
     _, payload = client.get_json(REGISTRY_FEED_URL)
     datasets = payload if isinstance(payload, list) else []
     return len(datasets), registry_publishers(datasets)
@@ -143,6 +150,7 @@ def collect_sample(
     timeout: float = 15.0,
     client: RateLimitedClient | None = None,
 ) -> dict[str, Any]:
+    """Collect a bounded, resumable random sample of publisher grant feeds."""
     if count < 1:
         raise ValueError("count must be at least 1")
     if max_grants_per_organisation < 1:

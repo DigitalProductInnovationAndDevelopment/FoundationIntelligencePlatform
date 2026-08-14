@@ -22,10 +22,12 @@ GENERIC_NAMES = {"foundation", "trust", "association", "network", "fund", "chari
 
 
 def _utc_now():
+    """Return the current timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def normalize_organization_name(value: Any) -> str:
+    """Normalize an organization name for comparison and deduplication."""
     text = str(value or "").strip()
     if not text or text.isdigit():
         return ""
@@ -36,6 +38,7 @@ def normalize_organization_name(value: Any) -> str:
 
 
 def normalize_domain(value: Any) -> str:
+    """Normalize a website domain for cross-source comparison."""
     text = str(value or "").strip()
     if not text:
         return ""
@@ -45,6 +48,7 @@ def normalize_domain(value: Any) -> str:
 
 
 def stable_philea_organization_id(source_record_id: Any) -> int:
+    """Derive the deterministic negative local ID for a Philea record."""
     try:
         numeric = int(str(source_record_id))
         if numeric > 0:
@@ -56,6 +60,7 @@ def stable_philea_organization_id(source_record_id: Any) -> int:
 
 
 def map_philea_organization_type(raw_type: Any) -> str:
+    """Map a Philea type onto the platform's organization types."""
     value = raw_type.get("value") if isinstance(raw_type, Mapping) else raw_type
     normalized = str(value or "").strip().casefold()
     return {
@@ -66,6 +71,7 @@ def map_philea_organization_type(raw_type: Any) -> str:
 
 
 def normalize_philea_record(member: Mapping[str, Any], ingestion_timestamp: str | None = None):
+    """Normalize one cached Philea record, retaining its provenance."""
     source_id = member.get("id")
     name = str(member.get("name") or "").strip()
     normalized_name = normalize_organization_name(name)
@@ -144,6 +150,7 @@ def normalize_philea_record(member: Mapping[str, Any], ingestion_timestamp: str 
 
 
 def _source_record_for_existing(item: Mapping[str, Any], timestamp: str):
+    """Build the source-record entry appended to an existing organization."""
     raw = item.get("raw_cc_data") if isinstance(item.get("raw_cc_data"), Mapping) else {}
     source_id = item.get("charity_id")
     source_url = raw.get("link") if isinstance(raw, Mapping) else None
@@ -157,6 +164,7 @@ def _source_record_for_existing(item: Mapping[str, Any], timestamp: str):
 
 
 def prepare_existing_organization(item: Mapping[str, Any], timestamp: str | None = None):
+    """Prepare an existing organization to receive a Philea source record."""
     timestamp = timestamp or _utc_now()
     result = dict(item)
     result.setdefault("normalized_name", normalize_organization_name(item.get("name")))
@@ -178,6 +186,7 @@ def prepare_existing_organization(item: Mapping[str, Any], timestamp: str | None
 
 
 def _merge_into_existing(existing: dict[str, Any], philea: Mapping[str, Any], method: str):
+    """Append Philea provenance to an existing organization without overwriting facts."""
     for field in ("website", "email", "address", "city", "state", "country", "latitude", "longitude"):
         if not existing.get(field) and philea.get(field):
             existing[field] = philea[field]

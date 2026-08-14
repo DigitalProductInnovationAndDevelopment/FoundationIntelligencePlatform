@@ -200,18 +200,22 @@ class PreflightError(MigrationError):
 
 
 class ValueConversionError(MigrationError):
+    """Raised when a source value cannot be converted without losing fidelity."""
     def __init__(self, column: str, value: Any, message: str):
+        """Record the offending column, value and reason."""
         super().__init__(message)
         self.column = column
         self.value = value
 
 
 def _quote_identifier(value: str) -> str:
+    """Quote a SQL identifier so generated DDL and DML stay safe."""
     return '"' + value.replace('"', '""') + '"'
 
 
 @dataclass(frozen=True)
 class CapacityEstimate:
+    """Estimated space required to load a candidate dataset."""
     source_bytes: int
     estimated_postgres_and_indexes_bytes: int
     estimated_wal_and_temp_bytes: int
@@ -221,9 +225,11 @@ class CapacityEstimate:
 
     @property
     def sufficient(self) -> bool:
+        """Report whether available space covers the estimate."""
         return self.available_bytes >= self.minimum_free_bytes
 
     def as_dict(self) -> dict[str, Any]:
+        """Project the estimate into its report shape."""
         return {
             **self.__dict__,
             "sufficient": self.sufficient,
@@ -232,6 +238,7 @@ class CapacityEstimate:
 
 @dataclass(frozen=True)
 class SourcePreflight:
+    """Pre-migration facts about the SQLite source: checksum, counts and schema."""
     checksum: str
     schema_version: str
     metadata: dict[str, str]
@@ -240,6 +247,7 @@ class SourcePreflight:
 
 
 def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    """Return a file's SHA-256 digest, read in bounded chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as source:
         while chunk := source.read(chunk_size):
@@ -248,6 +256,7 @@ def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
 
 
 def capacity_estimate(source_path: Path) -> CapacityEstimate:
+    """Estimate the space a candidate dataset load will require."""
     source_bytes = source_path.stat().st_size
     postgres_and_indexes = source_bytes * 3
     wal_and_temp = source_bytes * 2
@@ -263,6 +272,7 @@ def capacity_estimate(source_path: Path) -> CapacityEstimate:
 
 
 def open_sqlite_read_only(path: Path) -> sqlite3.Connection:
+    """Open the migration source read-only so it cannot be mutated."""
     resolved = path.resolve()
     uri = f"file:{quote(str(resolved))}?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
@@ -278,6 +288,7 @@ def source_preflight(
     *,
     enforce_capacity: bool = True,
 ) -> SourcePreflight:
+    """Collect source checksum, counts and schema before any write occurs."""
     if not source_path.is_file():
         raise PreflightError("SQLite source does not exist")
     if not re.fullmatch(r"[a-f0-9]{64}", expected_checksum):
@@ -328,6 +339,7 @@ def source_preflight(
 
 
 def _json_value(table: str, column: str, value: Any) -> Optional[str]:
+    """Convert a source value into a JSONB-safe payload."""
     if value is None or value == "":
         return None
     if isinstance(value, (dict, list, int, float, bool)):
@@ -341,6 +353,7 @@ def _json_value(table: str, column: str, value: Any) -> Optional[str]:
 
 
 def _date_value(column: str, value: Any) -> Optional[date]:
+    """Convert a source value to DATE, preserving the original on failure."""
     if value is None or str(value).strip() == "":
         return None
     candidate = str(value).strip()[:10]
@@ -351,6 +364,7 @@ def _date_value(column: str, value: Any) -> Optional[date]:
 
 
 def _timestamp_value(column: str, value: Any) -> Optional[datetime]:
+    """Convert a source value to TIMESTAMPTZ."""
     if value is None or str(value).strip() == "":
         return None
     candidate = str(value).strip().replace("Z", "+00:00")
@@ -364,6 +378,7 @@ def _timestamp_value(column: str, value: Any) -> Optional[datetime]:
 
 
 def _decimal_value(column: str, value: Any) -> Optional[Decimal]:
+    """Convert a source amount to NUMERIC without float rounding."""
     if value is None or str(value).strip() == "":
         return None
     try:
@@ -376,6 +391,7 @@ def _decimal_value(column: str, value: Any) -> Optional[Decimal]:
 
 
 def _uuid_value(column: str, value: Any) -> Optional[uuid.UUID]:
+    """Convert a source value to UUID."""
     if value is None or str(value).strip() == "":
         return None
     try:
@@ -385,6 +401,7 @@ def _uuid_value(column: str, value: Any) -> Optional[uuid.UUID]:
 
 
 def _month_value(column: str, value: Any) -> Optional[str]:
+    """Convert a source value to YYYY-MM, preserving exchange-rate precision."""
     if value is None or str(value).strip() == "":
         return None
     candidate = str(value).strip()
@@ -398,6 +415,7 @@ def _month_value(column: str, value: Any) -> Optional[str]:
 
 
 def _raw_date_value(column: str, value: Any) -> Optional[str]:
+    """Preserve the source's date-or-timestamp text exactly as supplied."""
     if value is None or str(value).strip() == "":
         return None
     candidate = str(value)
@@ -409,6 +427,7 @@ def _raw_date_value(column: str, value: Any) -> Optional[str]:
 
 
 def convert_value(table: str, column: str, value: Any) -> Any:
+    """Convert one source value to its target type, or raise ValueConversionError."""
     identity = (table, column)
     converted: Any
     if identity in JSON_COLUMNS:
@@ -452,10 +471,12 @@ def convert_value(table: str, column: str, value: Any) -> Any:
 
 
 def _source_identity(table: str, row: sqlite3.Row) -> str:
+    """Build the provenance identity retained for a migrated record."""
     return "|".join(str(row[column]) for column in SOURCE_ID_COLUMNS[table])
 
 
 def _target_columns(table: str, source_columns: Sequence[str]) -> tuple[str, ...]:
+    """Return the target table's column list in a deterministic order."""
     columns = tuple(RENAMES.get((table, column), column) for column in source_columns)
     return (("dataset_version",) + columns) if table in VERSIONED_TABLES else columns
 
@@ -466,11 +487,13 @@ def _converted_record(
     row: sqlite3.Row,
     dataset_version: str,
 ) -> tuple[Any, ...]:
+    """Convert one source row into its dataset-scoped target record."""
     values = tuple(convert_value(table, column, row[column]) for column in source_columns)
     return ((dataset_version,) + values) if table in VERSIONED_TABLES else values
 
 
 async def _connect_postgres() -> asyncpg.Connection:
+    """Open the migration's PostgreSQL connection."""
     url = DatabaseSettings.from_env().sqlalchemy_url()
     connection = await asyncpg.connect(
         host=url.host,
@@ -486,6 +509,7 @@ async def _connect_postgres() -> asyncpg.Connection:
 
 
 async def _ensure_schema(connection: asyncpg.Connection) -> None:
+    """Verify the target schema is at the expected Alembic revision."""
     revision = await connection.fetchval("SELECT version_num FROM alembic_version")
     if revision != MIGRATION_SCHEMA_VERSION:
         raise PreflightError(
@@ -497,6 +521,7 @@ async def _delete_candidate_payload(
     connection: asyncpg.Connection,
     dataset_version: str,
 ) -> None:
+    """Remove a partially loaded candidate dataset, leaving the active one untouched."""
     for table in reversed(LOAD_ORDER):
         if table in VERSIONED_TABLES:
             await connection.execute(
@@ -514,6 +539,7 @@ async def _prepare_candidate(
     actor_id: str,
     actor_type: str,
 ) -> str:
+    """Register a candidate dataset version before loading begins."""
     existing = await connection.fetchrow(
         "SELECT status, is_active FROM dataset_versions WHERE dataset_version=$1",
         dataset_version,
@@ -586,6 +612,7 @@ async def _record_quality_issue(
     record_identity: str,
     error: ValueConversionError,
 ) -> None:
+    """Quarantine a record that failed validation, retaining its original value."""
     await connection.execute(
         """
         INSERT INTO data_quality_issues (
@@ -612,6 +639,7 @@ async def _upsert_global_records(
     columns: Sequence[str],
     records: Sequence[tuple[Any, ...]],
 ) -> None:
+    """Load records that are not dataset-scoped, such as exchange rates."""
     if not records:
         return
     key_columns = GLOBAL_KEYS[table]
@@ -664,6 +692,7 @@ async def load_table(
     staged_global_records: dict[str, list[tuple[Any, ...]]],
     staged_global_columns: dict[str, tuple[str, ...]],
 ) -> int:
+    """Load one source table into the candidate dataset in bounded batches."""
     table_info = source.execute(f'PRAGMA table_info("{table}")').fetchall()
     source_columns = tuple(str(row[1]) for row in table_info)
     primary_key_columns = tuple(
@@ -710,6 +739,7 @@ async def _target_counts(
     dataset_version: str,
     loaded_counts: dict[str, int],
 ) -> dict[str, int]:
+    """Count loaded rows per target table for reconciliation."""
     counts: dict[str, int] = {}
     for table in LOAD_ORDER:
         if table in VERSIONED_TABLES:
@@ -728,6 +758,7 @@ async def _control_values(
     connection: asyncpg.Connection,
     dataset_version: str,
 ) -> dict[str, Any]:
+    """Compute the control totals compared between source and target."""
     values: dict[str, Any] = {}
     values["distinct_mapped_grants"] = int(
         await connection.fetchval(
@@ -899,6 +930,7 @@ def _reconciliation(
     expected_counts: Optional[dict[str, int]],
     expected_controls: Optional[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
+    """Compare source and target counts and controls, exactly."""
     results: dict[str, dict[str, Any]] = {}
     for table, source_count in source_counts.items():
         target_count = target_counts[table]
@@ -942,6 +974,7 @@ async def _activate(
     staged_global_records: dict[str, list[tuple[Any, ...]]],
     staged_global_columns: dict[str, tuple[str, ...]],
 ) -> Optional[str]:
+    """Activate the candidate in one transaction after reconciliation passes."""
     failures = [name for name, result in reconciliation.items() if result["status"] == "fail"]
     if failures:
         await connection.execute(
@@ -1026,6 +1059,7 @@ async def migrate(
     enforce_baseline: bool = True,
     enforce_capacity: bool = True,
 ) -> dict[str, Any]:
+    """Load, reconcile and activate a candidate dataset; activation is all-or-nothing."""
     if not re.fullmatch(r"[a-f0-9]{40}", code_revision):
         raise PreflightError("Code revision must be a full lowercase Git SHA")
     if not dataset_version or len(dataset_version) > 200:
@@ -1150,6 +1184,7 @@ async def migrate(
 
 
 async def rollback_dataset(target_dataset_version: str) -> dict[str, Optional[str]]:
+    """Reactivate a previously approved dataset version."""
     connection = await _connect_postgres()
     try:
         await _ensure_schema(connection)
@@ -1205,6 +1240,7 @@ async def rollback_dataset(target_dataset_version: str) -> dict[str, Optional[st
 
 
 def write_reports(output_directory: Path, report: dict[str, Any]) -> None:
+    """Write the migration manifest and human-readable report."""
     output_directory.mkdir(parents=True, exist_ok=True)
     stem = f"migration-{report['dataset_version']}"
     json_path = output_directory / f"{stem}.json"
@@ -1245,6 +1281,7 @@ def write_reports(output_directory: Path, report: dict[str, Any]) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser."""
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     preflight_parser = subparsers.add_parser("preflight")
@@ -1268,6 +1305,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Command-line entry point for the migration."""
     arguments = _parser().parse_args(argv)
     try:
         if arguments.command == "preflight":

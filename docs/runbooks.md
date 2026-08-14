@@ -1,8 +1,15 @@
-# Observability Runbooks
+# Alarm runbooks
 
-Status: local code-readiness procedures. AWS/CloudWatch execution is not
-tested. Any production command must follow environment approval and change
-control; examples here are decision steps, not authorization.
+This file contains one section per configured alarm. The alarm-to-runbook mapping is
+defined in `config/observability.json`, and the CloudWatch alarm descriptions in
+`infra/terraform/modules/platform/observability.tf` reference the anchors below.
+`src/tests/test_observability.py` asserts that every configured alarm has a corresponding
+section, so the `## <anchor>` headings must remain synchronized with the configuration.
+
+These are local code-readiness procedures. Execution against AWS and CloudWatch is
+untested. Any production command requires environment approval and change control; the
+steps below are decision steps rather than authorization. Dataset rollback, restore and
+cutover procedures are documented in [5. Operating](05-operating.md).
 
 ## readiness-failure
 

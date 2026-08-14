@@ -1,3 +1,13 @@
+"""Optional LLM-assisted enrichment — not part of the deterministic build.
+
+Requires ``GEMINI_API_KEY`` and network access, and is excluded from the reproducible
+cached-source pipeline because its output is neither deterministic nor reproducible.
+
+``preprocessing.enrichment`` remains the single active source of programme and geography
+taxonomy. Anything produced here is advisory, must be written to inferred fields with
+its own provenance, and must never overwrite a source fact.
+"""
+
 import os
 import json
 import logging

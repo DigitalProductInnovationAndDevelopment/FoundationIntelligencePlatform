@@ -15,6 +15,7 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "runtime-transition.json"
 
 
 class RuntimeMode(str, Enum):
+    """The supported storage runtime modes."""
     POSTGRESQL = "postgresql"
     SQLITE_MIGRATION_SOURCE = "sqlite_migration_source"
     SHADOW_COMPARE = "shadow_compare"
@@ -26,6 +27,7 @@ class TransitionConfigurationError(RuntimeError):
 
 @dataclass(frozen=True)
 class TransitionSettings:
+    """Frozen storage-transition configuration for one process."""
     mode: RuntimeMode
     app_environment: str
     migration_source_path: Path
@@ -40,13 +42,16 @@ class TransitionSettings:
 
     @property
     def postgresql_authoritative(self) -> bool:
+        """Report whether PostgreSQL is the authoritative source in this mode."""
         return self.mode in {RuntimeMode.POSTGRESQL, RuntimeMode.SHADOW_COMPARE}
 
     @property
     def shadow_enabled(self) -> bool:
+        """Report whether shadow comparison is active."""
         return self.mode is RuntimeMode.SHADOW_COMPARE
 
     def validate(self) -> None:
+        """Reject any mode that could serve production data from an unsafe source."""
         if self.app_environment in {"staging", "production"} and (
             self.mode is RuntimeMode.SQLITE_MIGRATION_SOURCE
         ):
@@ -78,6 +83,7 @@ def load_transition_settings(
     environ: Optional[Mapping[str, str]] = None,
     path: Path = DEFAULT_CONFIG_PATH,
 ) -> TransitionSettings:
+    """Load and validate the versioned transition configuration."""
     env = os.environ if environ is None else environ
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("configuration_version") != "1":

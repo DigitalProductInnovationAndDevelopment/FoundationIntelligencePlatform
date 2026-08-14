@@ -1,3 +1,20 @@
+/**
+ * Application shell: global state, view routing and most data fetching.
+ *
+ * Structure, top to bottom:
+ *   - lazy component imports (all heavy views are code-split)
+ *   - environment constants (API_BASE, SHOW_LEGACY_OVERVIEW, DEFAULT_DATA_SOURCES)
+ *   - domain types and localStorage keys
+ *   - favourites and news persistence, PDF briefing generation
+ *   - API response interfaces
+ *   - per-section loading state machine (ProfileLoadingState)
+ *   - pipeline types and the labelled offline mock constants
+ *   - the App component: state, effects, fetchers, rendering
+ *
+ * Every request sends `credentials: "include"`. This application never logs in;
+ * it assumes a session cookie already exists. MOCK_STATS and MOCK_CHARITIES back
+ * the labelled offline fallback only — grant, map and score data are never mocked.
+ */
 import {
   lazy,
   Suspense,

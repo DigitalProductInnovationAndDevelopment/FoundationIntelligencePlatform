@@ -123,7 +123,7 @@ def main() -> int:
     parser.add_argument(
         "--output-directory",
         type=Path,
-        default=ROOT / "docs" / "remediation" / "evidence" / "sbom",
+        default=ROOT / "evidence" / "sbom",
     )
     args = parser.parse_args()
     backend = document("foundation-intelligence-backend", python_components())

@@ -1,3 +1,10 @@
+"""Seeds a small synthetic dataset for local development.
+
+Provides enough shaped data to exercise the UI and API without running the full
+pipeline or holding real source records. The values are synthetic and must not be
+presented as observed data or used to make coverage claims.
+"""
+
 import os
 import sys
 import sqlite3
